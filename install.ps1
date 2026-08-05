@@ -1,7 +1,7 @@
 # Install runtime at %USERPROFILE%\.tlc\harness (Windows PowerShell)
 $ErrorActionPreference = "Stop"
 
-$RepoUrl = if ($env:TLC_REPO_URL) { $env:TLC_REPO_URL } else { "https://github.com/felipfr/tlc-agent-harness.git" }
+$RepoUrl = if ($env:TLC_REPO_URL) { $env:TLC_REPO_URL } else { "https://github.com/tech-leads-club/harness-toolkit.git" }
 $Dest = if ($env:TLC_HOME) { $env:TLC_HOME } else { Join-Path $env:USERPROFILE ".tlc\harness" }
 $BinDir = if ($env:TLC_BIN_DIR) { $env:TLC_BIN_DIR } else { Join-Path $env:USERPROFILE ".local\bin" }
 
@@ -49,7 +49,15 @@ if ($scriptRoot -and (Test-Path (Join-Path $scriptRoot "bin\tlc-exec.mjs")) -and
   } elseif (Test-Path $Dest) {
     throw "install: $Dest exists and is not a git checkout — move it aside and re-run."
   } else {
+    # why: while the repository is private, an unauthenticated clone fails with git's own credential error, which
+    # says nothing about org membership. A refusal names the route that works (docs/decisions/ad-047.md).
     git clone $RepoUrl $Dest
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "install: could not clone $RepoUrl"
+      Write-Host "  While the repository is private this needs a GitHub credential: install the gh CLI and run"
+      Write-Host "  ``gh auth login`` then ``gh auth setup-git``, and confirm you are in the tech-leads-club org."
+      throw "install: clone failed"
+    }
   }
 }
 

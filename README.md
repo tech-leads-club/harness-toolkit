@@ -1,4 +1,4 @@
-# tlc-agent-harness
+# harness-toolkit
 
 Steers Cursor and Claude Code agents with **gates → follow-up → handoff → policy**.
 
@@ -8,8 +8,17 @@ core and one anti-corruption-layer adapter per provider.
 
 ## Start here
 
+While this repository is private to the `tech-leads-club` org, install with the `gh` CLI — an
+unauthenticated fetch cannot read a private repository:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/felipfr/tlc-agent-harness/main/install.sh | bash
+gh api repos/tech-leads-club/harness-toolkit/contents/install.sh --jq .content | base64 -d | bash
+```
+
+Once it is public, this is the same install with no CLI needed:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tech-leads-club/harness-toolkit/main/install.sh | bash
 ```
 
 Then restart Cursor or Claude Code. That is the whole setup — the installer finds which of the two you
@@ -117,17 +126,33 @@ assumes Cursor.
 
 ## Install
 
+Both routes run the same `install.sh` and produce the same managed runtime. The difference is only how the
+script is fetched: `raw.githubusercontent.com` is unauthenticated and cannot read a private repository, and
+`gh` carries your GitHub credential. Use the `gh` form until the repository is public.
+
 **Linux / macOS / WSL**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/felipfr/tlc-agent-harness/main/install.sh | bash
+# while private — needs `gh auth login` and membership of the tech-leads-club org
+gh api repos/tech-leads-club/harness-toolkit/contents/install.sh --jq .content | base64 -d | bash
+
+# once public
+curl -fsSL https://raw.githubusercontent.com/tech-leads-club/harness-toolkit/main/install.sh | bash
 ```
 
 **Windows (PowerShell)**
 
 ```powershell
-irm https://raw.githubusercontent.com/felipfr/tlc-agent-harness/main/install.ps1 | iex
+# while private
+$s = gh api repos/tech-leads-club/harness-toolkit/contents/install.ps1 --jq .content
+[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($s)) | iex
+
+# once public
+irm https://raw.githubusercontent.com/tech-leads-club/harness-toolkit/main/install.ps1 | iex
 ```
+
+The clone the installer then performs also needs that credential while the repository is private: run
+`gh auth setup-git` once, and the installer says so if the clone fails.
 
 Install target: `~/.tlc/harness` (runtime). The init skill is linked into the skills directory of
 each provider it finds, because a provider only reads its own.
@@ -152,15 +177,15 @@ Restart or reload the provider session after install.
 **From a git clone** (same installers; then build `dist/`):
 
 ```bash
-git clone https://github.com/felipfr/tlc-agent-harness.git
-cd tlc-agent-harness
+git clone https://github.com/tech-leads-club/harness-toolkit.git
+cd harness-toolkit
 ./install.sh
 ./bin/tlc-build
 ```
 
 ```powershell
-git clone https://github.com/felipfr/tlc-agent-harness.git
-cd tlc-agent-harness
+git clone https://github.com/tech-leads-club/harness-toolkit.git
+cd harness-toolkit
 .\install.ps1
 .\bin\tlc-build
 ```

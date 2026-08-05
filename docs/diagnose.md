@@ -47,11 +47,16 @@ On Windows, Cursor hooks use `cmd /c node "…\tlc-exec.mjs" …`; Claude Code h
 The one manual step, once, on Unix or Windows:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/felipfr/tlc-agent-harness/main/install.sh | bash
+# while the repository is private
+gh api repos/tech-leads-club/harness-toolkit/contents/install.sh --jq .content | base64 -d | bash
+
+# once public
+curl -fsSL https://raw.githubusercontent.com/tech-leads-club/harness-toolkit/main/install.sh | bash
 ```
 
 ```powershell
-irm https://raw.githubusercontent.com/felipfr/tlc-agent-harness/main/install.ps1 | iex
+$s = gh api repos/tech-leads-club/harness-toolkit/contents/install.ps1 --jq .content
+[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($s)) | iex
 ```
 
 **Why it has to be that and not `update`.** `update` runs from the installed runtime, and the fix for `update` is in

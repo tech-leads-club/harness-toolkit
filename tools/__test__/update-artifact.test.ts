@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, test } from "node:test";
 import {
   classifyRuntimePath,
+  fetchFailureMessage,
   linkedRuntimeMessage,
   missingBundles,
   resetFailureMessage,
@@ -159,6 +160,19 @@ test("the linked message names the clone and refuses to touch it", () => {
 
 test("the linked message works without a resolvable target", () => {
   assert.match(linkedRuntimeMessage("/x", null), /link to a working clone\./);
+});
+
+/**
+ * hazard: a bare `update: git fetch failed.` is what an org member sees when the private repository refuses an
+ * unauthenticated fetch, and it names neither the credential nor the org. It is also what an install predating the
+ * move sees, for a different reason ([/decisions/ad-052.md](/decisions/ad-052.md)).
+ */
+test("a failed fetch names the credential and the move, not just the failure", () => {
+  const text = fetchFailureMessage("/opt/runtime");
+  assert.match(text, /\/opt\/runtime/);
+  assert.match(text, /gh auth setup-git/);
+  assert.match(text, /tech-leads-club\/harness-toolkit/);
+  assert.match(text, /re-run the installer/);
 });
 
 // invariant: no message may name `reset --hard` against a path the harness has not established it owns, and none

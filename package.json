@@ -1,5 +1,5 @@
 {
-  "name": "tlc-agent-harness",
+  "name": "harness-toolkit",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -13,12 +13,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/felipfr/tlc-agent-harness.git"
+    "url": "https://github.com/tech-leads-club/harness-toolkit.git"
   },
   "bugs": {
-    "url": "https://github.com/felipfr/tlc-agent-harness/issues"
+    "url": "https://github.com/tech-leads-club/harness-toolkit/issues"
   },
-  "homepage": "https://github.com/felipfr/tlc-agent-harness#readme",
+  "homepage": "https://github.com/tech-leads-club/harness-toolkit#readme",
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",
     "@types/node": "^24.13.3",

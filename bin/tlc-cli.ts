@@ -429,6 +429,21 @@ export function linkedRuntimeMessage(dest: string, target: string | null): strin
   ].join("\n");
 }
 
+/**
+ * hazard: this printed `update: git fetch failed.` and stopped. Against a private repository the cause is almost
+ * always a missing GitHub credential, and git's own error does not mention org membership or `gh` — the same shape
+ * as the refusal AD-047 was written about ([/decisions/ad-052.md](/decisions/ad-052.md)).
+ */
+export function fetchFailureMessage(dest: string): string {
+  return [
+    `update: git fetch failed in ${dest}.`,
+    "  If the repository is private, this needs a GitHub credential: `gh auth login`, then `gh auth setup-git`,",
+    "  and membership of the org that owns it.",
+    "  If this runtime predates the move to tech-leads-club/harness-toolkit, it is still pointing at the old",
+    "  repository — re-run the installer from the README to move it.",
+  ].join("\n");
+}
+
 export function unmanagedRuntimeMessage(dest: string): string {
   return [
     `update: ${dest} is not a git checkout, so there is nothing to pull.`,
@@ -977,7 +992,7 @@ function runUpdate(root: string): never {
       env: process.env,
     });
     if ((fetch.status ?? 1) !== 0) {
-      console.error("update: git fetch failed.");
+      console.error(fetchFailureMessage(dest));
       process.exit(fetch.status ?? 1);
     }
     const mergeRef = upstreamRef(dest);

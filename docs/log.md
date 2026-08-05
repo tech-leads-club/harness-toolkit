@@ -71,3 +71,6 @@ timestamp: "2026-07-30"
   fails it on a suppression whose reason is not a reason. Group-level `error` severity was measured at 3763
   findings — it enables each group's non-recommended rules, including the two that forbid the core facade — and
   rejected ([/decisions/ad-051.md](/decisions/ad-051.md)).
+- Moved to `github.com/tech-leads-club/harness-toolkit` and renamed `harness-toolkit`. The CLI, `~/.tlc/harness`
+  and `.tlc/harness/config.json` are unchanged, so no existing install re-initialises — TLC is Tech Leads Club,
+  which makes the prefix more accurate under the org, not less ([/decisions/ad-052.md](/decisions/ad-052.md)).

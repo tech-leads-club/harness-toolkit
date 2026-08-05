@@ -66,5 +66,6 @@ Handoff section and a link back to this index.
 | [AD-049](/decisions/ad-049.md) | An empty synced file says which of four reasons made it empty | active |
 | [AD-050](/decisions/ad-050.md) | Lesson transport is a provider capability, not an operator preference | active |
 | [AD-051](/decisions/ad-051.md) | A warning fails the gate, and a suppression states what breaks without it | active |
+| [AD-052](/decisions/ad-052.md) | The repository moves to the org and the runtime paths do not | active |
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).

@@ -5788,6 +5788,16 @@ function linkedRuntimeMessage(dest, target) {
   ].join(`
 `);
 }
+function fetchFailureMessage(dest) {
+  return [
+    `update: git fetch failed in ${dest}.`,
+    "  If the repository is private, this needs a GitHub credential: `gh auth login`, then `gh auth setup-git`,",
+    "  and membership of the org that owns it.",
+    "  If this runtime predates the move to tech-leads-club/harness-toolkit, it is still pointing at the old",
+    "  repository — re-run the installer from the README to move it."
+  ].join(`
+`);
+}
 function unmanagedRuntimeMessage(dest) {
   return [
     `update: ${dest} is not a git checkout, so there is nothing to pull.`,
@@ -6189,7 +6199,7 @@ function runUpdate(root) {
       env: process.env
     });
     if ((fetch.status ?? 1) !== 0) {
-      console.error("update: git fetch failed.");
+      console.error(fetchFailureMessage(dest));
       process.exit(fetch.status ?? 1);
     }
     const mergeRef = upstreamRef(dest);
@@ -6470,6 +6480,7 @@ export {
   grindFlagPath,
   gatesPaused,
   focusFlagPath,
+  fetchFailureMessage,
   execBinPath,
   ensureFlagsDir,
   classifyRuntimePath,

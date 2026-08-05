@@ -2,7 +2,7 @@
 # Install runtime at ~/.tlc/harness
 set -euo pipefail
 
-REPO_URL="${TLC_REPO_URL:-https://github.com/felipfr/tlc-agent-harness.git}"
+REPO_URL="${TLC_REPO_URL:-https://github.com/tech-leads-club/harness-toolkit.git}"
 DEST="${TLC_HOME:-$HOME/.tlc/harness}"
 BIN_DIR="${TLC_BIN_DIR:-$HOME/.local/bin}"
 
@@ -66,7 +66,14 @@ else
     echo "install: $DEST exists and is not a git checkout — move it aside and re-run." >&2
     exit 1
   else
-    git clone "$REPO_URL" "$DEST"
+    # why: while the repository is private, an unauthenticated clone fails with git's own credential error, which
+    # says nothing about org membership. A refusal names the route that works ([/decisions/ad-047.md](/decisions/ad-047.md)).
+    if ! git clone "$REPO_URL" "$DEST"; then
+      echo "install: could not clone $REPO_URL" >&2
+      echo "  While the repository is private this needs a GitHub credential: install the gh CLI and run" >&2
+      echo "  \`gh auth login\` then \`gh auth setup-git\`, and confirm you are in the tech-leads-club org." >&2
+      exit 1
+    fi
   fi
 fi
 

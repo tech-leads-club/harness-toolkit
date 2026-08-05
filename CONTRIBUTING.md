@@ -7,11 +7,16 @@ PolyForm Noncommercial 1.0.0 (`LICENSE`, `NOTICE`).
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/felipfr/tlc-agent-harness/main/install.sh | bash
+# while the repository is private — `raw.githubusercontent.com` cannot read it
+gh api repos/tech-leads-club/harness-toolkit/contents/install.sh --jq .content | base64 -d | bash
+
+# once public
+curl -fsSL https://raw.githubusercontent.com/tech-leads-club/harness-toolkit/main/install.sh | bash
 ```
 
 ```powershell
-irm https://raw.githubusercontent.com/felipfr/tlc-agent-harness/main/install.ps1 | iex
+$s = gh api repos/tech-leads-club/harness-toolkit/contents/install.ps1 --jq .content
+[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($s)) | iex
 ```
 
 Target path: `~/.tlc/harness`.
@@ -19,8 +24,8 @@ Target path: `~/.tlc/harness`.
 ## Contribute from a clone
 
 ```bash
-git clone https://github.com/felipfr/tlc-agent-harness.git
-cd tlc-agent-harness
+git clone https://github.com/tech-leads-club/harness-toolkit.git
+cd harness-toolkit
 ./install.sh
 ./bin/tlc-build
 ```
