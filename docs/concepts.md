@@ -144,10 +144,12 @@ empty diff is intentional.
 
 ## subagent allowlist
 
-`subagents.enforceAllowlist`. Task/subagent models must be on `subagents.allowedModels`; each provider supplies its own default catalog
-(see [/providers/index.md](/providers/index.md) and [/decisions/ad-011.md](/decisions/ad-011.md)) and
-`*-fast`-shaped models are blocked by default. Trade-off: cost/quality control; must update the list when a
-provider adds models you want.
+`subagents.enforceAllowlist`. Task/subagent models must be on `subagents.allowedModels`, which is **yours** — no
+provider ships a catalogue, because one the harness invents goes stale and then refuses a spawn by a list that
+appears nowhere in the project ([/decisions/ad-053.md](/decisions/ad-053.md)). An empty list enforces nothing and
+`doctor` reports the combination as a fault. `*-fast`-shaped models are blocked separately, by patterns that are
+added to yours rather than replacing them. `inherit` is a value the list may contain. Trade-off: cost/quality
+control; you update the list when a provider adds models you want.
 
 ## Block parent Fast
 

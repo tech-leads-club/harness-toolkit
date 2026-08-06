@@ -4825,6 +4825,11 @@ function isEffortLevel(value) {
 }
 
 // src/core/subagent-policy/subagent-policy.service.ts
+var ALLOWLIST_KEY = "subagents.allowedModels";
+function allowlistRefusal(model, allowed) {
+  const base = `"${model}" is not in \`${ALLOWLIST_KEY}\`. Use one of: ${allowed.join(", ")}.`;
+  return model === "inherit" ? `${base} \`inherit\` is a value that list may contain; add it there to permit it.` : base;
+}
 function evaluateSubagentSpawn(args) {
   const patterns = forProvider(args.blockedPatterns, args.provider) ?? [];
   const block = (reason2, userNote) => args.blockMode === "ask" ? { kind: "ask", reason: reason2, userNote } : { kind: "deny", reason: reason2, userNote };
@@ -4836,8 +4841,8 @@ function evaluateSubagentSpawn(args) {
     return block("Set model explicitly on every Task spawn. Do not omit model.", "Subagent spawned without an explicit model.");
   }
   const allowed = forProvider(args.allowedModels, args.provider);
-  if (args.enforceAllowlist && args.model && allowed !== null && !isModelAllowlisted(args.model, allowed)) {
-    return block(`Use one of: ${allowed.join(", ")}.`, `Subagent model "${args.model}" is not on the allowlist.`);
+  if (args.enforceAllowlist && args.model && allowed !== null && allowed.length > 0 && !isModelAllowlisted(args.model, allowed)) {
+    return block(allowlistRefusal(args.model, allowed), `Subagent model "${args.model}" is not on the allowlist.`);
   }
   if (args.minEffort && args.effort !== undefined && isEffortLevel(args.effort) && compareEffort(args.effort, args.minEffort) < 0) {
     return block(`Subagent effort "${args.effort}" is below the required minimum "${args.minEffort}".`, `Raise the subagent effort to at least "${args.minEffort}" and retry.`);
@@ -5895,7 +5900,6 @@ function claudeRender(decision, event) {
 // src/providers/claude/claude.policy-defaults.ts
 function claudePolicyDefaults() {
   return {
-    allowedModels: ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"],
     blockedPatterns: [],
     minEffort: null,
     untrustedTools: ["WebFetch", "WebSearch"]
@@ -6203,13 +6207,6 @@ function cursorRender(decision, _event) {
 // src/providers/cursor/cursor.policy-defaults.ts
 function cursorPolicyDefaults() {
   return {
-    allowedModels: [
-      "composer-2.5",
-      "cursor-grok-4.5-high",
-      "glm-5.2-high",
-      "kimi-k2.7-code",
-      "gpt-5.3-codex-high"
-    ],
     blockedPatterns: ["-fast(?:$|[^a-z0-9])", "/fast(?:$|[^a-z0-9])", "composer-2\\.5-fast"],
     minEffort: null,
     untrustedTools: ["Fetch", "WebSearch"]

@@ -38,8 +38,13 @@ Source: `src/providers/claude/`.
 
 ## Policy defaults
 
-`claude.policy-defaults.ts` supplies the model allowlist (`claude-opus-5`, `claude-sonnet-5`,
-`claude-fable-5`) with no blocked patterns — see [/decisions/ad-011.md](/decisions/ad-011.md).
+`claude.policy-defaults.ts` supplies no model allowlist and no blocked patterns — see
+[/decisions/ad-011.md](/decisions/ad-011.md).
+
+It used to ship three model slugs, and an empty project list fell back to them, so a spawn could be refused by a
+list that appears nowhere in the project. This page named a fourth that the code did not, which is what a shipped
+catalogue does over time. `subagents.allowedModels` is the operator's and has no other source; an empty one
+enforces nothing and `doctor` says so ([/decisions/ad-053.md](/decisions/ad-053.md)).
 
 ## Event mapping
 

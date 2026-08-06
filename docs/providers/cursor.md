@@ -38,10 +38,14 @@ Source: `src/providers/cursor/`.
 
 ## Policy defaults
 
-`cursor.policy-defaults.ts` supplies the model allowlist (`composer-2.5`, `cursor-grok-4.5-high`,
-`glm-5.2-high`, `kimi-k2.7-code`, `gpt-5.3-codex-high`) and the blocked-pattern list
-(`-fast(?:$|[^a-z0-9])`, `/fast(?:$|[^a-z0-9])`, `composer-2\.5-fast`) — see
-[/decisions/ad-011.md](/decisions/ad-011.md).
+`cursor.policy-defaults.ts` supplies the blocked-pattern list (`-fast(?:$|[^a-z0-9])`, `/fast(?:$|[^a-z0-9])`,
+`composer-2\.5-fast`) — see [/decisions/ad-011.md](/decisions/ad-011.md).
+
+**It supplies no model allowlist.** It used to, and an empty project list fell back to it, so a spawn could be
+refused by five slugs that appear nowhere in the project and had already gone stale. `subagents.allowedModels` is
+the operator's and has no other source; an empty one enforces nothing and `doctor` says so
+([/decisions/ad-053.md](/decisions/ad-053.md)). The blocked patterns stay because they are **added** to the
+project's rather than replacing them.
 
 ## Event mapping
 

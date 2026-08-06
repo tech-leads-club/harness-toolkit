@@ -70,15 +70,17 @@ export async function currentGitSha(root: string): Promise<string | null> {
   return sha.length > 0 ? sha : null;
 }
 
+/**
+ * hazard: this fell back to a shipped list whenever the project's was empty, so a spawn could be refused by an
+ * allowlist that exists nowhere in the project — and the refusal named no source, so an operator reading `[]` in
+ * their own config could only conclude that empty meant none. There is no shipped list now: the effective one is
+ * exactly what the project configured ([/decisions/ad-053.md](/decisions/ad-053.md)).
+ */
 export function effectiveAllowedModels(
   configured: string[] | Record<string, string[]> | undefined,
   provider: ProviderPort,
 ): string[] {
-  const fromConfig = coreFacade.policy.forProvider(configured, provider.name);
-  if (fromConfig && fromConfig.length > 0) {
-    return fromConfig;
-  }
-  return provider.policyDefaults().allowedModels;
+  return coreFacade.policy.forProvider(configured, provider.name) ?? [];
 }
 
 export function effectiveBlockedPatterns(

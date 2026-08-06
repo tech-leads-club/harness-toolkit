@@ -24,6 +24,24 @@ export type EvaluateSubagentSpawnArgs = {
   blockMode?: "deny" | "ask";
 };
 
+/** The key an operator edits. Named in the refusal, because the list is theirs and nothing else supplies one. */
+export const ALLOWLIST_KEY = "subagents.allowedModels";
+
+/**
+ * hazard: the refusal was `Use one of: <list>` and named no source. An operator whose own config read
+ * `"allowedModels": []` was being refused by a shipped list, opened the file, saw an empty array, and concluded
+ * that empty means none — then offered to switch the rail off. The list has no other source now, and the message
+ * says which key holds it ([/decisions/ad-053.md](/decisions/ad-053.md)).
+ */
+export function allowlistRefusal(model: string, allowed: readonly string[]): string {
+  const base = `"${model}" is not in \`${ALLOWLIST_KEY}\`. Use one of: ${allowed.join(", ")}.`;
+  // why: `inherit` is not a model name — it means the parent's model — so listing slugs answers a question it did
+  // not ask. It is a value the operator may put on the list, and saying so is the route that works (AD-047).
+  return model === "inherit"
+    ? `${base} \`inherit\` is a value that list may contain; add it there to permit it.`
+    : base;
+}
+
 export function evaluateSubagentSpawn(args: EvaluateSubagentSpawnArgs): Decision {
   const patterns = forProvider(args.blockedPatterns, args.provider) ?? [];
   const block = (reason: string, userNote: string): Decision =>
@@ -45,9 +63,18 @@ export function evaluateSubagentSpawn(args: EvaluateSubagentSpawnArgs): Decision
   }
 
   const allowed = forProvider(args.allowedModels, args.provider);
-  if (args.enforceAllowlist && args.model && allowed !== null && !isModelAllowlisted(args.model, allowed)) {
+  // hazard: an empty list used to deny every model, because `[]` is not `null`. With no shipped fallback that
+  // would refuse every spawn from a rule naming nothing — which is what the reader who reported this mistook for
+  // a bug, correctly. `doctor` reports the combination instead ([/decisions/ad-053.md](/decisions/ad-053.md)).
+  if (
+    args.enforceAllowlist &&
+    args.model &&
+    allowed !== null &&
+    allowed.length > 0 &&
+    !isModelAllowlisted(args.model, allowed)
+  ) {
     return block(
-      `Use one of: ${allowed.join(", ")}.`,
+      allowlistRefusal(args.model, allowed),
       `Subagent model "${args.model}" is not on the allowlist.`,
     );
   }

@@ -74,6 +74,14 @@ When presenting **Subagent allowlist** (capability 6), also present **Block pare
 `subagents.blockParentFast`, default **off**) from `references/capabilities.md` in the same pass: benefit →
 trade-off → default → ask yes/no. Write `blockParentFast: true` only if the user accepts.
 
+If the user accepts the allowlist, **collect the model slugs from them**. The harness ships no catalogue, and
+`enforceAllowlist: true` with an empty `allowedModels` enforces nothing — `doctor` reports it as a fault. Do not
+propose slugs: a suggested list is a shipped default one conversation later, and the one that used to be shipped is
+exactly what went stale ([/decisions/ad-053.md](/decisions/ad-053.md)). Tell them the values their provider accepts
+are in its own model picker, that a variant suffix such as `-thinking-high` needs its own entry, and that `inherit`
+is a value the list may contain. If they accept the capability but have no list ready, write
+`enforceAllowlist: false` and say why.
+
 Do **not** enable anything the user did not accept. Do **not** invent stack commands.
 
 ### Step 2b: Comment gate — three choices, ask explicitly

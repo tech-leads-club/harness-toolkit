@@ -323,6 +323,36 @@ function checkObservedRails(root: string): Check[] {
  * why: silent when the tier is empty and when everything is healthy. A reassurance on every run is a line to skim
  * past ([/decisions/ad-034.md](/decisions/ad-034.md)).
  */
+/**
+ * hazard: `enforceAllowlist: true` with an empty list is a rail declared on and enforcing nothing. It used to deny
+ * every spawn, which read as a bug; it now denies none, which is invisible. Neither state should be silent, and
+ * this is where an operator already looks ([/decisions/ad-053.md](/decisions/ad-053.md)).
+ *
+ * invariant: silent when the rail is off, and silent when the list has entries. A row on a healthy install is the
+ * AD-034 defect.
+ */
+export function checkSubagentAllowlist(root: string): Check[] {
+  const { subagents } = coreFacade.policy.loadPolicy(root);
+  if (!subagents.enforceAllowlist) {
+    return [];
+  }
+  const configured = subagents.allowedModels;
+  const entries = Array.isArray(configured)
+    ? configured.length
+    : Object.values(configured ?? {}).reduce((total, list) => total + list.length, 0);
+  if (entries > 0) {
+    return [];
+  }
+  return [
+    {
+      level: "fail",
+      name: "subagent allowlist",
+      detail:
+        "enforceAllowlist is on and subagents.allowedModels is empty, so it permits every model. The harness ships no list — add the model slugs you allow, or set enforceAllowlist to false.",
+    },
+  ];
+}
+
 export function checkLessonHealth(root: string): Check[] {
   const policy = coreFacade.policy.loadPolicy(root);
   if (!policy.intelligence.lessons.enabled) {
@@ -450,6 +480,7 @@ export function checkProjectPolicy(root: string): Check[] {
     checkPosture(root),
     ...checkObservedRails(root),
     ...checkLessonHealth(root),
+    ...checkSubagentAllowlist(root),
     ...checkPolicyDivergence(root),
     ...checkGateScope(root),
   ];

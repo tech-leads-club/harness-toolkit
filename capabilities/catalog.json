@@ -59,8 +59,8 @@
       "id": "subagents",
       "configPath": "subagents.enforceAllowlist",
       "title": "Subagent allowlist",
-      "benefit": "Restricts Task models and blocks *-fast by default.",
-      "tradeOff": "You must maintain allowedModels when Cursor adds models you want.",
+      "benefit": "Restricts Task/subagent models to a list you write, and blocks *-fast shapes by default.",
+      "tradeOff": "The harness ships no model list, so switching this on without filling allowedModels enforces nothing and doctor reports it as a fault. You maintain the list as providers add models — including a value for `inherit` if you want subagents to take the parent's model.",
       "defaultOn": false,
       "sinceCatalogVersion": 1,
       "asks": [

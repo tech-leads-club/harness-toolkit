@@ -224,7 +224,7 @@ Each denial names its rule, so `rule=secret-access` in a message maps to a row h
 | Ship gate | Blocks false done after an explicit HARNESS_SHIP_CLAIM when evidence is missing. | `shipGate.enabled` |
 | Empty-diff anti-ship | Blocks a ship claim when the working tree has zero changes. | `shipGate.emptyDiffAntiShip` |
 | Comment gate (agent-added comments) | Blocks the stop when this turn added comment lines, so narration never lands. Diff-scoped: comments you already committed are never flagged. | `comments.enabled` |
-| Subagent allowlist | Restricts Task models and blocks *-fast by default. | `subagents.enforceAllowlist` |
+| Subagent allowlist | Restricts Task/subagent models to a list you write, and blocks *-fast shapes by default. | `subagents.enforceAllowlist` |
 | Block parent Fast mode for Task spawns | Denies Task/subagentStart while the parent chat is in Fast mode (sticky from hooks), closing the gap where Task slugs omit *-fast. | `subagents.blockParentFast` |
 | Shell stall detection | Blocks repeating the exact same shell command too many times. | `shell.stallDetection` |
 | Catastrophic shell ask | Asks before destructive shell commands (rm -rf, drop db, force push, …). | `shell.catastrophicAsk` |

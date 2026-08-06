@@ -434,3 +434,57 @@ test("blockMode ask applies to every block reason, not just the pattern hit", ()
   );
   assert.equal(belowEffort.kind, "ask");
 });
+
+/**
+ * hazard: the reported case. `enforceAllowlist: true` with `allowedModels: []` denied every model, because `[]` is
+ * not `null` — and before that, an empty list fell back to a shipped one, so the refusal came from a list nobody in
+ * the project had written. A rule that names nothing cannot say what is allowed
+ * ([/decisions/ad-053.md](/decisions/ad-053.md)).
+ */
+test("an empty allowlist enforces nothing rather than denying everything", () => {
+  const decision = evaluateSubagentSpawn(
+    // why: a suffixed variant of a listed model, which is the shape that was refused — the match is exact or
+    // `prefix[`, so a `-thinking-high` tail never lands on a list of bare slugs.
+    baseSpawnArgs({ model: "provider-a-model-thinking-high", allowedModels: [], requireModel: false }),
+  );
+  assert.equal(decision.kind, "allow");
+});
+
+test("an absent allowlist enforces nothing", () => {
+  const decision = evaluateSubagentSpawn(
+    baseSpawnArgs({ model: "anything", allowedModels: undefined, requireModel: false }),
+  );
+  assert.equal(decision.kind, "allow");
+});
+
+// invariant: the control. A populated list still refuses what is not on it, or the rule would be decoration.
+test("a populated allowlist still denies a model outside it", () => {
+  const decision = evaluateSubagentSpawn(baseSpawnArgs({ model: "some-other-model" }));
+  assert.equal(decision.kind, "deny");
+});
+
+/**
+ * hazard: the refusal was `Use one of: <list>` and named no source, so an operator reading `"allowedModels": []` in
+ * their own config concluded that empty means none — and offered to switch the rail off.
+ */
+test("the refusal names the key that holds the list", () => {
+  const decision = evaluateSubagentSpawn(baseSpawnArgs({ model: "some-other-model" }));
+  assert.match(decision.kind === "deny" ? decision.reason : "", /subagents\.allowedModels/);
+  assert.match(decision.kind === "deny" ? decision.reason : "", /provider-a-model/);
+});
+
+/**
+ * hazard: `inherit` means the parent's model, not a model name, and the only occurrences of it in this repository
+ * were `stdio: "inherit"`. Answering it with a list of slugs answers a question it did not ask.
+ */
+test("a refused inherit says inherit is a value the list may contain", () => {
+  const decision = evaluateSubagentSpawn(baseSpawnArgs({ model: "inherit" }));
+  assert.equal(decision.kind, "deny");
+  assert.match(decision.kind === "deny" ? decision.reason : "", /`inherit` is a value that list may contain/);
+});
+
+// invariant: the control. An operator who lists `inherit` gets it, which is the whole point of the list being theirs.
+test("inherit passes when the operator put it on the list", () => {
+  const decision = evaluateSubagentSpawn(baseSpawnArgs({ model: "inherit", allowedModels: ["inherit"] }));
+  assert.equal(decision.kind, "allow");
+});

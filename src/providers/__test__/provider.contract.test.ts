@@ -34,17 +34,15 @@ function assertSatisfiesContract(provider: ProviderPort): void {
   assert.equal(typeof provider.wiring, "function");
 
   const policyDefaults = provider.policyDefaults();
+  /**
+   * invariant: no adapter ships a model allowlist. An empty project list used to fall back to one, so a spawn could
+   * be refused by a list nobody wrote — and it had already gone stale
+   * ([/decisions/ad-053.md](/decisions/ad-053.md)).
+   */
   assert.ok(
-    Array.isArray(policyDefaults.allowedModels),
-    `${provider.name}.policyDefaults().allowedModels is an array`,
+    !("allowedModels" in policyDefaults),
+    `${provider.name}.policyDefaults() must not ship an allowlist`,
   );
-  for (const model of policyDefaults.allowedModels) {
-    assert.equal(
-      typeof model,
-      "string",
-      `${provider.name}.policyDefaults().allowedModels entries are strings`,
-    );
-  }
   assert.ok(
     Array.isArray(policyDefaults.untrustedTools),
     `${provider.name}.policyDefaults().untrustedTools is an array`,
@@ -128,7 +126,6 @@ function makeFixtureProvider(): ProviderPort {
     },
     policyDefaults() {
       return {
-        allowedModels: ["fixture-model"],
         blockedPatterns: ["-fast(?:$|[^a-z0-9])"],
         minEffort: null,
         untrustedTools: ["FixtureFetch"],
