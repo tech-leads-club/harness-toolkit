@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { NPM_MARKER } from "../../bin/tlc-cli.ts";
@@ -134,9 +134,13 @@ test("a payload entry missing from the source is reported, not passed over", () 
   }
 });
 
+// hazard: the expectation has to be computed the way the code computes it. Literal POSIX paths passed on Linux
+// and macOS and failed on Windows, where `resolve` prepends the drive and flips the separators.
 test("the origin is the launcher's own directory, not the resolved home", () => {
-  assert.equal(originRoot({ TLC_ORIGIN: "/pkg/root" }), "/pkg/root");
-  assert.equal(originRoot({ TLC_ORIGIN: "  ", TLC_HOME: "/home/run" }), "/home/run");
+  const pkg = join("pkg", "root");
+  const home = join("home", "run");
+  assert.equal(originRoot({ TLC_ORIGIN: pkg }), resolve(pkg));
+  assert.equal(originRoot({ TLC_ORIGIN: "  ", TLC_HOME: home }), resolve(home));
 });
 
 /**
@@ -160,12 +164,13 @@ test("every payload entry is something the published package actually ships", ()
  * unit test, which is why the nesting is asserted here.
  */
 test("a nested launcher does not turn its own TLC_HOME into an operator choice", () => {
-  const pkg = "/usr/lib/node_modules/@tech-leads-club/harness-toolkit";
+  const pkg = join("usr", "lib", "node_modules", "@tech-leads-club", "harness-toolkit");
   const outer = { TLC_INSTALL_DEST: "", TLC_HOME: pkg, TLC_HOME_FROM_ENV: "0" };
   assert.notEqual(installDest(outer), pkg, "the destination must not be the package it came from");
 
-  const chosen = { TLC_HOME: "/opt/harness", TLC_HOME_FROM_ENV: "1" };
-  assert.equal(installDest(chosen), "/opt/harness", "an operator's own TLC_HOME is still honoured");
+  const chosen = { TLC_HOME: join("opt", "harness"), TLC_HOME_FROM_ENV: "1" };
+  assert.equal(installDest(chosen), join("opt", "harness"), "an operator's own TLC_HOME is still honoured");
 
-  assert.equal(installDest({ TLC_INSTALL_DEST: "/explicit", TLC_HOME_FROM_ENV: "1" }), "/explicit");
+  const explicit = join("explicit", "dest");
+  assert.equal(installDest({ TLC_INSTALL_DEST: explicit, TLC_HOME_FROM_ENV: "1" }), resolve(explicit));
 });
