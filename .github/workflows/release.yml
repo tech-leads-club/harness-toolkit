@@ -18,6 +18,10 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    # hazard: the `secrets` context is not available in a step `if:` — a workflow using it fails validation and
+    # produces a run with zero jobs and no log to read. Hoisted here, where `env` is available to the condition.
+    env:
+      HAS_RELEASE_APP: ${{ secrets.RELEASE_APP_ID != '' }}
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -32,7 +36,7 @@ jobs:
       # repository without the App still reaches release-please and gets its own explicit refusal.
       - name: Generate a release-bot token
         id: app-token
-        if: ${{ secrets.RELEASE_APP_ID != '' }}
+        if: env.HAS_RELEASE_APP == 'true'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
@@ -54,13 +58,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      HAS_RELEASE_APP: ${{ secrets.RELEASE_APP_ID != '' }}
     steps:
       # invariant: a fresh token rather than one carried on a job output. An App token is a credential and a job
       # output is not the place for one, and this job pushes — the half of the release the org's read-only default
       # would otherwise decide.
       - name: Generate a release-bot token
         id: app-token
-        if: ${{ secrets.RELEASE_APP_ID != '' }}
+        if: env.HAS_RELEASE_APP == 'true'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
