@@ -71,5 +71,6 @@ Handoff section and a link back to this index.
 | [AD-054](/decisions/ad-054.md) | npm is the distribution, and a merged release PR is the only thing that publishes | active |
 | [AD-055](/decisions/ad-055.md) | The changelog is rendered from the decision records, and git says which release each landed in | active |
 | [AD-056](/decisions/ad-056.md) | The package delivers the runtime, and the runtime path stays where hooks already point | active |
+| [AD-057](/decisions/ad-057.md) | The release PR is a mechanism, not a gate, and the bot merges it | active |
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).

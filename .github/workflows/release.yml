@@ -26,6 +26,7 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
       pr_branch: ${{ steps.release.outputs.prs_created == 'true' && fromJSON(steps.release.outputs.pr).headBranchName || '' }}
+      pr_number: ${{ steps.release.outputs.prs_created == 'true' && fromJSON(steps.release.outputs.pr).number || '' }}
     steps:
       # why: the tech-leads-club org disables write permissions for GITHUB_TOKEN across every repository, so it
       # cannot open the release PR — `GitHub Actions is not permitted to create or approve pull requests`, HTTP
@@ -104,10 +105,58 @@ jobs:
           git commit -m "docs(changelog): render the decisions at the pending version"
           git push origin HEAD:"${{ needs.release-please.outputs.pr_branch }}"
 
+  # why: the release PR is a mechanism here, not a gate — it is where the version bump and the rendered changelog
+  # are assembled, and the bot merges it as soon as they are ([/decisions/ad-057.md](/decisions/ad-057.md)).
+  # Merging is a push to main, which runs this workflow again: that second run finds the merged PR and creates the
+  # tag and the release, and the publish job below is what runs off it.
+  #
+  # invariant: this terminates. Once the release exists and no releasable commit has landed since, release-please
+  # opens no PR, so this job is skipped and nothing re-triggers. The changelog commit it merges is `docs(...)`,
+  # which is not a releasable type.
+  merge:
+    needs: [release-please, changelog]
+    if: needs.release-please.outputs.pr_number != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      HAS_RELEASE_APP: ${{ secrets.RELEASE_APP_ID != '' }}
+    steps:
+      - name: Generate a release-bot token
+        id: app-token
+        if: env.HAS_RELEASE_APP == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Merge the release PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          PR: ${{ needs.release-please.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          # why: `--auto` waits for the required checks, which is the whole reason the App token opens the PR —
+          # a PR opened with GITHUB_TOKEN triggers no workflows, so there would be nothing to wait for. A
+          # repository with auto-merge off or no required checks rejects it, and the direct merge is the answer
+          # there; which one happened is printed, because "merged" and "merged without CI" are different facts.
+          if gh pr merge "$PR" --repo "$REPO" --squash --auto; then
+            echo "release PR #$PR set to auto-merge — it lands when the required checks pass"
+            exit 0
+          fi
+          echo "auto-merge unavailable (no required checks, or disabled for this repository) — merging directly"
+          gh pr merge "$PR" --repo "$REPO" --squash
+
   publish:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
+    # why: an unattended pipeline, with the one place a human could still be put back without changing any code.
+    # Adding required reviewers to this environment turns the publish into an approval; leaving it empty is the
+    # behaviour asked for. `agent-skills` carries the same environment for the same reason.
+    environment: publish
     permissions:
       contents: read
       # Trusted publishing: npm exchanges this OIDC token for a short-lived credential, so no npm token is
