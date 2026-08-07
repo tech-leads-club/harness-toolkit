@@ -40,6 +40,17 @@ function readDecision(repoRoot, file) {
   const migration = frontmatterField(text, "migration");
   return migration === undefined ? { id, title } : { id, title, migration };
 }
+function allDecisionFiles(repoRoot) {
+  const dir = decisionsDir(repoRoot);
+  if (!existsSync(dir)) {
+    return [];
+  }
+  try {
+    return readdirSync(dir).filter((file) => /^ad-\d+\.md$/.test(file));
+  } catch {
+    return [];
+  }
+}
 
 // tools/render-changelog.ts
 var repoRoot = join2(dirname(fileURLToPath(import.meta.url)), "..");
@@ -69,6 +80,13 @@ function decisionFilesInRange(root, range) {
 `).map((line) => line.trim().replace(/^docs\/decisions\//, "")).filter((file) => /^ad-\d+\.md$/.test(file));
   return [...new Set(files)].sort();
 }
+function isShallow(root) {
+  try {
+    return git(["rev-parse", "--is-shallow-repository"], root) === "true";
+  } catch {
+    return false;
+  }
+}
 function releaseTags(root) {
   const out = git(["tag", "--list", "v*", "--sort=v:refname"], root);
   return out === "" ? [] : out.split(`
@@ -85,8 +103,8 @@ function collectReleases(root, pending) {
     });
     previous = tag;
   }
-  const head = previous === null ? "HEAD" : `${previous}..HEAD`;
-  const unreleased = decisionFilesInRange(root, head);
+  const released = new Set(releases.flatMap((release) => release.decisions));
+  const unreleased = allDecisionFiles(root).filter((file) => !released.has(file)).sort();
   if (unreleased.length > 0 || pending !== undefined) {
     releases.push({ version: pending ?? "Unreleased", decisions: unreleased });
   }
@@ -134,6 +152,10 @@ function currentChangelog(root) {
 }
 if (__require.main == __require.module) {
   const check = process.argv.includes("--check");
+  if (isShallow(repoRoot)) {
+    console.log("render-changelog: shallow checkout — skipped (needs full history; set fetch-depth: 0)");
+    process.exit(0);
+  }
   const pending = pendingVersionArg(process.argv);
   const next = renderChangelog(repoRoot, collectReleases(repoRoot, pending));
   const current = currentChangelog(repoRoot);
@@ -153,6 +175,7 @@ export {
   renderChangelog,
   releaseTags,
   pendingVersionArg,
+  isShallow,
   decisionFilesInRange,
   currentChangelog,
   collectReleases,

@@ -20,6 +20,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # why: `changelog in sync` reads which release each decision landed in out of the tag ranges, and a
+          # one-commit checkout can see neither the commits that added them nor the tags.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:

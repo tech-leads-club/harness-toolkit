@@ -7,6 +7,7 @@ import { test } from "node:test";
 import {
   collectReleases,
   decisionFilesInRange,
+  isShallow,
   pendingVersionArg,
   releaseTags,
   renderChangelog,
@@ -155,4 +156,62 @@ test("--release needs a version and normalises the v", () => {
   assert.equal(pendingVersionArg(["node", "x", "--release", "v1.2.0"]), "v1.2.0");
   assert.equal(pendingVersionArg(["node", "x"]), undefined);
   assert.throws(() => pendingVersionArg(["node", "x", "--release", "--check"]), /needs a version/);
+});
+
+// hazard: the unreleased bucket read committed adds, so the commit that introduces a decision record could not
+// contain its own changelog entry and the gate failed until a second commit regenerated. A record counts from the
+// moment it is on disk.
+test("a decision record that is not committed yet is already unreleased", () => {
+  const root = repo();
+  try {
+    decision(root, "ad-001", "Committed");
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-qm", "feat: first"]);
+    decision(root, "ad-002", "Staged but not committed");
+
+    assert.deepEqual(collectReleases(root), [
+      { version: "Unreleased", decisions: ["ad-001.md", "ad-002.md"] },
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a released decision does not reappear as unreleased", () => {
+  const root = repo();
+  try {
+    decision(root, "ad-001", "Shipped");
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-qm", "feat: first"]);
+    git(root, ["tag", "v0.1.0"]);
+    decision(root, "ad-002", "Fresh");
+
+    assert.deepEqual(collectReleases(root), [
+      { version: "Unreleased", decisions: ["ad-002.md"] },
+      { version: "v0.1.0", decisions: ["ad-001.md"] },
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a shallow checkout is reported as unreadable, not as drift", () => {
+  const root = repo();
+  try {
+    decision(root, "ad-001", "First");
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-qm", "feat: first"]);
+    assert.equal(isShallow(root), false);
+
+    const shallow = mkdtempSync(join(tmpdir(), "changelog-shallow-"));
+    rmSync(shallow, { recursive: true, force: true });
+    execFileSync("git", ["clone", "-q", "--depth", "1", `file://${root}`, shallow], { stdio: "ignore" });
+    try {
+      assert.equal(isShallow(shallow), true);
+    } finally {
+      rmSync(shallow, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readDecision } from "../src/core/release/release.decisions.ts";
+import { allDecisionFiles, readDecision } from "../src/core/release/release.decisions.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -49,6 +49,20 @@ export function decisionFilesInRange(root: string, range: string): string[] {
   return [...new Set(files)].sort();
 }
 
+/**
+ * hazard: `actions/checkout` clones one commit deep by default, so `git log --diff-filter=A` reports that no
+ * decision record was ever added and `git tag` reports no releases. The generator then produced an empty document
+ * and `--check` failed on all three runners with "CHANGELOG.md is out of date" — a true statement about a
+ * repository the checkout could not see. A check that cannot see its input reports that, rather than a verdict.
+ */
+export function isShallow(root: string): boolean {
+  try {
+    return git(["rev-parse", "--is-shallow-repository"], root) === "true";
+  } catch {
+    return false;
+  }
+}
+
 /** Tags oldest first. A repository with no tags has released nothing, which is a valid state, not an error. */
 export function releaseTags(root: string): string[] {
   const out = git(["tag", "--list", "v*", "--sort=v:refname"], root);
@@ -72,8 +86,14 @@ export function collectReleases(root: string, pending?: string): ReleasedDecisio
     });
     previous = tag;
   }
-  const head = previous === null ? "HEAD" : `${previous}..HEAD`;
-  const unreleased = decisionFilesInRange(root, head);
+  // hazard: the unreleased bucket used `git log --diff-filter=A` too, which only sees committed adds — so the
+  // commit that introduces a decision record could never contain the changelog entry for it, and the gate failed
+  // on every such commit until a second one regenerated. Reading the directory instead makes a record count from
+  // the moment it exists on disk, which is what the gate is asking about.
+  const released = new Set(releases.flatMap((release) => release.decisions));
+  const unreleased = allDecisionFiles(root)
+    .filter((file) => !released.has(file))
+    .sort();
   if (unreleased.length > 0 || pending !== undefined) {
     releases.push({ version: pending ?? "Unreleased", decisions: unreleased });
   }
@@ -124,6 +144,10 @@ export function currentChangelog(root: string): string {
 
 if (import.meta.main) {
   const check = process.argv.includes("--check");
+  if (isShallow(repoRoot)) {
+    console.log("render-changelog: shallow checkout — skipped (needs full history; set fetch-depth: 0)");
+    process.exit(0);
+  }
   const pending = pendingVersionArg(process.argv);
   const next = renderChangelog(repoRoot, collectReleases(repoRoot, pending));
   const current = currentChangelog(repoRoot);

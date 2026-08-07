@@ -62,3 +62,5 @@ doctor reports against your own configuration.
 - **AD-051** — A warning fails the gate, and a suppression states what breaks without it
 - **AD-052** — The repository moves to the org and the runtime paths do not
 - **AD-053** — The harness ships no model allowlist, and a list that names nothing enforces nothing
+- **AD-054** — npm is the distribution, and a merged release PR is the only thing that publishes
+- **AD-055** — The changelog is rendered from the decision records, and git says which release each landed in
