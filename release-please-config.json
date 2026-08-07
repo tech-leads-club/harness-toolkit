@@ -6,6 +6,7 @@
       "package-name": "@tech-leads-club/harness-toolkit",
       "skip-changelog": true,
       "include-v-in-tag": true,
+      "bump-minor-pre-major": true,
       "draft": false,
       "prerelease": false
     }
