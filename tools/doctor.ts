@@ -114,11 +114,12 @@ export function runtimeOwnershipCheck(home: string): Check {
   const detail: Record<ReturnType<typeof runtimePathKind>, string> = {
     managed: "managed checkout — `tlc harness update` moves it to upstream and owns its contents",
     linked: "link to a working clone — update never writes here; pull that clone yourself",
+    npm: "installed from npm — `tlc harness update` bumps the package and re-materialises this directory",
     unmanaged: "not a git checkout — update cannot pull; re-install with the README one-liner",
     absent: "missing — install with the README one-liner",
   };
   return {
-    level: kind === "managed" || kind === "linked" ? "ok" : "fail",
+    level: kind === "managed" || kind === "linked" || kind === "npm" ? "ok" : "fail",
     name: "runtime ownership",
     detail: detail[kind],
   };

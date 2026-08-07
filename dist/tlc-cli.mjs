@@ -52,8 +52,11 @@ import { join } from "node:path";
 function harnessDir(root) {
   return join(root, ".tlc", "harness");
 }
-function runtimeHome() {
-  return process.env.TLC_HOME ?? join(homedir(), ".tlc", "harness");
+function conventionalRuntimeHome() {
+  return join(homedir(), ".tlc", "harness");
+}
+function runtimeHome(env = process.env) {
+  return env.TLC_HOME ?? conventionalRuntimeHome();
 }
 function runtimeStateDir() {
   return join(runtimeHome(), "state");
@@ -5776,6 +5779,8 @@ function upstreamRef(dest) {
   }
   return `origin/${read(["rev-parse", "--abbrev-ref", "HEAD"]) || "main"}`;
 }
+var NPM_PACKAGE = "@tech-leads-club/harness-toolkit";
+var NPM_MARKER = "installed-from-npm";
 function classifyRuntimePath(dest, probe) {
   if (probe.isSymlink(dest)) {
     return "linked";
@@ -5783,7 +5788,10 @@ function classifyRuntimePath(dest, probe) {
   if (!probe.exists(dest)) {
     return "absent";
   }
-  return probe.exists(join25(dest, ".git")) ? "managed" : "unmanaged";
+  if (probe.exists(join25(dest, ".git"))) {
+    return "managed";
+  }
+  return probe.exists(join25(dest, NPM_MARKER)) ? "npm" : "unmanaged";
 }
 function runtimePathKind(dest) {
   return classifyRuntimePath(dest, {
@@ -5827,6 +5835,16 @@ function unmanagedRuntimeMessage(dest) {
   return [
     `update: ${dest} is not a git checkout, so there is nothing to pull.`,
     "Re-install with the curl/irm one-liner from the README to get a managed runtime."
+  ].join(`
+`);
+}
+function npmUpdateFailureMessage() {
+  return [
+    `update: npm could not install ${NPM_PACKAGE}@latest.`,
+    "  permissions — a global prefix owned by root needs sudo, or an npm prefix you own:",
+    "                npm config set prefix ~/.local",
+    "  not found    — the package is published; check the network and any registry proxy in ~/.npmrc",
+    "  offline      — nothing was changed; the runtime you have still works."
   ].join(`
 `);
 }
@@ -5965,6 +5983,7 @@ QUICK
   tlc harness update --check      what an update would pull, without pulling it
   tlc harness update              pull runtime + refresh skill/CLI, then doctor
   tlc harness doctor               health checklist
+  tlc harness install             put the runtime in place from the installed npm package
   tlc harness build                compile dist/ for Node
   tlc harness test                 run the full local gate
   tlc harness help <topic>         documentation
@@ -6121,6 +6140,8 @@ detail: tlc harness help prices`);
       return { kind: "entry", entry: "lessons-cli", args: args.slice(1) };
     case "init":
       return { kind: "entry", entry: "init-project", args: args.slice(1) };
+    case "install":
+      return { kind: "entry", entry: "install-runtime", args: args.slice(1) };
     case "help":
     case "-h":
     case "--help": {
@@ -6217,6 +6238,20 @@ function runUpdate(root) {
   const kind = runtimePathKind(home);
   if (kind === "linked") {
     console.log(linkedRuntimeMessage(home, dest === home ? null : dest));
+  } else if (kind === "npm") {
+    const bump = spawnSync("npm", ["install", "-g", `${NPM_PACKAGE}@latest`], {
+      stdio: "inherit",
+      env: process.env,
+      shell: process.platform === "win32"
+    });
+    if ((bump.status ?? 1) !== 0) {
+      console.error(npmUpdateFailureMessage());
+      process.exit(bump.status ?? 1);
+    }
+    const sync = spawnSync(execBinPath(), ["install-runtime"], { stdio: "inherit", env: process.env });
+    if ((sync.status ?? 1) !== 0) {
+      process.exit(sync.status ?? 1);
+    }
   } else if (kind === "unmanaged") {
     console.log(unmanagedRuntimeMessage(dest));
   } else {
@@ -6496,6 +6531,7 @@ export {
   pendingUpdate,
   pendingText,
   pairedFlagPath,
+  npmUpdateFailureMessage,
   modeFilePath,
   missingBundles,
   linkedRuntimeMessage,
@@ -6517,5 +6553,7 @@ export {
   acceptedModes,
   acceptPolicy,
   UsageError,
-  TEST_ENV_IMPORT
+  TEST_ENV_IMPORT,
+  NPM_PACKAGE,
+  NPM_MARKER
 };

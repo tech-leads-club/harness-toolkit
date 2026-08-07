@@ -19,8 +19,11 @@ import { join } from "node:path";
 function harnessDir(root) {
   return join(root, ".tlc", "harness");
 }
-function runtimeHome() {
-  return process.env.TLC_HOME ?? join(homedir(), ".tlc", "harness");
+function conventionalRuntimeHome() {
+  return join(homedir(), ".tlc", "harness");
+}
+function runtimeHome(env = process.env) {
+  return env.TLC_HOME ?? conventionalRuntimeHome();
 }
 function projectConfigPath(root) {
   return join(harnessDir(root), "config.json");

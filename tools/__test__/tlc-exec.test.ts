@@ -8,6 +8,7 @@ import {
   decideRuntime,
   entrySourceCandidates,
   findBunOnPath,
+  isPackagedCopy,
   MIN_NODE_MAJOR,
   resolveBunPath,
   resolveEntrySource,
@@ -293,5 +294,94 @@ describe("resolveHarnessHome — install path preference", () => {
       home: () => join("/fake", "home"), // leak-gate-allow
     });
     assert.equal(home, join(binDir, ".."));
+  });
+});
+
+describe("an npm-installed copy defers to the installed runtime", () => {
+  const deps = (home: string, present: string[]) => ({
+    realpath: (path: string) => path,
+    home: () => home,
+    exists: (path: string) => present.includes(path),
+  });
+
+  test("a packaged copy uses the conventional home once a runtime is installed there", () => {
+    const home = join("/users", "me");
+    const conventional = join(home, ".tlc", "harness");
+    const pkgBin = join("/usr", "lib", "node_modules", "@tech-leads-club", "harness-toolkit", "bin");
+    const resolved = resolveHarnessHome(
+      pkgBin,
+      {},
+      join(pkgBin, "tlc-exec.mjs"),
+      deps(home, [join(conventional, "bin", "tlc-exec.mjs")]),
+    );
+    assert.equal(resolved, conventional);
+  });
+
+  // why: the package has to be able to run itself in order to create that home in the first place.
+  test("before anything is installed there the package runs from itself", () => {
+    const home = join("/users", "me");
+    const pkgBin = join("/usr", "lib", "node_modules", "@tech-leads-club", "harness-toolkit", "bin");
+    const resolved = resolveHarnessHome(pkgBin, {}, join(pkgBin, "tlc-exec.mjs"), deps(home, []));
+    assert.equal(resolved, join(pkgBin, ".."));
+  });
+
+  test("a clone that is not under node_modules is never redirected", () => {
+    const home = join("/users", "me");
+    const conventional = join(home, ".tlc", "harness");
+    const cloneBin = join("/users", "me", "repos", "harness-toolkit", "bin");
+    const resolved = resolveHarnessHome(
+      cloneBin,
+      {},
+      join(cloneBin, "tlc-exec.mjs"),
+      deps(home, [join(conventional, "bin", "tlc-exec.mjs")]),
+    );
+    assert.equal(resolved, join(cloneBin, ".."));
+  });
+
+  test("TLC_HOME still wins over everything", () => {
+    const pkgBin = join("/usr", "lib", "node_modules", "@tech-leads-club", "harness-toolkit", "bin");
+    const resolved = resolveHarnessHome(
+      pkgBin,
+      { TLC_HOME: "/explicit" },
+      join(pkgBin, "tlc-exec.mjs"),
+      deps(join("/users", "me"), [join("/users", "me", ".tlc", "harness", "bin", "tlc-exec.mjs")]),
+    );
+    assert.equal(resolved, "/explicit");
+  });
+
+  test("isPackagedCopy matches a path segment, not a substring", () => {
+    assert.equal(isPackagedCopy(join("/a", "node_modules", "pkg")), true);
+    assert.equal(isPackagedCopy(join("/a", "my_node_modules_backup", "pkg")), false);
+    assert.equal(isPackagedCopy(join("/a", "repos", "harness-toolkit")), false);
+  });
+});
+
+describe("the runtime cache never writes into the package", () => {
+  test("a packaged home is not cached, and the record is still returned", () => {
+    const root = newRoot();
+    const pkg = join(root, "node_modules", "@tech-leads-club", "harness-toolkit");
+    mkdirSync(pkg, { recursive: true });
+    const record = writeRuntimeCache(pkg, "/usr/bin/bun");
+    assert.equal(record.bunPath, "/usr/bin/bun");
+    assert.equal(existsSync(join(pkg, "state", "runtime-cache.json")), false);
+  });
+
+  // hazard: the first version pointed this at a path under /proc, where mkdirSync hangs rather than failing on
+  // WSL2 — the suite stopped at module load with no failing test to name. A file standing where a directory has
+  // to go is the unwritable case that actually fails fast.
+  test("an unwritable home degrades to no cache instead of throwing", () => {
+    const root = newRoot();
+    mkdirSync(root, { recursive: true });
+    const blocked = join(root, "not-a-dir");
+    writeFileSync(blocked, "");
+    const record = writeRuntimeCache(blocked, null);
+    assert.equal(record.bunPath, null);
+  });
+
+  test("an ordinary home is still cached", () => {
+    const root = newRoot();
+    mkdirSync(root, { recursive: true });
+    writeRuntimeCache(root, "/usr/bin/bun");
+    assert.equal(existsSync(join(root, "state", "runtime-cache.json")), true);
   });
 });

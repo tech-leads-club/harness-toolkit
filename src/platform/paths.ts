@@ -5,8 +5,28 @@ function harnessDir(root: string): string {
   return join(root, ".tlc", "harness");
 }
 
-export function runtimeHome(): string {
-  return process.env.TLC_HOME ?? join(homedir(), ".tlc", "harness");
+/**
+ * why: the path hooks name and the one the installer materialises into. It is deliberately not derived from where
+ * the code happens to sit, because an npm-installed copy sits under a directory npm replaces
+ * ([/decisions/ad-056.md](/decisions/ad-056.md)).
+ */
+export function conventionalRuntimeHome(): string {
+  return join(homedir(), ".tlc", "harness");
+}
+
+// why: the env is a parameter so a caller can be tested. The first version read `process.env` unconditionally,
+// which made every destination-resolution test assert against the machine it ran on rather than its input.
+export function runtimeHome(env: NodeJS.ProcessEnv = process.env): string {
+  return env.TLC_HOME ?? conventionalRuntimeHome();
+}
+
+/**
+ * invariant: `tlc-exec` always sets `TLC_HOME` in the child, so the child cannot tell an operator's choice from
+ * the launcher's own resolution. This flag is that difference, and only the installer needs it — everything else
+ * wants the resolved home either way.
+ */
+export function runtimeHomeWasChosen(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.TLC_HOME_FROM_ENV === "1";
 }
 
 export function runtimeStateDir(): string {

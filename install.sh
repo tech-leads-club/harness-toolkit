@@ -41,7 +41,46 @@ script_root=""
 if [[ -n "$script_source" ]]; then
   script_root="$(cd "$(dirname "$script_source")" && pwd)"
 fi
-if [[ -n "$script_root" && -f "$script_root/bin/tlc-exec.mjs" && "$script_root" != "$DEST" ]]; then
+PACKAGE="${TLC_NPM_PACKAGE:-@tech-leads-club/harness-toolkit}"
+USE_NPM="${TLC_INSTALL_FROM_NPM:-auto}"
+
+# why: the registry has solved fetch, integrity and rollback, and two of the last five fixes in this project were
+# to the git updater ([/decisions/ad-056.md](/decisions/ad-056.md)). The clone route stays for a checkout that
+# already exists and for a contributor running this from their own clone.
+install_from_npm() {
+  echo "install: npm i -g $PACKAGE"
+  if ! npm install -g "$PACKAGE"; then
+    # invariant: this returns rather than exits, and the caller falls back to the clone. Before the first publish
+    # the package genuinely does not exist, and an installer that fails because a future route is not ready yet
+    # would be broken by its own roadmap. The fallback says which route it took, so nothing is silent.
+    echo "install: npm could not install $PACKAGE — falling back to the git clone." >&2
+    echo "  If you expected the npm route: a global prefix owned by root needs sudo, or one you own:" >&2
+    echo "  npm config set prefix ~/.local" >&2
+    return 1
+  fi
+  # why: npm's global bin may not be on PATH yet in this shell, and the very next thing we do is run the CLI.
+  local cli
+  cli="$(command -v tlc || true)"
+  if [[ -z "$cli" ]]; then
+    cli="$(npm prefix -g)/bin/tlc"
+  fi
+  if [[ ! -x "$cli" ]]; then
+    echo "install: npm reported success but $cli is not executable." >&2
+    return 1
+  fi
+  TLC_INSTALL_DEST="$DEST" "$cli" harness install
+}
+
+npm_installed=0
+if [[ -z "$script_root" && "$USE_NPM" != "never" && ! -d "$DEST/.git" && ! -L "$DEST" ]] && command -v npm >/dev/null 2>&1; then
+  if install_from_npm; then
+    npm_installed=1
+  fi
+fi
+
+if [[ "$npm_installed" -eq 1 ]]; then
+  : # the runtime is in place; the shared steps below wire it up
+elif [[ -n "$script_root" && -f "$script_root/bin/tlc-exec.mjs" && "$script_root" != "$DEST" ]]; then
   echo "install: linking $DEST → $script_root"
   mkdir -p "$(dirname "$DEST")" "$BIN_DIR"
   ln -sfn "$script_root" "$DEST"

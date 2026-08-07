@@ -56,8 +56,11 @@ import { join } from "node:path";
 function harnessDir(root) {
   return join(root, ".tlc", "harness");
 }
-function runtimeHome() {
-  return process.env.TLC_HOME ?? join(homedir(), ".tlc", "harness");
+function conventionalRuntimeHome() {
+  return join(homedir(), ".tlc", "harness");
+}
+function runtimeHome(env = process.env) {
+  return env.TLC_HOME ?? conventionalRuntimeHome();
 }
 function runtimeStateDir() {
   return join(runtimeHome(), "state");
@@ -5552,6 +5555,7 @@ function writeStdout(text) {
 }
 
 // bin/tlc-cli.ts
+var NPM_MARKER = "installed-from-npm";
 function classifyRuntimePath(dest, probe) {
   if (probe.isSymlink(dest)) {
     return "linked";
@@ -5559,7 +5563,10 @@ function classifyRuntimePath(dest, probe) {
   if (!probe.exists(dest)) {
     return "absent";
   }
-  return probe.exists(join25(dest, ".git")) ? "managed" : "unmanaged";
+  if (probe.exists(join25(dest, ".git"))) {
+    return "managed";
+  }
+  return probe.exists(join25(dest, NPM_MARKER)) ? "npm" : "unmanaged";
 }
 function runtimePathKind(dest) {
   return classifyRuntimePath(dest, {
@@ -5578,6 +5585,9 @@ if (false) {}
 // bin/tlc-exec.mjs
 import { existsSync as existsSync25, mkdirSync as mkdirSync16, readFileSync as readFileSync26, realpathSync as realpathSync2, writeFileSync as writeFileSync15 } from "node:fs";
 import { delimiter as delimiter2, dirname as dirname6, join as join26 } from "node:path";
+function isPackagedCopy(candidate) {
+  return candidate.split(/[/\\]/).includes("node_modules");
+}
 function bunExecutableName(platform = process.platform) {
   return platform === "win32" ? "bun.exe" : "bun";
 }
@@ -5599,11 +5609,16 @@ function runtimeCachePath(harnessHome) {
   return join26(harnessHome, "state", "runtime-cache.json");
 }
 function writeRuntimeCache(harnessHome, bunPath) {
-  const cachePath = runtimeCachePath(harnessHome);
-  mkdirSync16(dirname6(cachePath), { recursive: true });
   const record = { bunPath, checkedAt: new Date().toISOString() };
-  writeFileSync15(cachePath, `${JSON.stringify(record)}
+  if (isPackagedCopy(harnessHome)) {
+    return record;
+  }
+  try {
+    const cachePath = runtimeCachePath(harnessHome);
+    mkdirSync16(dirname6(cachePath), { recursive: true });
+    writeFileSync15(cachePath, `${JSON.stringify(record)}
 `);
+  } catch {}
   return record;
 }
 if (false) {}
@@ -6497,11 +6512,12 @@ function runtimeOwnershipCheck(home) {
   const detail = {
     managed: "managed checkout — `tlc harness update` moves it to upstream and owns its contents",
     linked: "link to a working clone — update never writes here; pull that clone yourself",
+    npm: "installed from npm — `tlc harness update` bumps the package and re-materialises this directory",
     unmanaged: "not a git checkout — update cannot pull; re-install with the README one-liner",
     absent: "missing — install with the README one-liner"
   };
   return {
-    level: kind === "managed" || kind === "linked" ? "ok" : "fail",
+    level: kind === "managed" || kind === "linked" || kind === "npm" ? "ok" : "fail",
     name: "runtime ownership",
     detail: detail[kind]
   };

@@ -353,7 +353,17 @@ export function upstreamRef(dest: string): string {
  * working clone, so nothing there may be written by a harness command at all
  * ([/decisions/ad-046.md](/decisions/ad-046.md)).
  */
-export type RuntimePathKind = "managed" | "linked" | "unmanaged" | "absent";
+export type RuntimePathKind = "managed" | "linked" | "npm" | "unmanaged" | "absent";
+
+export const NPM_PACKAGE = "@tech-leads-club/harness-toolkit";
+
+/**
+ * why: an npm-delivered runtime is a real directory with no `.git`, which the old classifier called `unmanaged`
+ * and `doctor` reported as a failure — on a perfectly healthy install. It is told apart by the marker the
+ * installer leaves, not by guessing from the contents, because a directory can be many things and only the thing
+ * that created it knows which ([/decisions/ad-056.md](/decisions/ad-056.md)).
+ */
+export const NPM_MARKER = "installed-from-npm";
 
 /**
  * hazard: `install.sh` links the runtime path to the clone it was run from, so on a contributor's machine
@@ -373,7 +383,10 @@ export function classifyRuntimePath(
   if (!probe.exists(dest)) {
     return "absent";
   }
-  return probe.exists(join(dest, ".git")) ? "managed" : "unmanaged";
+  if (probe.exists(join(dest, ".git"))) {
+    return "managed";
+  }
+  return probe.exists(join(dest, NPM_MARKER)) ? "npm" : "unmanaged";
 }
 
 /**
@@ -448,6 +461,20 @@ export function unmanagedRuntimeMessage(dest: string): string {
   return [
     `update: ${dest} is not a git checkout, so there is nothing to pull.`,
     "Re-install with the curl/irm one-liner from the README to get a managed runtime.",
+  ].join("\n");
+}
+
+/**
+ * hazard: the git route's bare `update: git fetch failed.` sent an operator to the wrong problem for a week. A
+ * failing global install has its own small set of causes and each has a different fix, so they are named.
+ */
+export function npmUpdateFailureMessage(): string {
+  return [
+    `update: npm could not install ${NPM_PACKAGE}@latest.`,
+    "  permissions — a global prefix owned by root needs sudo, or an npm prefix you own:",
+    "                npm config set prefix ~/.local",
+    "  not found    — the package is published; check the network and any registry proxy in ~/.npmrc",
+    "  offline      — nothing was changed; the runtime you have still works.",
   ].join("\n");
 }
 
@@ -649,6 +676,7 @@ QUICK
   tlc harness update --check      what an update would pull, without pulling it
   tlc harness update              pull runtime + refresh skill/CLI, then doctor
   tlc harness doctor               health checklist
+  tlc harness install             put the runtime in place from the installed npm package
   tlc harness build                compile dist/ for Node
   tlc harness test                 run the full local gate
   tlc harness help <topic>         documentation
@@ -842,6 +870,8 @@ export function route(args: string[]): Action {
       return { kind: "entry", entry: "lessons-cli", args: args.slice(1) };
     case "init":
       return { kind: "entry", entry: "init-project", args: args.slice(1) };
+    case "install":
+      return { kind: "entry", entry: "install-runtime", args: args.slice(1) };
     case "help":
     case "-h":
     case "--help": {
@@ -985,6 +1015,23 @@ function runUpdate(root: string): never {
     // invariant: no git command runs against a linked clone, not even a read. The machine-local refresh below is
     // the whole of what update may do here ([/decisions/ad-046.md](/decisions/ad-046.md)).
     console.log(linkedRuntimeMessage(home, dest === home ? null : dest));
+  } else if (kind === "npm") {
+    // why: the registry owns fetch, integrity and rollback here, so update's whole job is to bump the package and
+    // re-materialise. No git command runs against an npm-delivered runtime, for the same reason none runs against
+    // a linked clone: it is not a checkout ([/decisions/ad-056.md](/decisions/ad-056.md)).
+    const bump = spawnSync("npm", ["install", "-g", `${NPM_PACKAGE}@latest`], {
+      stdio: "inherit",
+      env: process.env,
+      shell: process.platform === "win32",
+    });
+    if ((bump.status ?? 1) !== 0) {
+      console.error(npmUpdateFailureMessage());
+      process.exit(bump.status ?? 1);
+    }
+    const sync = spawnSync(execBinPath(), ["install-runtime"], { stdio: "inherit", env: process.env });
+    if ((sync.status ?? 1) !== 0) {
+      process.exit(sync.status ?? 1);
+    }
   } else if (kind === "unmanaged") {
     console.log(unmanagedRuntimeMessage(dest));
   } else {

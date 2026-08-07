@@ -64,3 +64,4 @@ doctor reports against your own configuration.
 - **AD-053** — The harness ships no model allowlist, and a list that names nothing enforces nothing
 - **AD-054** — npm is the distribution, and a merged release PR is the only thing that publishes
 - **AD-055** — The changelog is rendered from the decision records, and git says which release each landed in
+- **AD-056** — The package delivers the runtime, and the runtime path stays where hooks already point

@@ -2,9 +2,12 @@ export const MIN_NODE_MAJOR: number;
 
 export function conventionalHarnessHome(home?: string): string;
 
+export function isPackagedCopy(candidate: string): boolean;
+
 export type HarnessHomeDeps = {
   realpath: (path: string) => string;
   home: () => string;
+  exists?: (path: string) => boolean;
 };
 
 export function resolveHarnessHome(

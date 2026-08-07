@@ -23,9 +23,25 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       pr_branch: ${{ steps.release.outputs.prs_created == 'true' && fromJSON(steps.release.outputs.pr).headBranchName || '' }}
     steps:
+      # why: the tech-leads-club org disables write permissions for GITHUB_TOKEN across every repository, so it
+      # cannot open the release PR — `GitHub Actions is not permitted to create or approve pull requests`, HTTP
+      # 409 from the settings API. A GitHub App token is a separate credential and that policy does not reach it.
+      # This is the same App `agent-skills` releases with, pinned to the same commit.
+      #
+      # invariant: the step is skipped when the secret is absent rather than failing on a missing input, so a
+      # repository without the App still reaches release-please and gets its own explicit refusal.
+      - name: Generate a release-bot token
+        id: app-token
+        if: ${{ secrets.RELEASE_APP_ID != '' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - uses: googleapis/release-please-action@v4
         id: release
         with:
+          token: ${{ steps.app-token.outputs.token || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
@@ -39,10 +55,22 @@ jobs:
     permissions:
       contents: write
     steps:
+      # invariant: a fresh token rather than one carried on a job output. An App token is a credential and a job
+      # output is not the place for one, and this job pushes — the half of the release the org's read-only default
+      # would otherwise decide.
+      - name: Generate a release-bot token
+        id: app-token
+        if: ${{ secrets.RELEASE_APP_ID != '' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.release-please.outputs.pr_branch }}
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token || github.token }}
 
       - uses: actions/setup-node@v4
         with:
@@ -61,8 +89,11 @@ jobs:
             echo "changelog already current"
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # why: the same identity that authored the rest of the release PR, so the branch does not end up with
+          # two authors for one logical change.
+          author="${{ steps.app-token.outputs.app-slug || 'github-actions' }}[bot]"
+          git config user.name "$author"
+          git config user.email "$author@users.noreply.github.com"
           git add CHANGELOG.md
           git commit -m "docs(changelog): render the decisions at the pending version"
           git push origin HEAD:"${{ needs.release-please.outputs.pr_branch }}"

@@ -30,8 +30,11 @@ import { join as join2 } from "node:path";
 // src/platform/paths.ts
 import { homedir } from "node:os";
 import { join } from "node:path";
-function runtimeHome() {
-  return process.env.TLC_HOME ?? join(homedir(), ".tlc", "harness");
+function conventionalRuntimeHome() {
+  return join(homedir(), ".tlc", "harness");
+}
+function runtimeHome(env = process.env) {
+  return env.TLC_HOME ?? conventionalRuntimeHome();
 }
 
 // src/platform/pricing.ts
