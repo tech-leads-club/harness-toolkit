@@ -1,0 +1,117 @@
+name: Release
+
+# Release Please computes the version from Conventional Commits and opens a release PR. Merging that PR is the
+# release: it tags, it creates the GitHub Release, and only then does the publish job run. Nothing publishes
+# from an ordinary push to main, and no bot commits to main — the changelog is corrected inside the PR instead
+# ([/decisions/ad-054.md](/decisions/ad-054.md)).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      pr_branch: ${{ steps.release.outputs.prs_created == 'true' && fromJSON(steps.release.outputs.pr).headBranchName || '' }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # why: `skip-changelog` is set, so Release Please never writes CHANGELOG.md — the document is generated from
+  # docs/decisions/ and this step puts the final version heading in the release PR itself. Regenerating after the
+  # tag lands is then a no-op, which is what keeps the gate's `--check` honest on the first push after a release.
+  changelog:
+    needs: release-please
+    if: needs.release-please.outputs.pr_branch != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.pr_branch }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Render the changelog at the pending version
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          node tools/render-changelog.ts --release "v${version}"
+
+      - name: Commit it to the release PR if it moved
+        shell: bash
+        run: |
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "changelog already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "docs(changelog): render the decisions at the pending version"
+          git push origin HEAD:"${{ needs.release-please.outputs.pr_branch }}"
+
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Trusted publishing: npm exchanges this OIDC token for a short-lived credential, so no npm token is
+      # stored anywhere. It is also what produces the provenance attestation, automatically and only from a
+      # public repository.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      - name: Install Bun (build toolchain)
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: npm ci
+        run: npm ci
+
+      # invariant: the published dist/ is built here rather than trusted from the commit. dist/ is committed for
+      # the Node fallback path and check-dist-fresh proves it matches src/, but a release is the one moment where
+      # building it again costs nothing and removes the question entirely.
+      - name: Build dist/
+        run: bash bin/tlc-build
+        env:
+          TLC_HOME: ${{ github.workspace }}
+
+      - name: tlc harness test
+        run: bash bin/tlc harness test
+        env:
+          TLC_HOME: ${{ github.workspace }}
+          HOME: ${{ runner.temp }}
+
+      # Trusted publishing needs npm >= 11.5.1, which is newer than the npm bundled with Node 24.
+      - name: Use an npm that speaks OIDC
+        run: npm install -g npm@latest
+
+      - name: Publish
+        run: npm publish

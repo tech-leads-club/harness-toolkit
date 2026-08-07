@@ -68,5 +68,7 @@ Handoff section and a link back to this index.
 | [AD-051](/decisions/ad-051.md) | A warning fails the gate, and a suppression states what breaks without it | active |
 | [AD-052](/decisions/ad-052.md) | The repository moves to the org and the runtime paths do not | active |
 | [AD-053](/decisions/ad-053.md) | The harness ships no model allowlist, and a list that names nothing enforces nothing | active |
+| [AD-054](/decisions/ad-054.md) | npm is the distribution, and a merged release PR is the only thing that publishes | active |
+| [AD-055](/decisions/ad-055.md) | The changelog is rendered from the decision records, and git says which release each landed in | active |
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).

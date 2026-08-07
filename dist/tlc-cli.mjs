@@ -6145,7 +6145,8 @@ function buildTestSteps() {
     { label: "check-suppressions", bin: "node", args: ["tools/check-suppressions.ts"] },
     { label: "check-wiring", bin: "node", args: ["tools/check-wiring.ts"] },
     { label: "check-docs-bundle", bin: "node", args: ["tools/check-docs-bundle.ts"] },
-    { label: "capabilities in sync", bin: "node", args: ["tools/render-capabilities.ts", "--check"] }
+    { label: "capabilities in sync", bin: "node", args: ["tools/render-capabilities.ts", "--check"] },
+    { label: "changelog in sync", bin: "node", args: ["tools/render-changelog.ts", "--check"] }
   ];
 }
 function runTestSteps(steps, cwd, spawner = (bin, spawnArgs, spawnCwd) => spawnSync(bin, spawnArgs, { cwd: spawnCwd, stdio: "inherit" })) {

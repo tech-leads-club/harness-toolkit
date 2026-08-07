@@ -1,19 +1,39 @@
 {
-  "name": "harness-toolkit",
-  "private": true,
+  "name": "@tech-leads-club/harness-toolkit",
   "version": "0.1.0",
   "type": "module",
   "description": "Multi-provider agent steering: gates, follow-up, handoff, policy",
+  "keywords": ["agent", "cursor", "claude-code", "hooks", "policy", "governance"],
   "license": "PolyForm-Noncommercial-1.0.0",
   "engines": {
     "node": ">=24"
   },
   "bin": {
-    "tlc": "./bin/tlc"
+    "tlc": "./bin/tlc.mjs",
+    "tlc-exec": "./bin/tlc-exec.mjs"
+  },
+  "files": [
+    "bin/",
+    "capabilities/",
+    "dist/",
+    "docs/",
+    "skills/",
+    "src/",
+    "!src/**/__test__",
+    "CHANGELOG.md",
+    "config.example.json",
+    "model-aliases.json",
+    "model-prices.cursor.json",
+    "model-prices.json",
+    "NOTICE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/tech-leads-club/harness-toolkit.git"
+    "url": "git+https://github.com/tech-leads-club/harness-toolkit.git"
   },
   "bugs": {
     "url": "https://github.com/tech-leads-club/harness-toolkit/issues"
