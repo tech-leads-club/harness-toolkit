@@ -134,6 +134,29 @@ export function renderChangelog(root: string, releases: readonly ReleasedDecisio
   return `${HEADER}${sections.join("\n")}`;
 }
 
+export function packageVersionTag(root: string): string {
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { version?: string };
+  return `v${pkg.version ?? "0.0.0"}`;
+}
+
+/**
+ * hazard: `ci.yml` and `release.yml` both fire on a push to `main` and run in parallel, so on the commit that
+ * merges a release PR the gate reads a CHANGELOG.md naming `v0.2.0` while the tag is still being created in the
+ * other workflow. A plain comparison fails there, on every release, for a file that is already correct.
+ *
+ * invariant: the tolerance is exactly one state and it closes on its own. The pending rendering is accepted only
+ * while no tag of that name exists; the moment `release-please` creates it, the tag range produces the same
+ * document and only the plain rendering matches. It cannot be used to hold a stale file.
+ */
+export function acceptableRenderings(root: string): string[] {
+  const plain = renderChangelog(root, collectReleases(root));
+  const pending = packageVersionTag(root);
+  if (releaseTags(root).includes(pending)) {
+    return [plain];
+  }
+  return [plain, renderChangelog(root, collectReleases(root, pending))];
+}
+
 export function currentChangelog(root: string): string {
   try {
     return readFileSync(join(root, CHANGELOG_FILE), "utf8");
@@ -149,16 +172,21 @@ if (import.meta.main) {
     process.exit(0);
   }
   const pending = pendingVersionArg(process.argv);
-  const next = renderChangelog(repoRoot, collectReleases(repoRoot, pending));
   const current = currentChangelog(repoRoot);
 
+  if (check) {
+    if (acceptableRenderings(repoRoot).includes(current)) {
+      console.log("render-changelog: CHANGELOG.md matches docs/decisions/");
+      process.exit(0);
+    }
+    console.error("render-changelog: CHANGELOG.md is out of date — run: node tools/render-changelog.ts");
+    process.exit(1);
+  }
+
+  const next = renderChangelog(repoRoot, collectReleases(repoRoot, pending));
   if (next === current) {
     console.log("render-changelog: CHANGELOG.md matches docs/decisions/");
     process.exit(0);
-  }
-  if (check) {
-    console.error("render-changelog: CHANGELOG.md is out of date — run: node tools/render-changelog.ts");
-    process.exit(1);
   }
   writeFileSync(join(repoRoot, CHANGELOG_FILE), next, "utf8");
   console.log("render-changelog: CHANGELOG.md rewritten");

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+  acceptableRenderings,
   collectReleases,
   decisionFilesInRange,
   isShallow,
@@ -211,6 +212,69 @@ test("a shallow checkout is reported as unreadable, not as drift", () => {
     } finally {
       rmSync(shallow, { recursive: true, force: true });
     }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function pkg(root: string, version: string): void {
+  writeFileSync(join(root, "package.json"), JSON.stringify({ version }), "utf8");
+}
+
+// hazard: ci.yml and release.yml both fire on a push to main and run in parallel, so on the commit that merges a
+// release PR the gate reads a CHANGELOG naming v0.2.0 while the tag is still being created in the other workflow.
+// Without this the gate would fail on every release, on a file that is already correct.
+test("the merge commit of a release PR passes before its tag exists", () => {
+  const root = repo();
+  try {
+    decision(root, "ad-001", "Shipped");
+    pkg(root, "0.1.0");
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-qm", "feat: first"]);
+    git(root, ["tag", "v0.1.0"]);
+
+    decision(root, "ad-002", "Next");
+    // the release PR bumped the version; the tag does not exist yet
+    pkg(root, "0.2.0");
+    const inPr = renderChangelog(root, collectReleases(root, "v0.2.0"));
+
+    assert.ok(acceptableRenderings(root).includes(inPr), "the pending rendering must be accepted");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("once the tag exists the same file still passes, and only that file does", () => {
+  const root = repo();
+  try {
+    decision(root, "ad-001", "Shipped");
+    pkg(root, "0.2.0");
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-qm", "feat: first"]);
+
+    const inPr = renderChangelog(root, collectReleases(root, "v0.2.0"));
+    git(root, ["tag", "v0.2.0"]);
+
+    const accepted = acceptableRenderings(root);
+    assert.equal(accepted.length, 1, "the tolerance closes once the tag lands");
+    assert.ok(accepted.includes(inPr), "the document the PR produced is what the tag produces");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a stale changelog is rejected in both states", () => {
+  const root = repo();
+  try {
+    decision(root, "ad-001", "Shipped");
+    pkg(root, "0.2.0");
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-qm", "feat: first"]);
+
+    const stale = "# Changelog\n\n## Unreleased\n\n- **AD-000** — something else\n";
+    assert.ok(!acceptableRenderings(root).includes(stale), "before the tag");
+    git(root, ["tag", "v0.2.0"]);
+    assert.ok(!acceptableRenderings(root).includes(stale), "after the tag");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

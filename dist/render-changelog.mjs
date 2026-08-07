@@ -143,6 +143,18 @@ function renderChangelog(root, releases) {
   return `${HEADER}${sections.join(`
 `)}`;
 }
+function packageVersionTag(root) {
+  const pkg = JSON.parse(readFileSync2(join2(root, "package.json"), "utf8"));
+  return `v${pkg.version ?? "0.0.0"}`;
+}
+function acceptableRenderings(root) {
+  const plain = renderChangelog(root, collectReleases(root));
+  const pending = packageVersionTag(root);
+  if (releaseTags(root).includes(pending)) {
+    return [plain];
+  }
+  return [plain, renderChangelog(root, collectReleases(root, pending))];
+}
 function currentChangelog(root) {
   try {
     return readFileSync2(join2(root, CHANGELOG_FILE), "utf8");
@@ -157,15 +169,19 @@ if (__require.main == __require.module) {
     process.exit(0);
   }
   const pending = pendingVersionArg(process.argv);
-  const next = renderChangelog(repoRoot, collectReleases(repoRoot, pending));
   const current = currentChangelog(repoRoot);
+  if (check) {
+    if (acceptableRenderings(repoRoot).includes(current)) {
+      console.log("render-changelog: CHANGELOG.md matches docs/decisions/");
+      process.exit(0);
+    }
+    console.error("render-changelog: CHANGELOG.md is out of date — run: node tools/render-changelog.ts");
+    process.exit(1);
+  }
+  const next = renderChangelog(repoRoot, collectReleases(repoRoot, pending));
   if (next === current) {
     console.log("render-changelog: CHANGELOG.md matches docs/decisions/");
     process.exit(0);
-  }
-  if (check) {
-    console.error("render-changelog: CHANGELOG.md is out of date — run: node tools/render-changelog.ts");
-    process.exit(1);
   }
   writeFileSync(join2(repoRoot, CHANGELOG_FILE), next, "utf8");
   console.log("render-changelog: CHANGELOG.md rewritten");
@@ -175,10 +191,12 @@ export {
   renderChangelog,
   releaseTags,
   pendingVersionArg,
+  packageVersionTag,
   isShallow,
   decisionFilesInRange,
   currentChangelog,
   collectReleases,
+  acceptableRenderings,
   HEADER,
   CHANGELOG_FILE
 };
