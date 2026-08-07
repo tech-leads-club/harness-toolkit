@@ -76,6 +76,34 @@ export function formatGapFeedback(gaps: GateGap[], suggestion: string): string {
   );
 }
 
+export const CARRIED_GAP_LIMIT = 5;
+
+/**
+ * why: `intelligence.progressiveHandoff` promised to carry gaps into the next session bootstrap, and nothing read
+ * the flag. `stop` wrote `previous_gaps` onto the handoff and `session.start` read `blockers` and `next_action`
+ * back out but never the gaps, so a resumed session started blind to the gate that was failing when the previous
+ * one ended — the one thing the handoff existed to carry.
+ *
+ * invariant: past tense, and named as the state the previous session ended in rather than as a list to fix now.
+ * The gate may already pass; only the next run of it says so, and the same list phrased as an order would send
+ * the turn to edit code on the strength of a stale verdict ([/decisions/ad-028.md](/decisions/ad-028.md)).
+ */
+export function formatCarriedGaps(gaps: readonly GateGap[], limit = CARRIED_GAP_LIMIT): string {
+  if (gaps.length === 0) {
+    return "";
+  }
+  const shown = gaps.slice(0, limit);
+  const lines = [
+    "Gaps open when the previous session ended (history, not a task list — run the gate to see what still holds):",
+    ...shown.map((gap, index) => `${index + 1}. [${gap.gate}/${gap.category}] ${gap.summary}`),
+  ];
+  const dropped = gaps.length - shown.length;
+  if (dropped > 0) {
+    lines.push(`(${dropped} more not shown — \`tlc harness handoff\` lists all of them.)`);
+  }
+  return lines.join("\n");
+}
+
 export function mergeGaps(prior: GateGap[] | undefined, current: GateGap[], max = 12): GateGap[] {
   const seen = new Set<string>();
   const out: GateGap[] = [];

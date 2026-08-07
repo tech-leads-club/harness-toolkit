@@ -1,0 +1,48 @@
+import type { FloorRule } from "./floor.service.ts";
+
+export type FloorRuleDoc = {
+  /** What the rule refuses, in the terms an operator reading a denial would use. */
+  denies: string;
+  /** The one case that reads like it should be denied and is not, where there is one worth stating. */
+  allows?: string;
+};
+
+/**
+ * why: the README described the floor as "five rules" above a table of six, and `docs/architecture.md` listed
+ * eight — two of which are not floor rules at all. The floor is the part no configuration can reach, so a
+ * hand-copied count of it is the worst place in the product for a number to drift.
+ *
+ * invariant: keyed by `FloorRule`, so adding a member to that union without describing it here fails the
+ * typecheck rather than shipping an undocumented rule.
+ */
+export const FLOOR_RULES: Record<FloorRule, FloorRuleDoc> = {
+  "outside-project-destruction": {
+    denies:
+      "a destructive command whose target resolves outside the repository and outside the OS temp directory",
+    allows: "the same command inside the repository, or inside the temp directory",
+  },
+  "unprovable-destruction": {
+    denies:
+      "a destructive verb whose target is a variable, a command substitution, or otherwise built at runtime — the harness cannot see what it would delete",
+    allows: "a literal path it can resolve and check",
+  },
+  "secret-access": {
+    denies:
+      "a read that would copy `.env`, `~/.ssh`, `~/.aws`, `*.pem` or similar into the transcript, through a shell reader or through the editor's own read tool",
+  },
+  "history-rewrite": {
+    denies: "`git push --force`",
+    allows: "`--force-with-lease`, which refuses on its own when the remote moved",
+  },
+  "machine-control": {
+    denies: "`shutdown`, `reboot`, `halt`, `poweroff`",
+  },
+  "policy-surface-write": {
+    denies:
+      "every route an agent has to harness policy and state — a shell redirect, an interpreter, a heredoc program, or a write tool — in the project and under the runtime home, plus the mutating `tlc harness` subcommands from inside a session",
+    allows:
+      "reading them with a proven reader (`cat`, `head`, `grep`, `jq`, `ls`, `stat`, `test`), and `tlc harness handoff` for the handoff state",
+  },
+};
+
+export const FLOOR_RULE_IDS = Object.keys(FLOOR_RULES) as FloorRule[];

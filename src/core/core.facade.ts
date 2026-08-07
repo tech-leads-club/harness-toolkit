@@ -144,6 +144,7 @@ import { formatAutopilotBlock, resolveAutopilot } from "./turn/turn.autopilot.ts
 import {
   buildGaps,
   classifyGateFailure,
+  formatCarriedGaps,
   formatGapFeedback,
   formatProgressiveContext,
   mergeGaps,
@@ -394,6 +395,7 @@ export const coreFacade = {
     classifyGateFailure,
     suggestionFor,
     buildGaps,
+    formatCarriedGaps,
     formatGapFeedback,
     mergeGaps,
     formatProgressiveContext,

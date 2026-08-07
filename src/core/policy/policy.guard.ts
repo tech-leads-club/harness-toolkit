@@ -27,5 +27,8 @@ export function guardPolicySurface(args: {
       "Tell the operator which value you would change and why, and let them run it from their own terminal.",
     ].join(" "),
     userNote: `Blocked an agent write to ${args.filePath}.`,
+    // why: the shell route to the same paths denies with `rule=policy-surface-write` and this one carried no rule
+    // at all, so the tool half of one guard was unattributable in the report that counts refusals by rule.
+    rule: "policy-surface-write",
   };
 }

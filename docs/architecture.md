@@ -201,18 +201,31 @@ Observability and cost are support. The product is **stop → followup → hando
 Evaluated before any policy is loaded, so no setting and no agent edit can clear it
 ([/decisions/ad-016.md](/decisions/ad-016.md)).
 
-Each denial names its rule, so `rule=secret-access` in a message maps to a row here.
+Each denial names its rule, so `rule=secret-access` in a message maps to a row here. The table is generated
+from `src/core/floor/floor.catalog.ts`, which is keyed by the `FloorRule` union — a rule added to the union
+and not described there fails the typecheck.
 
-| Rule | Effect |
-|------|--------|
-| `outside-project-destruction` | Target resolves outside the repo and outside the OS temp directory |
-| `unprovable-destruction` | A destructive verb's target is a variable, a substitution, or built at runtime |
-| `secret-access` | A read would pull `.env`, `~/.ssh`, `~/.aws`, `*.pem` or similar into the transcript |
-| `history-rewrite` | `git push --force`. `--force-with-lease` is allowed, since it refuses when the remote moved |
-| `machine-control` | `shutdown`, `reboot`, `halt`, `poweroff` |
-| `policy-surface-write` | Any shell route to `.tlc/harness/config.json`, `flags/` or `state/` — in the project or under the runtime home — and the mutating `tlc harness` subcommands from inside a session ([/decisions/ad-022.md](/decisions/ad-022.md)) |
-| policy surface (tools) | Agent writes to the same paths through Write, Edit, Delete, MultiEdit or NotebookEdit |
-| edit collision | Two agents editing the same file in one working tree are told, not silently merged |
+<!-- generated:floor -->
+
+| Rule | Denies | Allowed anyway |
+|---|---|---|
+| `outside-project-destruction` | a destructive command whose target resolves outside the repository and outside the OS temp directory | the same command inside the repository, or inside the temp directory |
+| `unprovable-destruction` | a destructive verb whose target is a variable, a command substitution, or otherwise built at runtime — the harness cannot see what it would delete | a literal path it can resolve and check |
+| `secret-access` | a read that would copy `.env`, `~/.ssh`, `~/.aws`, `*.pem` or similar into the transcript, through a shell reader or through the editor's own read tool | — |
+| `history-rewrite` | `git push --force` | `--force-with-lease`, which refuses on its own when the remote moved |
+| `machine-control` | `shutdown`, `reboot`, `halt`, `poweroff` | — |
+| `policy-surface-write` | every route an agent has to harness policy and state — a shell redirect, an interpreter, a heredoc program, or a write tool — in the project and under the runtime home, plus the mutating `tlc harness` subcommands from inside a session | reading them with a proven reader (`cat`, `head`, `grep`, `jq`, `ls`, `stat`, `test`), and `tlc harness handoff` for the handoff state |
+
+<!-- /generated -->
+
+Three more checks are equally unconfigurable and are **not** floor rules — they run after it, and each
+detects a condition that a config field could otherwise switch off:
+
+| Check | Rule | Effect |
+|-------|------|--------|
+| Policy integrity | `policy-baseline-divergence` | A policy source changed mid-session with no `tlc harness` command behind it. Acting calls are refused until `tlc harness policy accept` clears it; reads pass, so the agent can investigate |
+| Policy surface, tool half | `policy-surface-write` | Agent writes to the same paths through Write, Edit, Delete, MultiEdit or NotebookEdit ([/decisions/ad-022.md](/decisions/ad-022.md)) |
+| Edit collision | `edit-collision` | Two agents editing the same file in one working tree are told, not silently merged |
 
 ### Tunable rails
 
@@ -232,7 +245,7 @@ Each denial names its rule, so `rule=secret-access` in a message maps to a row h
 | Budget continue | Pushes the agent to keep working under context pressure instead of wrapping up early. | `intelligence.budgetContinue` |
 | Gap feedback | Injects PREVIOUS_GAPS on gate failure so retries fix listed items. | `intelligence.gapFeedback` |
 | Failure classification | Stores failure categories on the handoff for clearer next actions. | `intelligence.failureClassification` |
-| Progressive handoff | Carries gaps into the next session bootstrap. | `intelligence.progressiveHandoff` |
+| Progressive handoff | Carries the gaps the previous session ended with into the next session's bootstrap, as history rather than as a task list. | `intelligence.progressiveHandoff` |
 | Progressive context | Escalates gate follow-up detail on each stop retry. | `intelligence.progressiveContext` |
 | Autopilot | Adds ordered AUTOPILOT steps on gate failure. | `intelligence.autopilot` |
 | Idle-turn gate (asked instead of acting) | Blocks a turn that ends with open work, zero tool calls and zero file changes. Counts recorded tool events rather than reading the reply, so it cannot be talked around. | `intelligence.idleTurnGate` |

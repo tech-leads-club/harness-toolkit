@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CapabilityCatalog, CatalogCapability } from "../src/core/capability/capability.types.ts";
+import { FLOOR_RULE_IDS, FLOOR_RULES } from "../src/core/floor/floor.catalog.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -43,6 +44,39 @@ export function renderSkillTable(catalog: CapabilityCatalog): string {
   ].join("\n");
 }
 
+/**
+ * why: the question the README could not answer was "what does it check, and how do I see it happen?" — asked by
+ * someone reverse-engineering the rails one at a time. Each row now carries the event, the verdict and the command
+ * that shows the record, and it is generated, so a rail added to the catalog appears here without anyone
+ * remembering to add it.
+ */
+export function renderValidatesTable(catalog: CapabilityCatalog): string {
+  const rows = catalog.capabilities.map((capability) =>
+    [
+      `**${cell(capability.title)}**<br>\`${capability.configPath}\` · ${capability.defaultOn ? "**on**" : "off"}`,
+      cell(capability.summary),
+      capability.fires.map((kind) => `\`${kind}\``).join("<br>"),
+      `\`${capability.verdict}\``,
+      cell(capability.inspect),
+    ].join(" | "),
+  );
+  return [
+    "| Rail · key · default | What it checks | Fires on | Verdict | How to see it |",
+    "|---|---|---|---|---|",
+    ...rows.map((row) => `| ${row} |`),
+  ].join("\n");
+}
+
+export function renderFloorTable(): string {
+  const rows = FLOOR_RULE_IDS.map((id) => {
+    const doc = FLOOR_RULES[id];
+    return [`\`${id}\``, cell(doc.denies), doc.allows === undefined ? "—" : cell(doc.allows)].join(" | ");
+  });
+  return ["| Rule | Denies | Allowed anyway |", "|---|---|---|", ...rows.map((row) => `| ${row} |`)].join(
+    "\n",
+  );
+}
+
 export function renderRailsTable(catalog: CapabilityCatalog): string {
   const rows = catalog.capabilities.map((capability) =>
     [cell(capability.title), cell(capability.benefit), keys(capability)].join(" | "),
@@ -61,6 +95,9 @@ export const TARGETS: RenderTarget[] = [
     render: renderSkillTable,
   },
   { file: join("docs", "architecture.md"), marker: "rails", render: renderRailsTable },
+  { file: join("docs", "architecture.md"), marker: "floor", render: renderFloorTable },
+  { file: "README.md", marker: "validates", render: renderValidatesTable },
+  { file: "README.md", marker: "floor", render: renderFloorTable },
 ];
 
 // invariant: only the marked region is owned by the generator. Everything else in these files is prose a
@@ -83,16 +120,19 @@ export function loadCatalogFile(root = repoRoot): CapabilityCatalog {
   return JSON.parse(readFileSync(join(root, "capabilities", "catalog.json"), "utf8")) as CapabilityCatalog;
 }
 
+// why: the README carries two generated regions. Rendering per target read the file from disk each time, so the
+// second write silently reverted the first — the classic shape of a generator that looks green and drops half its
+// output. Grouping by file makes the regions compose.
 export function renderAll(root = repoRoot): { file: string; next: string; current: string }[] {
   const catalog = loadCatalogFile(root);
-  return TARGETS.map((target) => {
-    const path = join(root, target.file);
-    const current = readFileSync(path, "utf8");
-    return {
-      file: target.file,
+  const files = [...new Set(TARGETS.map((target) => target.file))];
+  return files.map((file) => {
+    const current = readFileSync(join(root, file), "utf8");
+    const next = TARGETS.filter((target) => target.file === file).reduce(
+      (text, target) => replaceRegion(text, target.marker, target.render(catalog)),
       current,
-      next: replaceRegion(current, target.marker, target.render(catalog)),
-    };
+    );
+    return { file, current, next };
   });
 }
 

@@ -565,3 +565,62 @@ test("presence directory holds exactly one record after a session.start", async 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("session.start carries the gaps the previous session ended with", async () => {
+  const root = tempRoot();
+  try {
+    await coreFacade.handoff.patchHandoff(root, "cursor", {
+      slice: {
+        previous_gaps: [
+          { id: "test-0", gate: "test", category: "verification", summary: "auth.spec.ts expected 200" },
+        ],
+      },
+    });
+    const outcome = await runHandler(sessionStartHandler, stdinOf(cursorStart(root)));
+    assert.equal(outcome.decision.kind, "context");
+    if (outcome.decision.kind === "context") {
+      assert.match(outcome.decision.text, /Gaps open when the previous session ended/);
+      assert.match(outcome.decision.text, /\[test\/verification\] auth\.spec\.ts expected 200/);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("progressiveHandoff off withholds the carried gaps", async () => {
+  const root = tempRoot();
+  try {
+    writeProjectPolicy(root, { intelligence: { progressiveHandoff: false } });
+    await coreFacade.handoff.patchHandoff(root, "cursor", {
+      slice: {
+        previous_gaps: [
+          { id: "test-0", gate: "test", category: "verification", summary: "auth.spec.ts expected 200" },
+        ],
+      },
+    });
+    const outcome = await runHandler(sessionStartHandler, stdinOf(cursorStart(root)));
+    assert.equal(outcome.decision.kind, "context");
+    if (outcome.decision.kind === "context") {
+      assert.ok(!outcome.decision.text.includes("Gaps open when the previous session ended"));
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("carried gaps past the limit are counted rather than dropped in silence", () => {
+  const gaps = Array.from({ length: 8 }, (_, index) => ({
+    id: `test-${index}`,
+    gate: "test",
+    category: "verification" as const,
+    summary: `failure ${index}`,
+  }));
+  const rendered = coreFacade.turn.formatCarriedGaps(gaps);
+  assert.match(rendered, /failure 4/);
+  assert.ok(!rendered.includes("failure 5"));
+  assert.match(rendered, /\(3 more not shown/);
+});
+
+test("no carried gaps renders nothing at all", () => {
+  assert.equal(coreFacade.turn.formatCarriedGaps([]), "");
+});

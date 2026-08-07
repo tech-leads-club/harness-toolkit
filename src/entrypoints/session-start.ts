@@ -81,6 +81,14 @@ export const sessionStartHandler: Handler = async (
   if (handoff.next_action) {
     lines.push(`Handoff next: ${handoff.next_action}`);
   }
+  // why: this is the flag's only reader. It was declared, defaulted on, described in the catalog as carrying gaps
+  // into the next bootstrap, and read nowhere — so the gaps `stop` wrote were never read back out.
+  if (policy.intelligence.progressiveHandoff) {
+    const carried = coreFacade.turn.formatCarriedGaps(handoff.previous_gaps ?? []);
+    if (carried) {
+      lines.push("", carried);
+    }
+  }
   for (const slice of foreign) {
     lines.push("", `Foreign slice (${slice.provider}):`);
     if (slice.next_action) {

@@ -3907,7 +3907,8 @@ function guardPolicySurface(args) {
       "The harness CLI does not help you here either: the same floor rule refuses the mutating subcommands from inside a session.",
       "Tell the operator which value you would change and why, and let them run it from their own terminal."
     ].join(" "),
-    userNote: `Blocked an agent write to ${args.filePath}.`
+    userNote: `Blocked an agent write to ${args.filePath}.`,
+    rule: "policy-surface-write"
   };
 }
 
@@ -4251,7 +4252,8 @@ function checkCollision(root, file, ownSessionKey, now = new Date) {
     return {
       kind: "ask",
       reason: `${record.provider} session ${record.session} touched ${file} ${elapsed}.`,
-      userNote: `Another agent (${record.provider}, session ${record.session}) edited this file ${elapsed}. Coordinate before proceeding.`
+      userNote: `Another agent (${record.provider}, session ${record.session}) edited this file ${elapsed}. Coordinate before proceeding.`,
+      rule: "edit-collision"
     };
   }
   return { kind: "allow" };
@@ -4980,6 +4982,23 @@ function formatGapFeedback(gaps, suggestion) {
   return ["PREVIOUS_GAPS (fix these explicitly — do not ignore):", body, "", `NEXT: ${suggestion}`].join(`
 `);
 }
+var CARRIED_GAP_LIMIT = 5;
+function formatCarriedGaps(gaps, limit = CARRIED_GAP_LIMIT) {
+  if (gaps.length === 0) {
+    return "";
+  }
+  const shown = gaps.slice(0, limit);
+  const lines = [
+    "Gaps open when the previous session ended (history, not a task list — run the gate to see what still holds):",
+    ...shown.map((gap, index) => `${index + 1}. [${gap.gate}/${gap.category}] ${gap.summary}`)
+  ];
+  const dropped = gaps.length - shown.length;
+  if (dropped > 0) {
+    lines.push(`(${dropped} more not shown — \`tlc harness handoff\` lists all of them.)`);
+  }
+  return lines.join(`
+`);
+}
 function mergeGaps(prior, current, max = 12) {
   const seen = new Set;
   const out = [];
@@ -5504,6 +5523,7 @@ var coreFacade = {
     classifyGateFailure,
     suggestionFor,
     buildGaps,
+    formatCarriedGaps,
     formatGapFeedback,
     mergeGaps,
     formatProgressiveContext

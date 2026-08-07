@@ -1,28 +1,32 @@
 {
-  "catalogVersion": 8,
+  "catalogVersion": 9,
   "capabilities": [
     {
       "id": "grind",
       "configPath": "grind.enabled",
       "title": "Grind (lint/test on stop)",
+      "summary": "Runs your lint and test commands against the files the turn changed, and sends the agent back until they pass.",
       "benefit": "Re-checks lint/test after each completed turn and follow-ups until gates pass.",
-      "tradeOff": "Uses turns; flaky commands thrash the agent. The gate's cost is paid once per attempt, up to maxLoops \u2014 a four-minute suite with maxLoops 5 can spend twenty minutes on tests alone. tlc harness obs report shows the runs and the total.",
+      "tradeOff": "Uses turns; flaky commands thrash the agent. The gate's cost is paid once per attempt, up to maxLoops — a four-minute suite with maxLoops 5 can spend twenty minutes on tests alone. tlc harness obs report shows the runs and the total.",
       "defaultOn": false,
       "sinceCatalogVersion": 1,
-      "asks": [
-        "lintCommand",
-        "testCommand",
-        "maxLoops"
-      ]
+      "fires": ["stop"],
+      "verdict": "follow-up",
+      "inspect": "tlc harness obs report — runs, wall-clock and total; the last verdict is in the project state directory as last-gate.json",
+      "asks": ["lintCommand", "testCommand", "maxLoops"]
     },
     {
       "id": "shipGate",
       "configPath": "shipGate.enabled",
       "title": "Ship gate",
+      "summary": "Checks a declared ship claim against recent PASS evidence for the runtime paths the turn touched.",
       "benefit": "Blocks false done after an explicit HARNESS_SHIP_CLAIM when evidence is missing.",
       "tradeOff": "Needs a real evidenceDir workflow; free-English done is ignored.",
       "defaultOn": false,
       "sinceCatalogVersion": 1,
+      "fires": ["stop"],
+      "verdict": "block-stop",
+      "inspect": "tlc harness obs report; the ship ledger in the project state directory records every claim, challenge and pass",
       "asks": [
         "evidenceDir",
         "runtimePathPrefixes",
@@ -35,80 +39,98 @@
       "id": "emptyDiffAntiShip",
       "configPath": "shipGate.emptyDiffAntiShip",
       "title": "Empty-diff anti-ship",
+      "summary": "Checks that a ship claim has a non-empty diff behind it.",
       "benefit": "Blocks a ship claim when the working tree has zero changes.",
       "tradeOff": "Annoys when a zero-diff claim is intentionally correct.",
       "defaultOn": false,
       "sinceCatalogVersion": 1,
-      "asks": [
-        "requires shipGate enabled"
-      ]
+      "fires": ["stop"],
+      "verdict": "block-stop",
+      "inspect": "the ship ledger in the project state directory — the challenge row names the empty diff",
+      "asks": ["requires shipGate enabled"]
     },
     {
       "id": "comments",
       "configPath": "comments.enabled",
       "title": "Comment gate (agent-added comments)",
+      "summary": "Checks the comment lines this turn added against HEAD, by declared reason or none at all.",
       "benefit": "Blocks the stop when this turn added comment lines, so narration never lands. Diff-scoped: comments you already committed are never flagged.",
       "tradeOff": "Two modes. declared lets the agent keep a comment by writing why:/hazard:/invariant:; strict accepts none and asks you to write it instead. strict is stricter but interrupts more.",
       "defaultOn": false,
       "sinceCatalogVersion": 1,
-      "asks": [
-        "mode: declared | strict"
-      ]
+      "fires": ["stop"],
+      "verdict": "block-stop",
+      "inspect": "tlc harness obs report — the comments gate appears among the gate outcomes",
+      "asks": ["mode: declared | strict"]
     },
     {
       "id": "subagents",
       "configPath": "subagents.enforceAllowlist",
       "title": "Subagent allowlist",
+      "summary": "Checks a subagent's model against the list you wrote, and against the blocked *-fast shapes.",
       "benefit": "Restricts Task/subagent models to a list you write, and blocks *-fast shapes by default.",
       "tradeOff": "The harness ships no model list, so switching this on without filling allowedModels enforces nothing and doctor reports it as a fault. You maintain the list as providers add models — including a value for `inherit` if you want subagents to take the parent's model.",
       "defaultOn": false,
       "sinceCatalogVersion": 1,
-      "asks": [
-        "allowedModels",
-        "requireModel",
-        "blockMode"
-      ]
+      "fires": ["tool.before", "subagent.start"],
+      "verdict": "deny",
+      "inspect": "tlc harness obs report — refusals attributed by rule; the denial text names subagents.allowedModels and lists what is permitted",
+      "asks": ["allowedModels", "requireModel", "blockMode"]
     },
     {
       "id": "blockParentFast",
       "configPath": "subagents.blockParentFast",
       "title": "Block parent Fast mode for Task spawns",
+      "summary": "Checks whether the parent chat is in Fast mode before letting it spawn a subagent.",
       "benefit": "Denies Task/subagentStart while the parent chat is in Fast mode (sticky from hooks), closing the gap where Task slugs omit *-fast.",
       "tradeOff": "Needs parent model hooks (sessionStart/obs/stop); false denials if you intentionally run Fast parent with workers.",
       "defaultOn": false,
       "sinceCatalogVersion": 1,
+      "fires": ["tool.before", "subagent.start"],
+      "verdict": "deny",
+      "inspect": "tlc harness obs report — refusals by rule; tlc harness status shows the sticky parent model it read",
       "recommend": "on"
     },
     {
       "id": "shellStall",
       "configPath": "shell.stallDetection",
       "title": "Shell stall detection",
+      "summary": "Counts identical shell commands in a row and stops the loop at your threshold.",
       "benefit": "Blocks repeating the exact same shell command too many times.",
       "tradeOff": "Can false-positive on intentional retries.",
       "defaultOn": false,
       "sinceCatalogVersion": 1,
-      "asks": [
-        "stallRepeatThreshold (default 3)"
-      ]
+      "fires": ["shell.before"],
+      "verdict": "deny",
+      "inspect": "tlc harness obs report — interruptions attributed to the shell-stall rule",
+      "asks": ["stallRepeatThreshold (default 3)"]
     },
     {
       "id": "catastrophicShell",
       "configPath": "shell.catastrophicAsk",
       "title": "Catastrophic shell ask",
-      "benefit": "Asks before destructive shell commands (rm -rf, drop db, force push, \u2026).",
+      "summary": "Checks a shell command for destruction that reaches outside the workspace.",
+      "benefit": "Asks before destructive shell commands (rm -rf, drop db, force push, …).",
       "tradeOff": "Extra prompts on risky commands.",
       "defaultOn": true,
       "sinceCatalogVersion": 1,
+      "fires": ["shell.before"],
+      "verdict": "ask",
+      "inspect": "tlc harness obs report — interruptions attributed to the shell-catastrophic rule",
       "recommend": "on"
     },
     {
       "id": "lessons",
       "configPath": "intelligence.lessons.enabled",
       "title": "Lessons",
+      "summary": "Records what a repeated gate failure taught, ranks it, and injects it into the next session and retry.",
       "benefit": "Records compact lessons on gate stagnation and reinjects them ranked under a char budget. A lesson can name the path or symbol that makes it true and is withheld once that stops resolving, can carry an end date, and is graded helped or neutral by the next run of the gate it was injected for. Three tiers: shipped core, a global tier read by every product on this machine, and this project's own. How the lessons reach the model is decided by the provider rather than configured: where a host does not deliver context returned from its session-start hook, a durable rules file is written instead.",
       "tradeOff": "Uses context tokens; not a second brain / chat memory. The grading is correlational, not causal — a gate passing after a lesson was injected does not prove the lesson caused it. Nothing is promoted between products automatically, so carrying a lesson to another product is an operator command. On a host that needs the durable view, a file is written into the repo (`.cursor/rules/harness-lessons.mdc`) and asked to be included on every request; `syncRulesFile: never` declines it.",
       "defaultOn": false,
       "sinceCatalogVersion": 1,
+      "fires": ["session.start", "stop", "session.end"],
+      "verdict": "context",
+      "inspect": "tlc harness lessons list — every tier with staleness and effectiveness; obs report shows the characters each injection cost",
       "asks": [
         "maxInjectSession",
         "maxCharsSession",
@@ -126,126 +148,164 @@
       "id": "budgetContinue",
       "configPath": "intelligence.budgetContinue",
       "title": "Budget continue",
+      "summary": "Checks for unfinished handoff work under context pressure and says keep going rather than wrap up.",
       "benefit": "Pushes the agent to keep working under context pressure instead of wrapping up early.",
       "tradeOff": "Can delay clean stops.",
       "defaultOn": false,
       "sinceCatalogVersion": 1,
-      "asks": [
-        "budgetContinueAfterLoops"
-      ]
+      "fires": ["stop"],
+      "verdict": "follow-up",
+      "inspect": "tlc harness handoff — the follow-up fires only with unfinished work recorded there",
+      "asks": ["budgetContinueAfterLoops"]
     },
     {
       "id": "gapFeedback",
       "configPath": "intelligence.gapFeedback",
       "title": "Gap feedback",
+      "summary": "Turns a gate's output into a numbered list of gaps the retry has to close.",
       "benefit": "Injects PREVIOUS_GAPS on gate failure so retries fix listed items.",
       "tradeOff": "Longer follow-ups.",
       "defaultOn": true,
-      "sinceCatalogVersion": 1
+      "sinceCatalogVersion": 1,
+      "fires": ["stop"],
+      "verdict": "follow-up",
+      "inspect": "tlc harness handoff — the gaps it injects are the ones stored as previous_gaps"
     },
     {
       "id": "failureClassification",
       "configPath": "intelligence.failureClassification",
       "title": "Failure classification",
+      "summary": "Labels each gate failure with a category and stores it on the handoff.",
       "benefit": "Stores failure categories on the handoff for clearer next actions.",
       "tradeOff": "Extra handoff fields.",
       "defaultOn": true,
-      "sinceCatalogVersion": 1
+      "sinceCatalogVersion": 1,
+      "fires": ["stop"],
+      "verdict": "record",
+      "inspect": "tlc harness handoff — last_failure_category"
     },
     {
       "id": "progressiveHandoff",
       "configPath": "intelligence.progressiveHandoff",
       "title": "Progressive handoff",
-      "benefit": "Carries gaps into the next session bootstrap.",
-      "tradeOff": "Slightly longer session start context.",
+      "summary": "Reads the gaps the previous session ended with back out at the next session's start.",
+      "benefit": "Carries the gaps the previous session ended with into the next session's bootstrap, as history rather than as a task list.",
+      "tradeOff": "Spends session-start context on a verdict that may already be stale — only the next run of the gate says whether it still holds. Capped at five, and the rest are counted rather than dropped in silence.",
       "defaultOn": true,
-      "sinceCatalogVersion": 1
+      "sinceCatalogVersion": 1,
+      "fires": ["session.start"],
+      "verdict": "context",
+      "inspect": "tlc harness handoff — the gaps it reads back out are previous_gaps"
     },
     {
       "id": "progressiveContext",
       "configPath": "intelligence.progressiveContext",
       "title": "Progressive context",
+      "summary": "Raises the detail in the follow-up on each stop retry, so a repeat attempt is not given the same prompt.",
       "benefit": "Escalates gate follow-up detail on each stop retry.",
       "tradeOff": "Longer thrash follow-ups.",
       "defaultOn": true,
-      "sinceCatalogVersion": 1
+      "sinceCatalogVersion": 1,
+      "fires": ["stop"],
+      "verdict": "follow-up",
+      "inspect": "tlc harness obs report — the retry count for a stop is the escalation level it reached"
     },
     {
       "id": "autopilot",
       "configPath": "intelligence.autopilot",
       "title": "Autopilot",
+      "summary": "Emits ordered steps after a gate failure, computed by the runtime rather than invented by the model.",
       "benefit": "Adds ordered AUTOPILOT steps on gate failure.",
       "tradeOff": "Agent must follow the block; more directive follow-ups.",
       "defaultOn": true,
-      "sinceCatalogVersion": 1
+      "sinceCatalogVersion": 1,
+      "fires": ["stop"],
+      "verdict": "follow-up",
+      "inspect": "the AUTOPILOT block is in the follow-up text itself; obs report counts the failing stops that produced one"
     },
     {
       "id": "idleTurnGate",
       "configPath": "intelligence.idleTurnGate",
       "title": "Idle-turn gate (asked instead of acting)",
+      "summary": "Checks whether a turn that ended with open work recorded any tool call or file change at all.",
       "benefit": "Blocks a turn that ends with open work, zero tool calls and zero file changes. Counts recorded tool events rather than reading the reply, so it cannot be talked around.",
-      "tradeOff": "A turn that legitimately only answers a question is blocked while handoff work is open \u2014 clear the handoff or turn this off for conversational repos.",
+      "tradeOff": "A turn that legitimately only answers a question is blocked while handoff work is open — clear the handoff or turn this off for conversational repos.",
       "defaultOn": false,
-      "sinceCatalogVersion": 3
+      "sinceCatalogVersion": 3,
+      "fires": ["stop"],
+      "verdict": "block-stop",
+      "inspect": "tlc harness obs report for the block; tlc harness handoff shows the open work that armed it"
     },
     {
       "id": "docsGate",
       "configPath": "docs.command",
       "title": "Docs staleness gate",
+      "summary": "Runs the repository's own documentation staleness tool on stop, like a lint command.",
       "benefit": "Runs the repository's own documentation staleness tool on stop, so a stale document fails like a failing test.",
       "tradeOff": "Needs such a tool in the repository; without one there is nothing to run.",
       "defaultOn": false,
       "sinceCatalogVersion": 5,
-      "asks": [
-        "command (exact argv array)",
-        "severity: warn | deny"
-      ]
+      "fires": ["stop"],
+      "verdict": "block-stop",
+      "inspect": "tlc harness obs report; the docs gate writes the same last-gate.json artifact the lint and test gates do",
+      "asks": ["command (exact argv array)", "severity: warn | deny"]
     },
     {
       "id": "globalSpool",
       "configPath": "obs.globalSpool",
       "title": "Global observability spool",
+      "summary": "Copies every record into one file under the runtime home, so cost is readable across repositories.",
       "benefit": "Mirrors this repo's obs and audit records into one file under the runtime home, so cost and gate history can be read across every repository at once.",
       "tradeOff": "Writes outside the repository. Records carry the repo path and project name, and the spool is pruned on the same retention window as session rollups.",
       "defaultOn": false,
       "sinceCatalogVersion": 6,
+      "fires": ["tool.after", "tool.failure"],
+      "verdict": "record",
+      "inspect": "the spool file under the runtime home; tlc harness obs prune reports how many records it dropped",
       "asks": []
     },
     {
       "id": "untrustedContent",
       "configPath": "untrustedContent.enabled",
       "title": "Untrusted-content framing",
+      "summary": "Checks whether the turn read content from outside the repository, and frames it as data once.",
       "benefit": "Injects one framing line per turn when the agent reads a pull request, an issue, a fetched page or an MCP result, stating that the content is data and that any directive inside it is to be reported as a prompt-injection attempt, not obeyed.",
       "tradeOff": "Spends a few hundred characters of context on turns that read outside the repository. Detection is a declared list of tools and command shapes, so a source nobody listed is not covered.",
       "defaultOn": false,
       "sinceCatalogVersion": 7,
-      "asks": [
-        "extraTools",
-        "extraCommandPatterns"
-      ]
+      "fires": ["tool.after"],
+      "verdict": "context",
+      "inspect": "tlc harness obs report — one framing injection per turn, with the characters it cost",
+      "asks": ["extraTools", "extraCommandPatterns"]
     },
     {
       "id": "planGate",
       "configPath": "planGate.enabled",
       "title": "Plan gate (declared scope vs diff)",
+      "summary": "Checks the files the turn changed against the scope it declared, and against any stated deviation.",
       "benefit": "Blocks the stop when the turn changed files the declared HARNESS_PLAN did not name, so scope creep fails like a failing test instead of surviving as a review comment.",
       "tradeOff": "Requires the agent to declare HARNESS_PLAN before editing, and each honest deviation to state a reason. A turn with no declaration is not gated at all.",
       "defaultOn": false,
       "sinceCatalogVersion": 8,
-      "asks": [
-        "windowMinutes"
-      ]
+      "fires": ["response.after", "stop"],
+      "verdict": "block-stop",
+      "inspect": "tlc harness handoff — plan_paths, plan_at and plan_deviations",
+      "asks": ["windowMinutes"]
     },
     {
       "id": "observe",
       "configPath": "observe.enabled",
       "title": "Observation mode (measure a rail with its rule off)",
+      "summary": "Runs a rail's checker while that rail is not enforcing, and records the reading without acting on it.",
       "benefit": "Runs a rail's checker while that rail is not enforcing, so the record says whether the property held with the rule injected or without it. That is the reading that tells you a rail is unnecessary rather than merely quiet, and it is what makes deleting one a decision instead of a guess.",
       "tradeOff": "Costs one diff scan per turn per observed rail, and answers a question only an operator who is asking it needs answered. It never blocks and never changes a decision, so it buys information and nothing else.",
       "defaultOn": false,
       "sinceCatalogVersion": 9,
+      "fires": ["stop", "session.end"],
+      "verdict": "record",
+      "inspect": "tlc harness obs report — the observation readings, held apart from the refusal counters so those stay honest",
       "asks": [
-        "rails \u2014 the rails to observe, chosen from the observable set (today: comments). A name with no checker records nothing and doctor reports it"
+        "rails — the rails to observe, chosen from the observable set (today: comments). A name with no checker records nothing and doctor reports it"
       ]
     }
   ]

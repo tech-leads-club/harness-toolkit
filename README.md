@@ -2,9 +2,12 @@
 
 Steers Cursor and Claude Code agents with **gates → follow-up → handoff → policy**.
 
-On stop (and related hooks), the runtime can re-check work, require verified ship claims, persist handoff
-state, and constrain subagent model choice — the same steering logic, driven through a provider-neutral
-core and one anti-corruption-layer adapter per provider.
+Hooks fire on the editor's own events. The harness answers each one with a decision — allow, ask, deny, or
+text injected into the turn — and writes a record of what it decided and why.
+
+- **[Everything it validates](#everything-it-validates)** — the whole list, one row per check
+- **[How to see any of it](#how-to-see-any-of-it)** — the command behind each row
+- **[How to explain a decision](#how-to-explain-a-decision)** — from a message on screen back to the rule
 
 ## Start here
 
@@ -30,72 +33,156 @@ To give one project its own rules, open it and say **"setup harness"** to the ag
 ## Table of contents
 
 1. [Start here](#start-here)
-2. [Why it exists](#why-it-exists)
-3. [Providers](#providers)
-4. [Requirements](#requirements)
-5. [Install](#install)
-6. [Update](#update)
-7. [Quick start](#quick-start)
-8. [How it works](#how-it-works)
-9. [Commands](#commands)
-10. [Connect a project](#connect-a-project)
-11. [Paths and shared state](#paths-and-shared-state)
-12. [Ship claims](#ship-claims)
-13. [Price catalogs](#price-catalogs)
-14. [Windows](#windows)
-15. [Troubleshooting](#troubleshooting)
-16. [Documentation](#documentation)
-17. [Contributing](#contributing)
-18. [License](#license)
+2. [Everything it validates](#everything-it-validates)
+   - [Tier 1 — the floor](#tier-1--the-floor-no-configuration-reaches-it)
+   - [Tier 2 — always on, no switch](#tier-2--always-on-no-switch)
+   - [Tier 3 — the rails you choose](#tier-3--the-rails-you-choose)
+3. [How to see any of it](#how-to-see-any-of-it)
+4. [How to explain a decision](#how-to-explain-a-decision)
+5. [Providers](#providers)
+6. [Requirements](#requirements)
+7. [Install](#install)
+8. [Update](#update)
+9. [Quick start](#quick-start)
+10. [How it works](#how-it-works)
+11. [Commands](#commands)
+12. [Connect a project](#connect-a-project)
+13. [Paths and shared state](#paths-and-shared-state)
+14. [Ship claims](#ship-claims)
+15. [Price catalogs](#price-catalogs)
+16. [Windows](#windows)
+17. [Troubleshooting](#troubleshooting)
+18. [Documentation](#documentation)
+19. [Contributing](#contributing)
+20. [License](#license)
 
-## Why it exists
+## Everything it validates
 
-| Goal | Mechanism |
-|------|-----------|
-| Hold a line no setting can cross | Floor tier, evaluated before any config is read |
-| Catch breakage early | Optional grind (lint/test) on stop |
-| Block false ship claims | `HARNESS_SHIP_CLAIM` + evidence |
-| Keep narration out of the diff | Comment gate on added lines, by declared reason |
-| Survive context loss | Handoff + lessons on disk |
-| Control cost/quality | Subagent model allowlist (per provider) |
-| Measure what happened | Observability + cost catalogs, tagged by provider |
-| See cost across every repo | Optional global observability spool under the runtime home |
-| Fail scope creep like a test | Plan gate: `HARNESS_PLAN` vs the diff, deviations need a stated reason |
-| Never obey content read from outside | Untrusted-content framing, once per turn |
-| Let CI and agents read the output | `--json` on every read command |
+Three tiers, and which tier a check is in decides whether you can turn it off.
 
-### The floor
+| Tier | Count | Configurable | Runs |
+|------|-------|--------------|------|
+| [Floor](#tier-1--the-floor-no-configuration-reaches-it) | 6 rules | Never | Before any policy is loaded, on every tool call, shell command and read |
+| [Always on](#tier-2--always-on-no-switch) | 3 checks | Never | After the floor, on every acting event |
+| [Rails](#tier-3--the-rails-you-choose) | 21 capabilities | Each one, individually | Where the table says |
 
-Five rules read no configuration at all, so nothing in a config file and no edit by an agent can clear
-them. Every denial names its rule.
+Nothing else runs. If a message on your screen is not from one of the thirty rows below, it is not the
+harness.
 
-| Rule | Denies |
-|------|--------|
-| `outside-project-destruction` | A destructive command whose target resolves outside the repo and outside the OS temp directory |
-| `unprovable-destruction` | A destructive verb whose target is a variable, a substitution, or built at runtime |
-| `secret-access` | A read that would pull `.env`, `~/.ssh`, `~/.aws`, `*.pem` or similar into the transcript |
-| `history-rewrite` | `git push --force`. `--force-with-lease` is allowed, since it refuses when the remote moved |
-| `machine-control` | `shutdown`, `reboot`, `halt`, `poweroff` |
-| `policy-surface-write` | Any shell route to `.tlc/harness/config.json`, `flags/` or `state/` — a redirect, an interpreter, a heredoc program — plus the same paths under the runtime home `~/.tlc/harness`, and `tlc harness pause \| resume \| grind \| mode \| init \| gate` from inside an agent session |
+### Tier 1 — the floor, no configuration reaches it
 
-Harness policy and state are not agent-writable, through a tool or a shell. Reading them stays allowed: a
-proven reader (`cat`, `grep`, `jq`, `test`, `git show`) on those paths passes, and anything not proven to only
-read does not — and the refusal names the way through, including `tlc harness handoff`. Policy changes are the operator's, from a terminal outside the agent session:
+Evaluated before the policy file is read, so no setting and no edit by an agent can clear one. Every denial
+prints `rule=<name>`, and the name is the first column here.
+
+<!-- generated:floor -->
+
+| Rule | Denies | Allowed anyway |
+|---|---|---|
+| `outside-project-destruction` | a destructive command whose target resolves outside the repository and outside the OS temp directory | the same command inside the repository, or inside the temp directory |
+| `unprovable-destruction` | a destructive verb whose target is a variable, a command substitution, or otherwise built at runtime — the harness cannot see what it would delete | a literal path it can resolve and check |
+| `secret-access` | a read that would copy `.env`, `~/.ssh`, `~/.aws`, `*.pem` or similar into the transcript, through a shell reader or through the editor's own read tool | — |
+| `history-rewrite` | `git push --force` | `--force-with-lease`, which refuses on its own when the remote moved |
+| `machine-control` | `shutdown`, `reboot`, `halt`, `poweroff` | — |
+| `policy-surface-write` | every route an agent has to harness policy and state — a shell redirect, an interpreter, a heredoc program, or a write tool — in the project and under the runtime home, plus the mutating `tlc harness` subcommands from inside a session | reading them with a proven reader (`cat`, `head`, `grep`, `jq`, `ls`, `stat`, `test`), and `tlc harness handoff` for the handoff state |
+
+<!-- /generated -->
+
+Policy changes are the operator's, from a terminal outside the agent session:
 
 ```bash
 tlc harness gate test-command node --test 'src/**/__test__/*.test.ts'
 tlc harness gate lint-command npx biome check .
 ```
 
-The harness also hashes every policy source at session start. If one changes mid-session without a
-`tlc harness` command, the next tool call is refused and the change reported — the layer that covers what
-shell parsing cannot see.
+### Tier 2 — always on, no switch
 
-Everything else is opt-in: 21 capabilities, each presented with benefit, trade-off and default by the init
-skill. Full list in [`docs/architecture.md`](docs/architecture.md).
+Not floor rules, and equally unconfigurable — each one detects a condition that a config field could
+otherwise switch off.
 
-Runtime: `~/.tlc/harness`.
-Project policy: `<repo>/.tlc/harness/config.json`.
+| Check | Fires on | Verdict | What it checks | How to see it |
+|---|---|---|---|---|
+| `policy-baseline-divergence` | every acting event | `deny` | Every policy source is hashed at session start. If one changes mid-session with no `tlc harness` command behind it, the next acting call is refused and the path named. Reads still pass, so the agent can investigate and report | `tlc harness policy` lists what changed; `tlc harness policy accept <path>` clears it |
+| `policy-surface-write` (tool half) | `tool.before` | `deny` | An agent write to policy or state through Write, Edit, Delete, MultiEdit or NotebookEdit — the same paths the floor's shell half covers | `tlc harness obs report` — refusals by rule |
+| `edit-collision` | `tool.before` | `ask` | Another live session in the same working tree touched this file recently | `tlc harness status` lists the live sessions |
+
+### Tier 3 — the rails you choose
+
+All 21 are off unless the **default** column says `on`, and each was presented with its benefit and its
+trade-off when you ran the init wizard. `configPath` is the key in `.tlc/harness/config.json`.
+
+<!-- generated:validates -->
+
+| Rail · key · default | What it checks | Fires on | Verdict | How to see it |
+|---|---|---|---|---|
+| **Grind (lint/test on stop)**<br>`grind.enabled` · off | Runs your lint and test commands against the files the turn changed, and sends the agent back until they pass. | `stop` | `follow-up` | tlc harness obs report — runs, wall-clock and total; the last verdict is in the project state directory as last-gate.json |
+| **Ship gate**<br>`shipGate.enabled` · off | Checks a declared ship claim against recent PASS evidence for the runtime paths the turn touched. | `stop` | `block-stop` | tlc harness obs report; the ship ledger in the project state directory records every claim, challenge and pass |
+| **Empty-diff anti-ship**<br>`shipGate.emptyDiffAntiShip` · off | Checks that a ship claim has a non-empty diff behind it. | `stop` | `block-stop` | the ship ledger in the project state directory — the challenge row names the empty diff |
+| **Comment gate (agent-added comments)**<br>`comments.enabled` · off | Checks the comment lines this turn added against HEAD, by declared reason or none at all. | `stop` | `block-stop` | tlc harness obs report — the comments gate appears among the gate outcomes |
+| **Subagent allowlist**<br>`subagents.enforceAllowlist` · off | Checks a subagent's model against the list you wrote, and against the blocked *-fast shapes. | `tool.before`<br>`subagent.start` | `deny` | tlc harness obs report — refusals attributed by rule; the denial text names subagents.allowedModels and lists what is permitted |
+| **Block parent Fast mode for Task spawns**<br>`subagents.blockParentFast` · off | Checks whether the parent chat is in Fast mode before letting it spawn a subagent. | `tool.before`<br>`subagent.start` | `deny` | tlc harness obs report — refusals by rule; tlc harness status shows the sticky parent model it read |
+| **Shell stall detection**<br>`shell.stallDetection` · off | Counts identical shell commands in a row and stops the loop at your threshold. | `shell.before` | `deny` | tlc harness obs report — interruptions attributed to the shell-stall rule |
+| **Catastrophic shell ask**<br>`shell.catastrophicAsk` · **on** | Checks a shell command for destruction that reaches outside the workspace. | `shell.before` | `ask` | tlc harness obs report — interruptions attributed to the shell-catastrophic rule |
+| **Lessons**<br>`intelligence.lessons.enabled` · off | Records what a repeated gate failure taught, ranks it, and injects it into the next session and retry. | `session.start`<br>`stop`<br>`session.end` | `context` | tlc harness lessons list — every tier with staleness and effectiveness; obs report shows the characters each injection cost |
+| **Budget continue**<br>`intelligence.budgetContinue` · off | Checks for unfinished handoff work under context pressure and says keep going rather than wrap up. | `stop` | `follow-up` | tlc harness handoff — the follow-up fires only with unfinished work recorded there |
+| **Gap feedback**<br>`intelligence.gapFeedback` · **on** | Turns a gate's output into a numbered list of gaps the retry has to close. | `stop` | `follow-up` | tlc harness handoff — the gaps it injects are the ones stored as previous_gaps |
+| **Failure classification**<br>`intelligence.failureClassification` · **on** | Labels each gate failure with a category and stores it on the handoff. | `stop` | `record` | tlc harness handoff — last_failure_category |
+| **Progressive handoff**<br>`intelligence.progressiveHandoff` · **on** | Reads the gaps the previous session ended with back out at the next session's start. | `session.start` | `context` | tlc harness handoff — the gaps it reads back out are previous_gaps |
+| **Progressive context**<br>`intelligence.progressiveContext` · **on** | Raises the detail in the follow-up on each stop retry, so a repeat attempt is not given the same prompt. | `stop` | `follow-up` | tlc harness obs report — the retry count for a stop is the escalation level it reached |
+| **Autopilot**<br>`intelligence.autopilot` · **on** | Emits ordered steps after a gate failure, computed by the runtime rather than invented by the model. | `stop` | `follow-up` | the AUTOPILOT block is in the follow-up text itself; obs report counts the failing stops that produced one |
+| **Idle-turn gate (asked instead of acting)**<br>`intelligence.idleTurnGate` · off | Checks whether a turn that ended with open work recorded any tool call or file change at all. | `stop` | `block-stop` | tlc harness obs report for the block; tlc harness handoff shows the open work that armed it |
+| **Docs staleness gate**<br>`docs.command` · off | Runs the repository's own documentation staleness tool on stop, like a lint command. | `stop` | `block-stop` | tlc harness obs report; the docs gate writes the same last-gate.json artifact the lint and test gates do |
+| **Global observability spool**<br>`obs.globalSpool` · off | Copies every record into one file under the runtime home, so cost is readable across repositories. | `tool.after`<br>`tool.failure` | `record` | the spool file under the runtime home; tlc harness obs prune reports how many records it dropped |
+| **Untrusted-content framing**<br>`untrustedContent.enabled` · off | Checks whether the turn read content from outside the repository, and frames it as data once. | `tool.after` | `context` | tlc harness obs report — one framing injection per turn, with the characters it cost |
+| **Plan gate (declared scope vs diff)**<br>`planGate.enabled` · off | Checks the files the turn changed against the scope it declared, and against any stated deviation. | `response.after`<br>`stop` | `block-stop` | tlc harness handoff — plan_paths, plan_at and plan_deviations |
+| **Observation mode (measure a rail with its rule off)**<br>`observe.enabled` · off | Runs a rail's checker while that rail is not enforcing, and records the reading without acting on it. | `stop`<br>`session.end` | `record` | tlc harness obs report — the observation readings, held apart from the refusal counters so those stay honest |
+
+<!-- /generated -->
+
+The two tables above are generated from [`capabilities/catalog.json`](capabilities/catalog.json) and
+`src/core/floor/floor.catalog.ts`. `tlc harness test` fails when they drift, so a rail that exists and is
+not listed here is a build failure rather than a documentation gap.
+
+Each rail's full benefit and trade-off — the long form, as the init wizard reads them out — is in
+[`docs/architecture.md`](docs/architecture.md) and [`docs/concepts.md`](docs/concepts.md).
+
+**One thing is not in any table: operator posture.** `tlc harness mode paired|solo|focus` changes how much
+the agent surfaces and what earns an interruption. It switches no gate on and weakens no verification —
+the evidence bar is identical at all three ([`docs/decisions/ad-025.md`](docs/decisions/ad-025.md)).
+
+## How to see any of it
+
+Every row above names a command in its last column. These are those commands.
+
+| Command | Answers |
+|---------|---------|
+| `tlc harness status` | Which posture, which rails are on, which sessions are live, whether policy diverged |
+| `tlc harness doctor` | Whether the install is healthy, and every rail that is off or misconfigured — including a rail switched on with nothing to enforce |
+| `tlc harness obs report` | Per session: gate outcomes, refusals attributed by rule, interruptions by rule, characters injected, cost |
+| `tlc harness obs live` | The same signal as it happens |
+| `tlc harness handoff` | What the turn left open: gaps, blockers, next action, plan scope, failure category |
+| `tlc harness lessons list` | Every lesson in all three tiers, with staleness, validity and whether it ever helped |
+| `tlc harness attest` | One hash-chained record per session: policy in force, rails active, refusals by rule, gate outcomes |
+| `tlc harness policy` | Which policy source changed mid-session, changing nothing |
+| `--json` on any of them | The same content, machine-readable |
+
+All of these read. None of them changes a decision.
+
+## How to explain a decision
+
+You saw a message and want to know which rule produced it.
+
+1. **The message names its rule.** A floor denial ends in `rule=<name>` — look it up in
+   [tier 1](#tier-1--the-floor-no-configuration-reaches-it). A rail's block names the gate.
+2. **`tlc harness obs report`** attributes every refusal and interruption in the session to a rule, so
+   "seven interruptions" becomes "six from the posture, one from the catastrophic rule".
+3. **`tlc harness attest`** is the same thing for a reviewer: which policy the session ran under, whether
+   it changed mid-session, and every gate outcome, hash-chained so a removed record is detectable.
+4. **`tlc harness doctor`** explains the absence of a decision — a rail you expected to fire and did not
+   is usually one that is off, or on with nothing configured to enforce.
+
+Two limits worth stating. The harness records the decisions it made; it never learns your answer to an
+`ask`, so it reports a rate and its attribution, never a precision or an accuracy. And the attestation is
+chained, not signed: it detects a rewritten record and proves nothing about authorship.
 
 ## Providers
 
@@ -110,6 +197,10 @@ logic never imports a provider adapter and never branches on a provider's name �
 
 The installer and `tlc harness init` detect which of these are present and wire only those — neither
 assumes Cursor.
+
+A rail fires only where the provider can express it. `ask` on an event a provider cannot ask about becomes
+`deny`, and injected context on an event a provider ignores is withheld rather than rendered into a field
+nothing reads — `src/providers/provider.degrade.ts`.
 
 ## Requirements
 
@@ -282,6 +373,7 @@ See `tlc harness help architecture` or [`docs/architecture.md`](docs/architectur
 | `tlc harness prices refresh` / `lookup` | Cost catalogs |
 | `tlc harness lessons list` | Lessons across the three tiers, with staleness and effectiveness |
 | `tlc harness lessons add "…" [--ref path:symbol] [--global] [--pin]` | Write a lesson; `--ref` retires it when that stops resolving, `--pin` puts it ahead of ranking |
+| `tlc harness policy` / `policy accept <path>` | List a mid-session policy change; accept exactly those paths |
 | `tlc harness init --minimal` | Project stub |
 
 ## Connect a project
@@ -322,6 +414,16 @@ HARNESS_SHIP_CLAIM: <one-line summary>
 When `shipGate` is enabled and runtime paths changed, cite recent PASS under `evidenceDir`.
 See `tlc harness help concepts` or [`docs/concepts.md`](docs/concepts.md).
 
+The plan gate uses the same shape for scope:
+
+```text
+HARNESS_PLAN: src/core/plan/**, src/entrypoints/stop.ts
+HARNESS_PLAN_DEVIATION: src/x.ts — the call site moved with the type
+```
+
+Both are protocol lines on purpose. A gate that fires on free-English "done" fires on the word, not the
+claim.
+
 ## Price catalogs
 
 ```bash
@@ -352,6 +454,8 @@ Outside CI coverage: `install.ps1`, and hooks firing inside a Cursor or Claude C
 | Missing `dist/` | `tlc harness build` |
 | Cost `null` | `tlc harness help prices` |
 | Project doctor FAILs | Expected until project policy exists |
+| A rail you enabled never fires | `tlc harness doctor` — a rail switched on with nothing configured to enforce is reported as a fault |
+| Every tool call is refused after you edited the config | `tlc harness policy` then `tlc harness policy accept <path>` |
 
 See `tlc harness help diagnose` or [`docs/diagnose.md`](docs/diagnose.md).
 

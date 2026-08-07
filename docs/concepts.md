@@ -195,7 +195,7 @@ change-approach follow-up. Trade-off: stops loops; can block intentional retries
 |------|--------|
 | `intelligence.gapFeedback` | Gate fails include structured PREVIOUS_GAPS + NEXT suggestion |
 | `intelligence.failureClassification` | Handoff stores category (verification, ship-evidence, stagnation, …) |
-| `intelligence.progressiveHandoff` | sessionStart injects previous gaps / next_action |
+| `intelligence.progressiveHandoff` | sessionStart reads the gaps the previous session ended with back out of the handoff, capped at five and counting the rest. Phrased as history: only the next run of the gate says whether they still hold |
 | `intelligence.progressiveContext` | Each stop retry escalates context (merge prior gaps, more gate output, stronger "don't repeat") |
 | `intelligence.autopilot` | Runtime emits ordered AUTOPILOT steps + NEXT_ACTION (not LLM-invented plan) |
 | `intelligence.lessons.enabled` | Durable gate lessons with decay/promote; inject at sessionStart + stop retry (see [/lessons.md](/lessons.md)) |

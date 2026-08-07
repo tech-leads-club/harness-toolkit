@@ -51,9 +51,11 @@ test("the README names every floor rule", () => {
 });
 
 test("the generator owns only its region, and detects a change inside it", async () => {
-  const { renderAll, replaceRegion } = await import("../render-capabilities.ts");
+  const { renderAll, replaceRegion, TARGETS } = await import("../render-capabilities.ts");
   const results = renderAll();
-  assert.equal(results.length, 2);
+  // why: one result per file, not per target — the README carries two regions and rendering them separately
+  // made the second write revert the first.
+  assert.equal(results.length, new Set(TARGETS.map((target) => target.file)).size);
   for (const result of results) {
     assert.equal(result.current, result.next, `${result.file} is out of date with the catalog`);
   }
@@ -72,19 +74,43 @@ test("a missing region marker is an error, not a silent no-op", async () => {
 });
 
 // hazard: the README states a capability count in prose. It was already one behind the catalog when this
-// test was written, so the number is asserted against the catalog rather than trusted.
-test("the README's capability count matches the catalog", () => {
+// test was written, so the number is asserted against the catalog rather than trusted. The floor count had
+// drifted the same way in the other direction — "Five rules" above a table of six.
+test("every count the README states matches what it counts", async () => {
   const catalog = JSON.parse(readFileSync(join(repoRoot, "capabilities", "catalog.json"), "utf8")) as {
     capabilities: unknown[];
   };
+  const { FLOOR_RULE_IDS } = await import("../../src/core/floor/floor.catalog.ts");
   const readme = readFileSync(join(repoRoot, "README.md"), "utf8");
-  const stated = /opt-in: (\d+) capabilities/.exec(readme);
-  assert.ok(stated, "the README no longer states a capability count");
+
+  const rails = /(\d+) capabilities \|/.exec(readme);
+  assert.ok(rails, "the README no longer states a capability count");
   assert.equal(
-    Number(stated[1]),
+    Number(rails[1]),
     catalog.capabilities.length,
     "the README's capability count drifted from capabilities/catalog.json",
   );
+
+  const floor = /(\d+) rules \|/.exec(readme);
+  assert.ok(floor, "the README no longer states a floor rule count");
+  assert.equal(
+    Number(floor[1]),
+    FLOOR_RULE_IDS.length,
+    "the README's floor rule count drifted from the FloorRule union",
+  );
+});
+
+// why: the README's whole promise is that the three tiers are exhaustive. A rail in the catalog that the
+// generated region does not carry would make that promise false without failing anything else.
+test("the README's rail table carries every capability's key and inspect route", () => {
+  const catalog = JSON.parse(readFileSync(join(repoRoot, "capabilities", "catalog.json"), "utf8")) as {
+    capabilities: { id: string; configPath: string; inspect: string }[];
+  };
+  const readme = readFileSync(join(repoRoot, "README.md"), "utf8");
+  const missing = catalog.capabilities
+    .filter((cap) => !readme.includes(cap.configPath) || !readme.includes(cap.inspect))
+    .map((cap) => cap.id);
+  assert.deepEqual(missing, [], "capabilities absent from the README's rail table");
 });
 
 // hazard: three capabilities shipped with generated regions updated and concepts.md untouched, because

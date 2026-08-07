@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { HARNESS_EVENT_KINDS } from "../../../contracts/harness-event.ts";
 import {
   formatAvailableInventory,
   formatCapabilityDigest,
@@ -14,7 +15,12 @@ import {
   resolveConfigPath,
 } from "../capability.service.ts";
 import { loadCatalog, readProjectPolicyRaw, readRuntimeSeen, writeRuntimeSeen } from "../capability.store.ts";
-import { type CapabilityCatalog, type CatalogCapability, ENABLE_HINT } from "../capability.types.ts";
+import {
+  type CapabilityCatalog,
+  type CatalogCapability,
+  ENABLE_HINT,
+  SUMMARY_MAX_CHARS,
+} from "../capability.types.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 
@@ -32,10 +38,14 @@ function capability(overrides: Partial<CatalogCapability> = {}): CatalogCapabili
     id: "cap",
     configPath: "grind.enabled",
     title: "Cap",
+    summary: "s",
     benefit: "b",
     tradeOff: "t",
     defaultOn: false,
     sinceCatalogVersion: 1,
+    fires: ["stop"],
+    verdict: "block-stop",
+    inspect: "tlc harness obs report",
     ...overrides,
   };
 }
@@ -53,6 +63,41 @@ test("the shipped catalog loads and every entry is well formed", () => {
     assert.equal(typeof cap.tradeOff, "string");
     assert.equal(typeof cap.defaultOn, "boolean");
     assert.ok(cap.sinceCatalogVersion >= 1);
+  }
+});
+
+test("no capability is newer than the catalog that carries it", () => {
+  const catalog = loadCatalog(REPO_ROOT);
+  assert.ok(catalog);
+  for (const cap of catalog.capabilities) {
+    // why: the digest announces what `sinceCatalogVersion > seen` selects, and `seen` is set to the catalog's own
+    // version. An entry above that is announced on every single update forever — `observe` shipped at 9 in a
+    // catalog at 8 and did exactly that, which is the failure AD-034 removed from the decision digest.
+    assert.ok(
+      cap.sinceCatalogVersion <= catalog.catalogVersion,
+      `${cap.id} is since ${cap.sinceCatalogVersion} but the catalog is ${catalog.catalogVersion}`,
+    );
+  }
+});
+
+test("every capability says when it fires, what it does, and where to see it", () => {
+  const catalog = loadCatalog(REPO_ROOT);
+  assert.ok(catalog);
+  const verdicts = new Set(["deny", "ask", "block-stop", "follow-up", "context", "record"]);
+  for (const cap of catalog.capabilities) {
+    assert.ok(cap.fires.length > 0, `${cap.id} declares no event`);
+    for (const kind of cap.fires) {
+      // why: a free-text answer to "when does this fire?" is one rename away from naming an event that no
+      // handler dispatches, and the README would keep printing it.
+      assert.ok(HARNESS_EVENT_KINDS.includes(kind), `${cap.id} fires on unknown event ${kind}`);
+    }
+    assert.ok(verdicts.has(cap.verdict), `${cap.id} has verdict ${cap.verdict}`);
+    assert.ok(cap.inspect.trim().length > 0, `${cap.id} names nothing that shows it`);
+    assert.ok(cap.summary.trim().length > 0, `${cap.id} has no one-line summary`);
+    assert.ok(
+      cap.summary.length <= SUMMARY_MAX_CHARS,
+      `${cap.id} summary is ${cap.summary.length} chars, over the ${SUMMARY_MAX_CHARS} the table cell allows`,
+    );
   }
 });
 

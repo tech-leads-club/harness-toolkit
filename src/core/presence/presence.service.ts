@@ -85,6 +85,9 @@ export function checkCollision(
       kind: "ask",
       reason: `${record.provider} session ${record.session} touched ${file} ${elapsed}.`,
       userNote: `Another agent (${record.provider}, session ${record.session}) edited this file ${elapsed}. Coordinate before proceeding.`,
+      // why: this asks unconditionally, like the floor does, and carried no rule — so an operator reading a rate of
+      // interruptions could see the count and not the cause.
+      rule: "edit-collision",
     };
   }
   return { kind: "allow" };
