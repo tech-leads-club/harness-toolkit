@@ -800,7 +800,7 @@ describe("policy accept", () => {
   test("with no path named it refuses and points at the listing", () => {
     const root = newRoot();
     diverge(root);
-    assert.throws(() => acceptPolicy(root, [], true), /run `tlc harness policy` to list/);
+    assert.throws(() => acceptPolicy(root, [], true), /tlc harness policy accept --all/);
   });
 
   test("accepting a named diverged source clears it", () => {
@@ -910,5 +910,41 @@ describe("version and update --check", () => {
   test("help names both new commands", () => {
     assert.match(helpText(), /tlc harness version/);
     assert.match(helpText(), /tlc harness update --check/);
+  });
+});
+
+/**
+ * hazard: acceptance is written into the baseline directory of the project the command ran in, and the success
+ * line claimed "every live session". Run from another directory it printed success and cleared nothing — which
+ * happened twice while unblocking a live session, because nothing in the output distinguished the two
+ * ([/decisions/ad-058.md](/decisions/ad-058.md)).
+ */
+describe("policy accept says where it applied", () => {
+  test("a project with no recorded baseline is told so, and where to run instead", () => {
+    const root = mkdtempSync(join(tmpdir(), "accept-none-"));
+    try {
+      const out = acceptPolicy(root, [join(root, ".tlc", "harness", "config.json")], true);
+      assert.match(out, /no recorded session baseline/);
+      assert.match(out, /Acceptance is written per project/);
+      assert.match(out, /cd <that repo>/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("--all with nothing diverging says so rather than claiming an acceptance", () => {
+    const root = mkdtempSync(join(tmpdir(), "accept-all-"));
+    try {
+      const out = acceptPolicy(root, ["--all"], true);
+      assert.match(out, /nothing to accept/);
+      assert.match(out, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("it still refuses without a terminal, whichever form is used", () => {
+    assert.throws(() => acceptPolicy("/x", ["--all"], false), /interactive terminal/);
+    assert.throws(() => acceptPolicy("/x", ["/some/path"], false), /interactive terminal/);
   });
 });

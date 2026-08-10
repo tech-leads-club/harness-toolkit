@@ -127,8 +127,11 @@ test("facade.subagentPolicy.evaluateSubagentSpawn denies a blocked model", () =>
 test("facade.commentPolicy.isCommentLine is reachable and deterministic", () => {
   const root = tempRoot();
   try {
-    assert.equal(coreFacade.commentPolicy.isCommentLine("// x"), true);
-    assert.equal(coreFacade.commentPolicy.isCommentLine("const a = 1;"), false);
+    // why: the file decides the language now, so the facade is exercised with one. Calling it without a file
+    // answers "no language, so nothing is a comment", which would pass this test for the wrong reason.
+    assert.equal(coreFacade.commentPolicy.isCommentLine("// x", "a.ts"), true);
+    assert.equal(coreFacade.commentPolicy.isCommentLine("const a = 1;", "a.ts"), false);
+    assert.equal(coreFacade.commentPolicy.isCommentLine('"""doc"""', "a.py"), true);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

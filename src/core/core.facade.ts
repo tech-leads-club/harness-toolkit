@@ -27,6 +27,7 @@ import {
   isCommentLine,
   scanAddedComments,
 } from "./comment-policy/comment-policy.service.ts";
+import { KNOWN_EXTENSION_COUNT, unknownExtensions } from "./comment-policy/comment-syntax.store.ts";
 import { evaluateFloor } from "./floor/floor.service.ts";
 import { computeGateFingerprint, readLastGate, writeLastGate } from "./gate/gate.artifact.ts";
 import {
@@ -335,6 +336,8 @@ export const coreFacade = {
     isCommentLine,
     declaresReason,
     commentViolationMessage,
+    unknownExtensions,
+    KNOWN_EXTENSION_COUNT,
   },
   ship: {
     detectShipClaim,

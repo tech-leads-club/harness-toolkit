@@ -72,5 +72,6 @@ Handoff section and a link back to this index.
 | [AD-055](/decisions/ad-055.md) | The changelog is rendered from the decision records, and git says which release each landed in | active |
 | [AD-056](/decisions/ad-056.md) | The package delivers the runtime, and the runtime path stays where hooks already point | active |
 | [AD-057](/decisions/ad-057.md) | The release PR is a mechanism, not a gate, and the bot merges it | active |
+| [AD-058](/decisions/ad-058.md) | Gates diff against the turn's base, and language knowledge is one table | active |
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).

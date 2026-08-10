@@ -450,7 +450,7 @@ async function gitLines(projectDir, args) {
   return result.stdout.split(`
 `).map((line) => line.trim()).filter(Boolean);
 }
-async function listAddedLines(projectDir, relativePaths) {
+async function listAddedLines(projectDir, relativePaths, base = "HEAD") {
   if (!existsSync4(join4(projectDir, ".git")) || relativePaths.length === 0) {
     return [];
   }
@@ -469,7 +469,7 @@ async function listAddedLines(projectDir, relativePaths) {
       });
       continue;
     }
-    const diff = await gitLines(projectDir, ["diff", "--unified=0", "HEAD", "--", file]);
+    const diff = await gitLines(projectDir, ["diff", "--unified=0", base, "--", file]);
     let lineNo = 0;
     for (const row of diff) {
       const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(row);
@@ -489,32 +489,377 @@ async function listAddedLines(projectDir, relativePaths) {
   return out;
 }
 
-// src/core/comment-policy/comment-policy.service.ts
-var COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*(?![*/])|#)/;
-var SLASH_COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*(?![*/]))/;
-var HASH_COMMENT_EXTENSIONS = [
-  ".bash",
-  ".cfg",
-  ".conf",
-  ".ini",
-  ".py",
-  ".sh",
-  ".toml",
-  ".yaml",
-  ".yml",
-  ".zsh"
+// src/core/comment-policy/comment-syntax.catalog.ts
+var COMMENT_SYNTAX = [
+  {
+    id: "typescript",
+    extensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "python",
+    extensions: [".py", ".pyi", ".pyw"],
+    line: ["#"],
+    block: [
+      ['"""', '"""'],
+      ["'''", "'''"]
+    ],
+    middle: []
+  },
+  {
+    id: "ruby",
+    extensions: [".rb", ".rake", ".gemspec"],
+    line: ["#"],
+    block: [["=begin", "=end"]],
+    middle: []
+  },
+  {
+    id: "shell",
+    extensions: [".sh", ".bash", ".zsh", ".ksh", ".fish"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "go",
+    extensions: [".go"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "rust",
+    extensions: [".rs"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "java",
+    extensions: [".java"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "kotlin",
+    extensions: [".kt", ".kts"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "swift",
+    extensions: [".swift"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "c",
+    extensions: [".c", ".h"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "cpp",
+    extensions: [".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "csharp",
+    extensions: [".cs"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "php",
+    extensions: [".php"],
+    line: ["//", "#"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "scala",
+    extensions: [".scala", ".sc"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "dart",
+    extensions: [".dart"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "elixir",
+    extensions: [".ex", ".exs"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "erlang",
+    extensions: [".erl", ".hrl"],
+    line: ["%"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "haskell",
+    extensions: [".hs"],
+    line: ["--"],
+    block: [["{-", "-}"]],
+    middle: []
+  },
+  {
+    id: "lua",
+    extensions: [".lua"],
+    line: ["--"],
+    block: [["--[[", "]]"]],
+    middle: []
+  },
+  {
+    id: "sql",
+    extensions: [".sql"],
+    line: ["--"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "css",
+    extensions: [".css", ".scss", ".sass", ".less"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "yaml",
+    extensions: [".yaml", ".yml"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "toml",
+    extensions: [".toml"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "ini",
+    extensions: [".ini", ".cfg", ".conf", ".properties"],
+    line: [";", "#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "dockerfile",
+    extensions: [".dockerfile", "dockerfile"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "makefile",
+    extensions: [".mk", "makefile"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "terraform",
+    extensions: [".tf", ".tfvars"],
+    line: ["#", "//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "powershell",
+    extensions: [".ps1", ".psm1", ".psd1"],
+    line: ["#"],
+    block: [["<#", "#>"]],
+    middle: []
+  },
+  {
+    id: "perl",
+    extensions: [".pl", ".pm"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "r",
+    extensions: [".r"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "julia",
+    extensions: [".jl"],
+    line: ["#"],
+    block: [["#=", "=#"]],
+    middle: []
+  },
+  {
+    id: "vue",
+    extensions: [".vue", ".svelte"],
+    line: ["//"],
+    block: [
+      ["/*", "*/"],
+      ["<!--", "-->"]
+    ],
+    middle: ["*"]
+  },
+  {
+    id: "html",
+    extensions: [".html", ".htm", ".xml", ".xhtml"],
+    line: [],
+    block: [["<!--", "-->"]],
+    middle: []
+  },
+  {
+    id: "graphql",
+    extensions: [".graphql", ".gql"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "protobuf",
+    extensions: [".proto"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "zig",
+    extensions: [".zig"],
+    line: ["//"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "clojure",
+    extensions: [".clj", ".cljs", ".cljc", ".edn"],
+    line: [";"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "ocaml",
+    extensions: [".ml", ".mli"],
+    line: [],
+    block: [["(*", "*)"]],
+    middle: ["*"]
+  },
+  {
+    id: "fsharp",
+    extensions: [".fs", ".fsi", ".fsx"],
+    line: ["//"],
+    block: [["(*", "*)"]],
+    middle: ["*"]
+  },
+  {
+    id: "vim",
+    extensions: [".vim"],
+    line: ['"'],
+    block: [],
+    middle: []
+  },
+  {
+    id: "tex",
+    extensions: [".tex", ".sty", ".cls"],
+    line: ["%"],
+    block: [],
+    middle: []
+  }
 ];
-function hashStartsComment(file) {
-  const lower = file.toLowerCase();
-  return HASH_COMMENT_EXTENSIONS.some((extension) => lower.endsWith(extension)) || !lower.includes(".");
+
+// src/core/comment-policy/comment-syntax.store.ts
+function buildIndex(entries) {
+  const byKey = new Map;
+  for (const entry of entries) {
+    const syntax = { line: entry.line, block: entry.block, middle: entry.middle };
+    for (const extension of entry.extensions) {
+      byKey.set(extension.toLowerCase(), syntax);
+    }
+  }
+  return byKey;
+}
+var INDEX = buildIndex(COMMENT_SYNTAX);
+function lookupSyntax(file, index = INDEX) {
+  const lower = file.toLowerCase().replace(/\\/g, "/");
+  const name = lower.slice(lower.lastIndexOf("/") + 1);
+  const direct = index.get(name);
+  if (direct) {
+    return direct;
+  }
+  let best = null;
+  let bestLength = 0;
+  for (const [extension, syntax] of index) {
+    if (extension.startsWith(".") && name.endsWith(extension) && extension.length > bestLength) {
+      best = syntax;
+      bestLength = extension.length;
+    }
+  }
+  return best;
+}
+function syntaxFor(file) {
+  return lookupSyntax(file);
+}
+function unknownExtensions(files) {
+  const unknown = new Set;
+  for (const file of files) {
+    if (lookupSyntax(file) === null) {
+      const name = file.toLowerCase().replace(/\\/g, "/").split("/").pop() ?? file;
+      const dot = name.lastIndexOf(".");
+      unknown.add(dot > 0 ? name.slice(dot) : name);
+    }
+  }
+  return [...unknown].sort();
+}
+var KNOWN_EXTENSION_COUNT = INDEX.size;
+
+// src/core/comment-policy/comment-policy.service.ts
+function matchesSyntax(text, syntax) {
+  const trimmed = text.trimStart();
+  if (trimmed === "") {
+    return false;
+  }
+  if (syntax.line.some((prefix) => prefix !== "" && trimmed.startsWith(prefix))) {
+    return true;
+  }
+  for (const [open, close] of syntax.block) {
+    if (trimmed.startsWith(open)) {
+      return true;
+    }
+    if (open !== close && trimmed.startsWith(close)) {
+      return false;
+    }
+  }
+  return syntax.middle.some((middle) => trimmed.startsWith(middle) && !trimmed.startsWith(middle + middle));
 }
 var TOOL_DIRECTIVE = /^\s*(?:\/\/|\/\*|\*|#)\s*(?:biome-ignore|eslint|@ts-|prettier-ignore|noqa|type:|shellcheck|!)/;
 var DECLARED_REASON = /^\s*(?:\/\/|\/\*|\*|#)\s*(?:why|hazard|invariant):\s*\S/i;
 var CLOSER_OR_CONTINUATION = /^\s*(?:\*\/|\*|\/\/)/;
 var COMMENT_MARKERS = ["why:", "hazard:", "invariant:"];
 function isCommentLine(text, file = "") {
-  const pattern = file !== "" && !hashStartsComment(file) ? SLASH_COMMENT_LINE : COMMENT_LINE;
-  return pattern.test(text) && !TOOL_DIRECTIVE.test(text);
+  const syntax = file === "" ? null : syntaxFor(file);
+  if (syntax === null) {
+    return false;
+  }
+  return matchesSyntax(text, syntax) && !TOOL_DIRECTIVE.test(text);
 }
 function declaresReason(text) {
   return DECLARED_REASON.test(text);
@@ -660,8 +1005,8 @@ function diskLineReader(projectDir) {
     return lines[line - 1];
   };
 }
-async function scanAddedComments(projectDir, relativePaths, mode = "declared") {
-  const added = await listAddedLines(projectDir, relativePaths);
+async function scanAddedComments(projectDir, relativePaths, mode = "declared", base = "HEAD") {
+  const added = await listAddedLines(projectDir, relativePaths, base);
   return findAddedComments(added, mode, diskLineReader(projectDir));
 }
 function commentViolationMessage(hits, mode = "declared") {
@@ -5453,7 +5798,9 @@ var coreFacade = {
     findAddedComments,
     isCommentLine,
     declaresReason,
-    commentViolationMessage
+    commentViolationMessage,
+    unknownExtensions,
+    KNOWN_EXTENSION_COUNT
   },
   ship: {
     detectShipClaim,

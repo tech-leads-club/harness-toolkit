@@ -288,12 +288,35 @@ export function acceptPolicy(root: string, paths: string[], interactive: boolean
       "tlc harness policy accept needs an interactive terminal — clearing a policy divergence is the operator's call, not a script's.",
     );
   }
-  if (paths.length === 0) {
+  /**
+   * why: `--all` accepts exactly what `tlc harness policy` just listed, in this project. Typing each absolute
+   * path was the friction, and the four locks are about *who* clears a divergence and *where from*, not about how
+   * much they have to type ([/decisions/ad-058.md](/decisions/ad-058.md)).
+   *
+   * invariant: still per source. It expands to the diverged list at this moment, so a divergence that appears
+   * afterwards is not covered by it — there is no blanket permission here either.
+   */
+  const requested = paths.includes("--all") ? coreFacade.policy.allDivergedPaths(root) : paths;
+  if (paths.includes("--all") && requested.length === 0) {
+    return `nothing to accept — no policy source diverged in ${root}`;
+  }
+  if (requested.length === 0) {
     throw new UsageError(
-      "usage: tlc harness policy accept <path> [path...]  (run `tlc harness policy` to list)",
+      [
+        "usage: tlc harness policy accept <path> [path...]",
+        "       tlc harness policy accept --all      accept everything `tlc harness policy` lists here",
+      ].join("\n"),
     );
   }
-  const outcome = coreFacade.policy.acceptPolicySources(root, paths);
+  /**
+   * hazard: acceptance is written into this project's baseline directory, and the success line used to claim
+   * "every live session". Run from another directory it printed success and cleared nothing — measured while
+   * unblocking a live session, twice, because the message gave no way to tell. It now names the project, and
+   * says so loudly when this project has no blocked session at all.
+   */
+  const blocked = coreFacade.policy.allDivergedPaths(root);
+  const notHere = requested.filter((path) => !blocked.includes(path));
+  const outcome = coreFacade.policy.acceptPolicySources(root, requested);
   if (outcome.kind === "not-a-source") {
     throw new UsageError(
       [
@@ -304,9 +327,22 @@ export function acceptPolicy(root: string, paths: string[], interactive: boolean
     );
   }
   if (outcome.kind === "nothing-to-accept") {
-    return "nothing to accept — no session has recorded a baseline yet";
+    return [
+      `nothing to accept — ${root} has no recorded session baseline.`,
+      "Acceptance is written per project. Run this from the repository whose session is blocked:",
+      `  cd <that repo> && tlc harness policy accept ${requested.join(" ")}`,
+    ].join("\n");
   }
-  return `accepted: ${outcome.paths.join(", ")}\n  every live session now treats these as the policy the operator set`;
+  const lines = [
+    `accepted: ${outcome.paths.join(", ")}`,
+    `  for sessions in ${root} — acceptance is per project, not machine-wide`,
+  ];
+  if (notHere.length > 0) {
+    lines.push(
+      `  note: ${notHere.join(", ")} was not diverging here. If a session elsewhere is blocked, run this in that repository too.`,
+    );
+  }
+  return lines.join("\n");
 }
 
 export function policyText(root: string): string {
@@ -827,6 +863,7 @@ export function route(args: string[]): Action {
       if (sub !== "accept") {
         throw new UsageError("usage: tlc harness policy [accept <path> [path...]]");
       }
+      // why: `--all` reaches acceptPolicy as a marker in the list, where it expands to what diverged here.
       return { kind: "policy", accept: args.slice(2) };
     }
     case "gate": {

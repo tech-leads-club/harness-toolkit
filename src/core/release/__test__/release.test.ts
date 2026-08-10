@@ -224,11 +224,24 @@ test("decisions needing nothing collapse to a line of ids, not a list of titles"
   assert.equal(digest.includes("First"), false);
 });
 
-// invariant: a note exists only where doctor cannot see the condition. Five of the first six repeated a doctor row.
-test("exactly one shipped decision carries a note, and it is the one doctor cannot see", () => {
+/**
+ * invariant: a note exists only where doctor cannot see the condition. Five of the first six repeated a doctor
+ * row, which is what AD-034 removed. The list is asserted rather than counted, so adding a note is a deliberate
+ * edit here and never a side effect of writing a decision.
+ */
+test("only the decisions doctor cannot see for you carry a note", () => {
   const repoRoot = join(import.meta.dirname, "..", "..", "..", "..");
   const all = readDecisions(repoRoot, allDecisionFiles(repoRoot));
   const withNotes = needsAction(all).map((decision) => decision.id);
-  assert.deepEqual(withNotes, ["AD-027"]);
-  assert.match(needsAction(all)[0]?.migration ?? "", /blocked stop/);
+  // AD-027: a blocked stop, invisible in advance. AD-058: a gate that starts firing where it was silent, on
+  // turns that commit and in languages it never covered — no configuration changed, so nothing detects it.
+  assert.deepEqual(withNotes, ["AD-027", "AD-058"]);
+  for (const decision of needsAction(all)) {
+    assert.ok((decision.migration ?? "").length > 20, `${decision.id} has a note that says nothing`);
+    assert.doesNotMatch(
+      decision.migration ?? "",
+      /run `?tlc harness doctor/i,
+      `${decision.id} repeats doctor`,
+    );
+  }
 });

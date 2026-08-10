@@ -4,28 +4,43 @@ import type { AddedLine } from "../../platform/git.ts";
 import { listAddedLines } from "../../platform/git.ts";
 import type { CommentMode } from "../policy/policy.types.ts";
 import type { CommentFinding } from "./comment-policy.types.ts";
+import { syntaxFor } from "./comment-syntax.store.ts";
+import type { CommentSyntax } from "./comment-syntax.types.ts";
 
-const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*(?![*/])|#)/;
-const SLASH_COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*(?![*/]))/;
-// hazard: `#` starts a comment in shell and Python but not in TS, where it starts a private field —
-// and markdown inside a template literal made `## Heading` read as seven added comments.
-const HASH_COMMENT_EXTENSIONS = [
-  ".bash",
-  ".cfg",
-  ".conf",
-  ".ini",
-  ".py",
-  ".sh",
-  ".toml",
-  ".yaml",
-  ".yml",
-  ".zsh",
-];
-
-function hashStartsComment(file: string): boolean {
-  const lower = file.toLowerCase();
-  return HASH_COMMENT_EXTENSIONS.some((extension) => lower.endsWith(extension)) || !lower.includes(".");
+/**
+ * hazard: this was three hand-written regexes and a ten-extension list. `#` starts a comment in shell and Python
+ * but not in TypeScript, where it starts a private field — and markdown inside a template literal made
+ * `## Heading` read as seven added comments. Both cases are now decided by the catalog, which says which
+ * delimiters a given extension actually has, and a Python docstring is covered because the catalog carries it
+ * ([/decisions/ad-058.md](/decisions/ad-058.md)).
+ *
+ * invariant: a file the catalog does not know produces no findings and is counted as unknown. Guessing a
+ * delimiter for an unrecognised language is how `#` came to mean "comment" in TypeScript.
+ */
+export function matchesSyntax(text: string, syntax: CommentSyntax): boolean {
+  const trimmed = text.trimStart();
+  if (trimmed === "") {
+    return false;
+  }
+  if (syntax.line.some((prefix) => prefix !== "" && trimmed.startsWith(prefix))) {
+    return true;
+  }
+  for (const [open, close] of syntax.block) {
+    if (trimmed.startsWith(open)) {
+      return true;
+    }
+    // hazard: a lone closer ends a block and is not itself a comment line, so counting it would extend every
+    // block by one. A symmetric fence — a Python docstring — is exempt, because its closer is also its opener.
+    if (open !== close && trimmed.startsWith(close)) {
+      return false;
+    }
+  }
+  // hazard: `*` continues a C-family block and `**` is markdown bold. The regex this replaced spelled that
+  // `\*(?![*/])`, and dropping the guard made `**Provider:** \`x\`` in a template literal read as narration —
+  // caught by the test written for that exact regression.
+  return syntax.middle.some((middle) => trimmed.startsWith(middle) && !trimmed.startsWith(middle + middle));
 }
+
 const TOOL_DIRECTIVE =
   /^\s*(?:\/\/|\/\*|\*|#)\s*(?:biome-ignore|eslint|@ts-|prettier-ignore|noqa|type:|shellcheck|!)/;
 const DECLARED_REASON = /^\s*(?:\/\/|\/\*|\*|#)\s*(?:why|hazard|invariant):\s*\S/i;
@@ -33,9 +48,16 @@ const CLOSER_OR_CONTINUATION = /^\s*(?:\*\/|\*|\/\/)/;
 
 export const COMMENT_MARKERS = ["why:", "hazard:", "invariant:"] as const;
 
+/**
+ * why: `file` decides everything now, so an empty one resolves to no syntax rather than to a permissive union of
+ * every delimiter the harness has heard of. The facade keeps this signature; the scanner always has a real path.
+ */
 export function isCommentLine(text: string, file = ""): boolean {
-  const pattern = file !== "" && !hashStartsComment(file) ? SLASH_COMMENT_LINE : COMMENT_LINE;
-  return pattern.test(text) && !TOOL_DIRECTIVE.test(text);
+  const syntax = file === "" ? null : syntaxFor(file);
+  if (syntax === null) {
+    return false;
+  }
+  return matchesSyntax(text, syntax) && !TOOL_DIRECTIVE.test(text);
 }
 
 export function declaresReason(text: string): boolean {
@@ -231,8 +253,9 @@ export async function scanAddedComments(
   projectDir: string,
   relativePaths: string[],
   mode: CommentMode = "declared",
+  base = "HEAD",
 ): Promise<CommentFinding[]> {
-  const added = await listAddedLines(projectDir, relativePaths);
+  const added = await listAddedLines(projectDir, relativePaths, base);
   return findAddedComments(added, mode, diskLineReader(projectDir));
 }
 

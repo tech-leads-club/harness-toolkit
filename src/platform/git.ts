@@ -14,13 +14,20 @@ async function gitLines(projectDir: string, args: string[]): Promise<string[]> {
     .filter(Boolean);
 }
 
-export async function listChangedRepoFiles(projectDir: string): Promise<string[]> {
+/**
+ * why: `base` is the revision the turn started at, not `HEAD`. A turn that commits moves `HEAD` past its own
+ * changes, so every gate reading this list saw an empty diff and skipped — measured on a real turn whose task
+ * was named "schema v2 + tests + commit" ([/decisions/ad-058.md](/decisions/ad-058.md)).
+ *
+ * invariant: `HEAD` stays the default, so a caller with no recorded base behaves exactly as before.
+ */
+export async function listChangedRepoFiles(projectDir: string, base = "HEAD"): Promise<string[]> {
   if (!existsSync(join(projectDir, ".git"))) {
     return [];
   }
 
   const batches = await Promise.all([
-    gitLines(projectDir, ["diff", "--name-only", "HEAD"]),
+    gitLines(projectDir, ["diff", "--name-only", base]),
     gitLines(projectDir, ["diff", "--name-only", "--cached"]),
     gitLines(projectDir, ["ls-files", "--others", "--exclude-standard"]),
   ]);
@@ -71,7 +78,11 @@ export type AddedLine = {
   text: string;
 };
 
-export async function listAddedLines(projectDir: string, relativePaths: string[]): Promise<AddedLine[]> {
+export async function listAddedLines(
+  projectDir: string,
+  relativePaths: string[],
+  base = "HEAD",
+): Promise<AddedLine[]> {
   if (!existsSync(join(projectDir, ".git")) || relativePaths.length === 0) {
     return [];
   }
@@ -91,7 +102,7 @@ export async function listAddedLines(projectDir: string, relativePaths: string[]
       });
       continue;
     }
-    const diff = await gitLines(projectDir, ["diff", "--unified=0", "HEAD", "--", file]);
+    const diff = await gitLines(projectDir, ["diff", "--unified=0", base, "--", file]);
     let lineNo = 0;
     for (const row of diff) {
       const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(row);

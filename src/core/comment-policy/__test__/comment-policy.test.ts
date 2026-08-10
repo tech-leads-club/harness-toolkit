@@ -13,28 +13,47 @@ import {
   scanAddedComments,
 } from "../comment-policy.service.ts";
 
-test("a line comment is a comment in every language the gate accepts", () => {
-  for (const text of ["// x", "  // x", "/* x */", " * continuation", "# x", "  # x"]) {
-    assert.equal(isCommentLine(text), true, text);
+test("a line comment is a comment in the language that has that delimiter", () => {
+  for (const text of ["// x", "  // x", "/* x */", " * continuation"]) {
+    assert.equal(isCommentLine(text, "a.ts"), true, text);
+  }
+  for (const text of ["# x", "  # x"]) {
+    assert.equal(isCommentLine(text, "a.py"), true, text);
   }
 });
 
-test("code is not a comment", () => {
-  for (const text of ["const a = 1;", 'const u = "http://x";', "x = 1  # trailing", "*/"]) {
+// why: the old signature answered from a union of every delimiter the harness had heard of, which is what made
+// `#` a comment in TypeScript. With no file there is no language, and a guess is worse than a miss.
+test("with no file there is no language, so nothing is a comment", () => {
+  for (const text of ["// x", "# x", "/* x */"]) {
     assert.equal(isCommentLine(text), false, text);
   }
 });
 
+test("code is not a comment", () => {
+  for (const text of ["const a = 1;", 'const u = "http://x";', "*/"]) {
+    assert.equal(isCommentLine(text, "a.ts"), false, text);
+  }
+  assert.equal(
+    isCommentLine("x = 1  # trailing", "a.py"),
+    false,
+    "a trailing comment is not an added comment line",
+  );
+});
+
+// hazard: this used to call isCommentLine with no file. Once an absent file meant "no language", every case
+// passed for the wrong reason — the directive exemption was not being exercised at all.
 test("tool directives are not counted — they are configuration, not prose", () => {
   for (const text of [
     "// biome-ignore lint/style/noVar: needed",
     "// eslint-disable-next-line",
     "// @ts-expect-error",
-    "# noqa: E501",
-    "# type: ignore",
-    "#!/usr/bin/env node",
   ]) {
-    assert.equal(isCommentLine(text), false, text);
+    assert.equal(isCommentLine(text, "a.ts"), false, text);
+    assert.equal(isCommentLine(text.replace("//", "//x"), "a.ts"), true, `${text} without the directive`);
+  }
+  for (const text of ["# noqa: E501", "# type: ignore", "#!/usr/bin/env python"]) {
+    assert.equal(isCommentLine(text, "a.py"), false, text);
   }
 });
 
@@ -303,4 +322,55 @@ test("a multi-line doc comment is found by its declaration past the closing */",
     findAddedComments(added, "declared", (_f, line) => lines[line - 1]),
     [],
   );
+});
+
+// AC3 — the case that reached the operator: a docstring added by a turn under `strict`, invisible to the gate
+// because the old regexes knew only `//`, `/*`, `*` and `#`.
+test("a Python docstring added this turn is a finding", () => {
+  const added = [
+    {
+      file: "schema.py",
+      line: 116,
+      text: '    """Return schema descriptor with excel-includable fields."""',
+    },
+  ];
+  assert.equal(findAddedComments(added, "strict").length, 1);
+  assert.equal(findAddedComments(added, "declared").length, 1);
+  assert.equal(findAddedComments([{ file: "a.ts", line: 1, text: '"""not a comment here"""' }]).length, 0);
+});
+
+test("a symmetric fence counts on the line that opens it and the line that closes it", () => {
+  for (const text of ['"""', "'''", '"""docstring"""']) {
+    assert.equal(isCommentLine(text, "a.py"), true, text);
+  }
+});
+
+// AC6/AC7 — the catalog is the only place a language is declared, so its shape is asserted rather than trusted.
+test("no extension is claimed by two languages, and every entry is well formed", async () => {
+  const { COMMENT_SYNTAX } = await import("../comment-syntax.catalog.ts");
+  const seen = new Map<string, string>();
+  for (const entry of COMMENT_SYNTAX) {
+    assert.ok(entry.id.length > 0);
+    assert.ok(entry.extensions.length > 0, `${entry.id} claims no extension`);
+    assert.ok(
+      entry.line.length > 0 || entry.block.length > 0,
+      `${entry.id} declares no delimiter, so it can never match`,
+    );
+    for (const pair of entry.block) {
+      assert.equal(pair.length, 2, `${entry.id} has a malformed block pair`);
+    }
+    for (const extension of entry.extensions) {
+      const key = extension.toLowerCase();
+      assert.equal(seen.get(key), undefined, `${key} is claimed by both ${seen.get(key)} and ${entry.id}`);
+      seen.set(key, entry.id);
+    }
+  }
+  assert.ok(seen.size >= 60, `expected broad coverage, got ${seen.size} extensions`);
+});
+
+test("an unknown extension is named, not silently passed", async () => {
+  const { unknownExtensions } = await import("../comment-syntax.store.ts");
+  assert.deepEqual(unknownExtensions(["a.ts", "b.py", "c.cobol", "d.unknownext"]), [".cobol", ".unknownext"]);
+  assert.deepEqual(unknownExtensions(["a.ts", "Dockerfile", "Makefile"]), []);
+  assert.deepEqual(findAddedComments([{ file: "x.cobol", line: 1, text: "* narration" }]), []);
 });

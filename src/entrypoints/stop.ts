@@ -314,10 +314,16 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
     ? (event.loopCount ?? 0)
     : coreFacade.turn.nextLoop(root, sessionKey);
 
-  const changedFiles = await listChangedRepoFiles(root);
+  const handoff = coreFacade.handoff.readHandoff(root, provider);
+  // hazard: read before the file list, because the list is diffed against it. A turn that commits moves `HEAD`
+  // past its own changes, and every gate below then saw an empty diff and skipped — the comment gate in a repo
+  // whose task was "schema v2 + tests + commit" ([/decisions/ad-058.md](/decisions/ad-058.md)).
+  //
+  // invariant: absent, this is the string `HEAD`, which is exactly the previous behaviour.
+  const turnBase = handoff.turn_base_sha ?? "HEAD";
+  const changedFiles = await listChangedRepoFiles(root, turnBase);
   const codeTargets = filterCodeTargets(changedFiles, policy.codePaths);
   const testTargets = filterTestTargets(changedFiles);
-  const handoff = coreFacade.handoff.readHandoff(root, provider);
   // why: read from the snapshot taken before this handler patches anything, so a credit written by the previous
   // stop is still visible when the gate it belongs to runs below.
   const pendingCredit = handoff.pending_lesson_credit;
@@ -470,7 +476,12 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
     codeTargets.length > 0 &&
     coreFacade.observe.shouldObserve(policy.observe, "comments", policy.comments.enabled)
   ) {
-    const hits = await coreFacade.commentPolicy.scanAddedComments(root, codeTargets, policy.comments.mode);
+    const hits = await coreFacade.commentPolicy.scanAddedComments(
+      root,
+      codeTargets,
+      policy.comments.mode,
+      turnBase,
+    );
     coreFacade.observability.recordObs(root, obsConfigFor(policy), {
       provider,
       kind: "policy.observe",
@@ -482,12 +493,20 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
           proseInjected: policy.comments.enabled,
         }),
         rule: "comments",
+        // why: a language the catalog does not carry produces no findings, which reads identically to "the
+        // property held". Naming the extensions is the difference between a clean reading and a blind spot.
+        unknown_extensions: coreFacade.commentPolicy.unknownExtensions(codeTargets).join(",") || "none",
       },
     });
   }
 
   if (policy.comments.enabled && policy.comments.onViolation === "followup" && codeTargets.length > 0) {
-    const hits = await coreFacade.commentPolicy.scanAddedComments(root, codeTargets, policy.comments.mode);
+    const hits = await coreFacade.commentPolicy.scanAddedComments(
+      root,
+      codeTargets,
+      policy.comments.mode,
+      turnBase,
+    );
     if (hits.length > 0) {
       await coreFacade.handoff.patchHandoff(root, provider, {
         slice: {

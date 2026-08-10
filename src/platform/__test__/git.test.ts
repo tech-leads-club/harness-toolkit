@@ -4,7 +4,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { filterCodeTargets, filterTestTargets, listChangedRepoFiles, runCommand } from "../git.ts";
+import {
+  filterCodeTargets,
+  filterTestTargets,
+  listAddedLines,
+  listChangedRepoFiles,
+  runCommand,
+} from "../git.ts";
 
 function git(cwd: string, args: string[]): void {
   execFileSync("git", args, { cwd });
@@ -80,6 +86,69 @@ describe("runCommand", () => {
     const result = await runCommand(dir, ["node", "-e", "process.stdout.write('x'.repeat(9000) + 'END')"]);
     assert.equal(result.output.length, 8000);
     assert.equal(result.output.endsWith("END"), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * hazard: both of these diffed against `HEAD`, so a turn that committed moved `HEAD` past its own changes and
+ * every stop-time gate read an empty diff and skipped. Reported from a real project whose comment gate was on,
+ * strict, and silent, on a turn whose task was named "schema v2 + tests + commit"
+ * ([/decisions/ad-058.md](/decisions/ad-058.md)).
+ */
+describe("the turn's base, not the HEAD at stop", () => {
+  test("a file committed inside the turn is still a changed file", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+    const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+
+    writeFileSync(join(dir, "a.ts"), "// narration\nexport const a = 2;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "the turn commits its own work"]);
+
+    assert.deepEqual(await listChangedRepoFiles(dir), [], "against HEAD it looks like nothing happened");
+    assert.deepEqual(await listChangedRepoFiles(dir, base), ["a.ts"]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a comment committed inside the turn is still an added line", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+    const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+
+    writeFileSync(join(dir, "a.ts"), "// narration\nexport const a = 2;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "commit inside the turn"]);
+
+    assert.deepEqual(await listAddedLines(dir, ["a.ts"]), [], "against HEAD the comment is invisible");
+    const added = await listAddedLines(dir, ["a.ts"], base);
+    assert.deepEqual(
+      added.map((line) => line.text),
+      ["// narration", "export const a = 2;"],
+    );
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("an uncommitted change is found from either base", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+    const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    writeFileSync(join(dir, "a.ts"), "// narration\nexport const a = 1;\n");
+
+    for (const from of [undefined, base]) {
+      const added =
+        from === undefined ? await listAddedLines(dir, ["a.ts"]) : await listAddedLines(dir, ["a.ts"], from);
+      assert.deepEqual(
+        added.map((line) => line.text),
+        ["// narration"],
+      );
+    }
     rmSync(dir, { recursive: true, force: true });
   });
 });

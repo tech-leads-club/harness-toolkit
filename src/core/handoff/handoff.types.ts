@@ -33,6 +33,12 @@ export type HandoffProviderSlice = {
   // The handoff is the only state that survives between the two ([/decisions/ad-039.md](/decisions/ad-039.md)).
   pending_lesson_credit?: PendingLessonCredit;
   previous_gaps?: GateGap[];
+  /**
+   * why: the revision this turn started at. Every stop-time gate diffs against it rather than against `HEAD`,
+   * because a turn that commits moves `HEAD` past its own changes and each gate then reads an empty diff
+   * ([/decisions/ad-058.md](/decisions/ad-058.md)).
+   */
+  turn_base_sha?: string;
   plan_paths?: string[];
   plan_at?: string;
   plan_snippet?: string;
