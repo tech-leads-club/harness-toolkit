@@ -8,4 +8,7 @@
  * invariant: only variables that name WHICH project. `TLC_HOME` names which runtime, is set deliberately by
  * CI, and is part of what the suite exercises.
  */
-export const PROJECT_SCOPED_ENV = ["CLAUDE_PROJECT_DIR", "TLC_PROJECT_DIR"];
+// hazard: `CURSOR_PROJECT_DIR` was absent while `cursor.inbound.ts` prefers it over the payload's workspace
+// root — the same hole this list exists to close, for the other provider. A suite launched from inside a Cursor
+// hook would have read the real repository exactly as the Claude case did.
+export const PROJECT_SCOPED_ENV = ["CLAUDE_PROJECT_DIR", "CURSOR_PROJECT_DIR", "TLC_PROJECT_DIR"];

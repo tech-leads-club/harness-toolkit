@@ -362,10 +362,16 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
       hasOpenWork: unfinishedWork,
     })
   ) {
+    // hazard: this used to write `blockers`, which is one of the four fields `unfinishedWork` reads — so one
+    // firing manufactured its own precondition and the rail then blocked every later turn regardless of what the
+    // agent did. Two defects compounded: the activity counter could not rise either, so nothing cleared it and
+    // the operator saw the same BLOCKED four times in a row ([/decisions/ad-059.md](/decisions/ad-059.md)).
+    //
+    // invariant: this rail records what it saw and never writes a field it reads. `next_action` is not one of
+    // them, and the follow-up text carries the instruction anyway.
     await coreFacade.handoff.patchHandoff(root, provider, {
       slice: {
         last_failure_category: "agent-quality",
-        blockers: "Turn ended with open work and nothing attempted.",
         next_action: "Attempt the work, or proceed under a stated assumption.",
       },
     });

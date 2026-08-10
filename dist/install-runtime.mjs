@@ -714,7 +714,17 @@ var WRITE = new Set(["cp", "mv", "rm", "rmdir", "tee", "truncate"]);
 var PRIVILEGE = new Set(["chmod", "chown"]);
 var PAIRED_ASK = new Set(["write", "privilege", "network"]);
 // src/core/turn/turn.activity.ts
-var TOOL_KINDS = new Set(["tool.start", "tool.end", "shell.start", "shell.end", "mcp.start", "mcp.end"]);
+var TOOL_KINDS = new Set([
+  "tool.start",
+  "tool.end",
+  "tool.fail",
+  "shell.start",
+  "shell.end",
+  "mcp.start",
+  "mcp.end",
+  "file.edit",
+  "file.read"
+]);
 // bin/tlc-cli.ts
 var NPM_PACKAGE = "@tech-leads-club/harness-toolkit";
 var NPM_MARKER = "installed-from-npm";

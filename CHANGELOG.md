@@ -68,3 +68,4 @@ doctor reports against your own configuration.
 - **AD-057** — The release PR is a mechanism, not a gate, and the bot merges it
 - **AD-058** — Gates diff against the turn's base, and language knowledge is one table
   - **Needs your action:** If a project has the comment gate on, expect it to start firing on turns that commit and on languages it never covered. Nothing changes in your config.
+- **AD-059** — A rail never writes a field it reads, and a counter reads the plane its events land on

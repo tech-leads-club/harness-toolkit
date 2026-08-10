@@ -902,3 +902,73 @@ test("a failure with no recorded resolution leaves the follow-up unchanged", asy
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+/**
+ * hazard: the idle-turn rail wrote `blockers`, which is one of the four fields `unfinishedWork` reads. One firing
+ * therefore manufactured its own precondition and it blocked every later turn regardless of what the agent did —
+ * the operator saw the same BLOCKED four times in a row. The other half was an activity counter that could not
+ * rise, so nothing ever cleared it ([/decisions/ad-059.md](/decisions/ad-059.md)).
+ *
+ * invariant: a rail records what it saw and never writes a field it reads.
+ */
+test("the idle-turn gate does not write the open work it reads", async () => {
+  const root = cleanRepo();
+  try {
+    writeProjectPolicy(root, { intelligence: { idleTurnGate: true } });
+    await coreFacade.handoff.patchHandoff(root, "cursor", {
+      slice: { blockers: "something else set this" },
+    });
+    coreFacade.observability.recordObs(root, coreFacade.observability.DEFAULT_OBS, {
+      provider: "cursor",
+      kind: "prompt.submit",
+      sessionKey: "cursor-conv-1",
+    });
+
+    const outcome = await runHandler(stopHandler, stdinOf(cursorStop(root)));
+    assert.equal(outcome.decision.kind, "continue");
+    if (outcome.decision.kind === "continue") {
+      assert.match(outcome.decision.text, /ended with open work/);
+    }
+
+    // the blocker that armed it is untouched; the rail added none of its own
+    const after = coreFacade.handoff.readHandoff(root, "cursor");
+    assert.equal(after.blockers, "something else set this");
+    assert.equal(after.next_action, "Attempt the work, or proceed under a stated assumption.");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a turn that ran a tool is not idle, even when the tool succeeded", async () => {
+  const root = cleanRepo();
+  try {
+    writeProjectPolicy(root, { intelligence: { idleTurnGate: true } });
+    await coreFacade.handoff.patchHandoff(root, "cursor", { slice: { blockers: "open work" } });
+    const obs = coreFacade.observability.DEFAULT_OBS;
+    coreFacade.observability.recordObs(root, obs, {
+      provider: "cursor",
+      kind: "prompt.submit",
+      sessionKey: "cursor-conv-1",
+    });
+    // why: a successful shell call resolves to the debug plane, and production writes that plane with
+    // OBS_CONFIG_AUDIT, which forces debugEnabled on (support.ts). Recorded the same way here, because the
+    // question is whether the counter reads the plane the work actually lands on.
+    coreFacade.observability.recordObs(
+      root,
+      { ...obs, debugEnabled: true },
+      {
+        provider: "cursor",
+        kind: "shell.end",
+        sessionKey: "cursor-conv-1",
+        attrs: { permission: "allow" },
+      },
+    );
+
+    const outcome = await runHandler(stopHandler, stdinOf(cursorStop(root)));
+    const blocked =
+      outcome.decision.kind === "continue" && /ended with open work/.test(outcome.decision.text);
+    assert.equal(blocked, false, "a turn that ran a tool must not be reported as idle");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

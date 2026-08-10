@@ -5194,28 +5194,39 @@ function evaluateSubagentSpawn(args) {
 }
 
 // src/core/turn/turn.activity.ts
-var TOOL_KINDS = new Set(["tool.start", "tool.end", "shell.start", "shell.end", "mcp.start", "mcp.end"]);
+var TOOL_KINDS = new Set([
+  "tool.start",
+  "tool.end",
+  "tool.fail",
+  "shell.start",
+  "shell.end",
+  "mcp.start",
+  "mcp.end",
+  "file.edit",
+  "file.read"
+]);
 var TURN_START = "prompt.submit";
+var ACTIVITY_PLANES = ["obs.jsonl", "debug.jsonl"];
 function forSession(event, sessionKey) {
   return event.session_id === sessionKey;
 }
 function activitySince(events, sessionKey) {
   const mine = events.filter((event) => forSession(event, sessionKey));
-  let startIndex = -1;
-  for (let i = mine.length - 1;i >= 0; i--) {
-    if (mine[i]?.kind === TURN_START) {
-      startIndex = i;
-      break;
+  let startTs = null;
+  for (const event of mine) {
+    if (event.kind === TURN_START && (startTs === null || event.ts > startTs)) {
+      startTs = event.ts;
     }
   }
-  const window = startIndex >= 0 ? mine.slice(startIndex + 1) : mine;
+  const boundary2 = startTs;
+  const window = boundary2 === null ? mine : mine.filter((event) => event.ts >= boundary2);
   return {
     toolCalls: window.filter((event) => TOOL_KINDS.has(event.kind)).length,
-    sawTurnStart: startIndex >= 0
+    sawTurnStart: boundary2 !== null
   };
 }
 function readTurnActivity(root, sessionKey, limit = 500) {
-  return activitySince(readSignalEvents(root, "obs.jsonl", limit), sessionKey);
+  return activitySince(ACTIVITY_PLANES.flatMap((plane) => readSignalEvents(root, plane, limit)), sessionKey);
 }
 function endedWithoutActing(input) {
   if (!input.hasOpenWork) {
