@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
 // tools/obs-cli.ts
-import { existsSync as existsSync24, mkdirSync as mkdirSync15, readdirSync as readdirSync6, writeFileSync as writeFileSync14 } from "node:fs";
+import { existsSync as existsSync24, mkdirSync as mkdirSync15, readdirSync as readdirSync6, statSync as statSync4, writeFileSync as writeFileSync14 } from "node:fs";
 import { join as join25 } from "node:path";
 
 // src/core/attest/attest.service.ts
@@ -5908,7 +5908,14 @@ function latestSessionId(root) {
   if (!existsSync24(sessions)) {
     return null;
   }
-  const last = readdirSync6(sessions).filter((name) => name.endsWith(".json")).sort().at(-1);
+  const dated = readdirSync6(sessions).filter((name) => name.endsWith(".json")).map((name) => {
+    try {
+      return { name, at: statSync4(join25(sessions, name)).mtimeMs };
+    } catch {
+      return null;
+    }
+  }).filter((entry) => entry !== null).sort((a, b) => a.at === b.at ? a.name.localeCompare(b.name) : a.at - b.at);
+  const last = dated.at(-1)?.name;
   return last ? last.replace(/\.json$/, "") : null;
 }
 function main(argv) {

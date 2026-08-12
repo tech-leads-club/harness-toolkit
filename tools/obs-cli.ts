@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { coreFacade } from "../src/core/index.ts";
 import { readSignalEvents } from "../src/core/observability/observability.store.ts";
@@ -23,15 +23,32 @@ export function limitFrom(raw: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+/**
+ * hazard: this sorted by filename. A session id is a UUID, so alphabetical order has no relation to time — on
+ * this machine it picked a session from thirteen days earlier whose every counter was zero, which reads exactly
+ * like "the harness did nothing". `tlc harness obs report` is the command an operator runs to find out what the
+ * harness did, and it was answering about the wrong session.
+ *
+ * invariant: newest by modification time, and ties break on the name so the answer is deterministic. An
+ * unreadable entry is skipped rather than treated as the newest.
+ */
 export function latestSessionId(root: string): string | null {
   const sessions = join(projectStateDir(root), "sessions");
   if (!existsSync(sessions)) {
     return null;
   }
-  const last = readdirSync(sessions)
+  const dated = readdirSync(sessions)
     .filter((name) => name.endsWith(".json"))
-    .sort()
-    .at(-1);
+    .map((name) => {
+      try {
+        return { name, at: statSync(join(sessions, name)).mtimeMs };
+      } catch {
+        return null;
+      }
+    })
+    .filter((entry): entry is { name: string; at: number } => entry !== null)
+    .sort((a, b) => (a.at === b.at ? a.name.localeCompare(b.name) : a.at - b.at));
+  const last = dated.at(-1)?.name;
   return last ? last.replace(/\.json$/, "") : null;
 }
 

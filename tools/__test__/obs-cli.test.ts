@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, test } from "node:test";
@@ -87,13 +87,34 @@ describe("latestSessionId", () => {
     assert.equal(latestSessionId(root), null);
   });
 
-  test("picks the last id in sort order and strips the extension", () => {
+  /**
+   * hazard: this asserted "the last id in sort order", with fixtures named `aaa` and `zzz` written in that order —
+   * so alphabetical order and time order agreed and the assertion could not tell them apart. Session ids are
+   * UUIDs, where they do not agree: on a real machine it selected a session from thirteen days earlier whose every
+   * counter was zero, which reads exactly like "the harness did nothing". The command that answers "what did the
+   * harness do" was answering about the wrong session.
+   */
+  test("picks the newest session by time, even when it sorts first by name", () => {
     const root = newRoot();
     const sessions = join(projectStateDir(root), "sessions");
     mkdirSync(sessions, { recursive: true });
-    writeFileSync(join(sessions, "aaa.json"), "{}");
-    writeFileSync(join(sessions, "zzz.json"), "{}");
+    writeFileSync(join(sessions, "zzz-older.json"), "{}");
+    utimesSync(join(sessions, "zzz-older.json"), new Date(2020, 0, 1), new Date(2020, 0, 1));
+    writeFileSync(join(sessions, "aaa-newer.json"), "{}");
+    utimesSync(join(sessions, "aaa-newer.json"), new Date(2026, 0, 1), new Date(2026, 0, 1));
     writeFileSync(join(sessions, "ignored.txt"), "x");
-    assert.equal(latestSessionId(root), "zzz");
+    assert.equal(latestSessionId(root), "aaa-newer");
+  });
+
+  test("a tie on time breaks on the name, so the answer is deterministic", () => {
+    const root = newRoot();
+    const sessions = join(projectStateDir(root), "sessions");
+    mkdirSync(sessions, { recursive: true });
+    const when = new Date(2026, 0, 1);
+    for (const name of ["b.json", "a.json", "c.json"]) {
+      writeFileSync(join(sessions, name), "{}");
+      utimesSync(join(sessions, name), when, when);
+    }
+    assert.equal(latestSessionId(root), "c");
   });
 });
