@@ -608,6 +608,14 @@ var LIVE_ALLOWLIST = new Set([
 // src/core/observability/observability.service.ts
 var PAYLOAD_KEYS = new Set(["tool_input", "tool_output", "prompt", "text", "content", "output"]);
 
+// src/core/observability/observability.why.ts
+var NONE = new Set(["none", "", "undefined"]);
+var NOTHING_WAS_THE_HARNESS = [
+  "No harness decision in this window.",
+  "Whatever you just saw was the model, not a rail — the harness allowed everything it was asked about."
+].join(`
+`);
+
 // src/core/policy/policy.defaults.ts
 var DEFAULT_LESSONS_POLICY = {
   enabled: false,

@@ -71,3 +71,4 @@ doctor reports against your own configuration.
 - **AD-059** — A rail never writes a field it reads, and a counter reads the plane its events land on
 - **AD-060** — The gate records the environment it ran under, and names it only once the cheap explanations are spent
 - **AD-061** — A decision that refuses names its rule, and degrading preserves it
+- **AD-062** — One command answers whether the harness did that, and says so plainly when it did not

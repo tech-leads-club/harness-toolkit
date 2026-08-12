@@ -299,6 +299,13 @@ describe("statusText / help text", () => {
     assert.equal(report.grind, false);
   });
 
+  // why: a first-class verb, because nobody who cannot tell the harness from the model remembers that the answer
+  // lives under `obs` ([/decisions/ad-062.md](/decisions/ad-062.md)).
+  test("why routes to the obs entry with its subcommand and count", () => {
+    assert.deepEqual(route(["why"]), { kind: "entry", entry: "obs-cli", args: ["why"] });
+    assert.deepEqual(route(["why", "25"]), { kind: "entry", entry: "obs-cli", args: ["why", "25"] });
+  });
+
   test("helpText names 'tlc harness', never bare 'harness'", () => {
     const text = helpText();
     assert.ok(text.includes("tlc harness"));

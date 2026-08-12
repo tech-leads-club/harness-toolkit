@@ -76,5 +76,6 @@ Handoff section and a link back to this index.
 | [AD-059](/decisions/ad-059.md) | A rail never writes a field it reads, and a counter reads the plane its events land on | active |
 | [AD-060](/decisions/ad-060.md) | The gate records the environment it ran under, and names it only once the cheap explanations are spent | active |
 | [AD-061](/decisions/ad-061.md) | A decision that refuses names its rule, and degrading preserves it | active |
+| [AD-062](/decisions/ad-062.md) | One command answers whether the harness did that, and says so plainly when it did not | active |
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).

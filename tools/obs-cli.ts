@@ -82,6 +82,20 @@ function main(argv: string[]): void {
     process.exit(0);
   }
 
+  // why: the two planes, because the signal plane carries the refusals and the debug plane carries the allows.
+  // Neither alone answers "did the harness just do that?" ([/decisions/ad-062.md](/decisions/ad-062.md)).
+  if (cmd === "why") {
+    const limit = limitFrom(arg, 10);
+    const events = ["obs.jsonl", "debug.jsonl"].flatMap((plane) => readSignalEvents(root, plane, 400));
+    const decisions = coreFacade.observability.decisionsFrom(events).slice(0, limit);
+    if (json) {
+      emitJson({ count: decisions.length, decisions });
+    } else {
+      console.log(coreFacade.observability.whyText(decisions));
+    }
+    process.exit(0);
+  }
+
   if (cmd === "report") {
     const conversationId = arg ?? latestSessionId(root);
     if (!conversationId) {
@@ -142,7 +156,7 @@ function main(argv: string[]): void {
     process.exit(0);
   }
 
-  console.error("usage: tlc harness obs <live|events|report|rollup|prune> [arg] [--json]");
+  console.error("usage: tlc harness obs <live|events|why|report|rollup|prune> [arg] [--json]");
   process.exit(1);
 }
 

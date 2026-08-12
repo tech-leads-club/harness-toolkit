@@ -161,6 +161,7 @@ Every row above names a command in its last column. These are those commands.
 | `tlc harness obs live` | The same signal as it happens |
 | `tlc harness handoff` | What the turn left open: gaps, blockers, next action, plan scope, failure category |
 | `tlc harness lessons list` | Every lesson in all three tiers, with staleness, validity and whether it ever helped |
+| `tlc harness why [n]` | The last n decisions this tool made, with the rule behind each — and a plain sentence when it made none |
 | `tlc harness attest` | One hash-chained record per session: policy in force, rails active, refusals by rule, gate outcomes |
 | `tlc harness policy` | Which policy source changed mid-session, changing nothing |
 | `--json` on any of them | The same content, machine-readable |
@@ -168,6 +169,11 @@ Every row above names a command in its last column. These are those commands.
 All of these read. None of them changes a decision.
 
 ## How to explain a decision
+
+**Start with `tlc harness why`** — the last ten decisions this tool made, each with the rule behind it. When the
+harness did nothing, it says that in words, which is the answer no other command gives. Full guide:
+[`docs/troubleshooting.md`](docs/troubleshooting.md).
+
 
 You saw a message and want to know which rule produced it.
 

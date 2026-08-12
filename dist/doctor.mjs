@@ -3773,6 +3773,91 @@ function recordFromEvent(root, config, event, extra = {}) {
   });
 }
 
+// src/core/observability/observability.why.ts
+var NONE = new Set(["none", "", "undefined"]);
+function attr(event, name) {
+  const value = event.attrs?.[name];
+  return value === undefined || value === null ? undefined : String(value);
+}
+function ruleOf(event) {
+  const raw = attr(event, "rule");
+  return raw === undefined || NONE.has(raw) ? null : raw;
+}
+function truncate(text, max = 90) {
+  if (!text) {
+    return "";
+  }
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length <= max ? flat : `${flat.slice(0, max - 1)}…`;
+}
+function decisionsFrom(events, sessionKey) {
+  const out = [];
+  for (const event of events) {
+    if (sessionKey !== undefined && event.session_id !== sessionKey) {
+      continue;
+    }
+    if (event.kind === "policy.deny") {
+      out.push({
+        ts: event.ts,
+        about: attr(event, "event") ?? "tool",
+        verdict: attr(event, "permission") ?? "deny",
+        rule: ruleOf(event),
+        detail: truncate(attr(event, "tool_name"))
+      });
+      continue;
+    }
+    if (event.kind === "shell.start") {
+      out.push({
+        ts: event.ts,
+        about: "shell",
+        verdict: attr(event, "permission") ?? "allow",
+        rule: ruleOf(event),
+        detail: truncate(attr(event, "command"))
+      });
+      continue;
+    }
+    if (event.kind === "gate.outcome") {
+      out.push({
+        ts: event.ts,
+        about: `gate ${attr(event, "gate") ?? "?"}`,
+        verdict: attr(event, "passed") === "true" ? "pass" : "fail",
+        rule: null,
+        detail: truncate(attr(event, "scoped_env") === "none" ? "" : `env: ${attr(event, "scoped_env")}`)
+      });
+      continue;
+    }
+    if (event.kind === "session.start") {
+      out.push({
+        ts: event.ts,
+        about: "session start",
+        verdict: "context",
+        rule: null,
+        detail: truncate(`${attr(event, "injected_chars") ?? "0"} chars injected`)
+      });
+    }
+  }
+  return out.sort((a, b) => a.ts === b.ts ? 0 : a.ts < b.ts ? 1 : -1);
+}
+var NOTHING_WAS_THE_HARNESS = [
+  "No harness decision in this window.",
+  "Whatever you just saw was the model, not a rail — the harness allowed everything it was asked about."
+].join(`
+`);
+function whyText(decisions) {
+  if (decisions.length === 0) {
+    return NOTHING_WAS_THE_HARNESS;
+  }
+  const lines = decisions.map((decision) => {
+    const when = decision.ts.slice(11, 19);
+    const rule = decision.rule === null ? "rule=unattributed" : `rule=${decision.rule}`;
+    const head = `${when}  ${decision.about.padEnd(14)} ${decision.verdict.padEnd(7)} ${rule}`.trimEnd();
+    return decision.detail ? `${head}
+${" ".repeat(10)}${decision.detail}` : head;
+  });
+  return [`Last ${decisions.length} harness decision(s), newest first:`, "", ...lines].join(`
+`);
+}
+
 // src/core/observe/observe.service.ts
 var OBSERVABLE_RAILS = ["comments"];
 function isObservableRail(rail) {
@@ -5816,6 +5901,9 @@ var coreFacade = {
     railsNeverFired,
     readSignalEvents,
     getRollup,
+    decisionsFrom,
+    whyText,
+    NOTHING_WAS_THE_HARNESS,
     pruneObs,
     pruneSpool
   },

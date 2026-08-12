@@ -28,6 +28,7 @@ See [/log.md](/log.md) for the chronological record of this bundle's own constru
 | Doc | Description |
 | --- | --- |
 | [/init.md](/init.md) | What tlc harness init creates, what it deliberately does not do, and the mandatory harness-init wizard's capability menu — including the Bun-vs-Node hook runtime question. |
+| [/troubleshooting.md](/troubleshooting.md) | How to tell a harness decision from model behaviour, in the moment and after the fact: the one command that answers it, what each rule name means, and the four symptoms that are not the harness at all. |
 | [/diagnose.md](/diagnose.md) | Checklist for hooks not firing, Node vs Bun runtime confusion, stale runtime, subagent denials, cost showing null, and double hooks — for both Cursor and Claude Code. |
 | [/measure.md](/measure.md) | How to read harness observability: status, live signal, raw signal, session reports, audit trail, price catalogs, and the on-disk project state files, all provider-tagged. |
 
