@@ -52,14 +52,36 @@ export function colorEnabled(
   return isTty;
 }
 
+export type StatusLevel = "ok" | "warn" | "fail" | "info";
+
 export type Style = {
   paint: (name: ColorName, text: string) => string;
   bold: (text: string) => string;
   dim: (text: string) => string;
   heading: (text: string) => string;
   footer: (text: string) => string;
+  // why: one shape for a label/value row and one for a status line, so a new screen inherits the standard instead
+  // of inventing spacing ([/decisions/ad-063.md](/decisions/ad-063.md)).
+  kv: (label: string, value: string, width?: number) => string;
+  status: (level: StatusLevel, text: string) => string;
   enabled: boolean;
 };
+
+const STATUS_COLOR: Record<StatusLevel, ColorName> = {
+  ok: "success",
+  warn: "warning",
+  fail: "error",
+  info: "info",
+};
+
+const STATUS_MARK: Record<StatusLevel, string> = {
+  ok: SYMBOLS.check,
+  warn: SYMBOLS.warning,
+  fail: SYMBOLS.cross,
+  info: SYMBOLS.arrowRight,
+};
+
+export const KV_WIDTH = 16;
 
 // why: truecolor written directly because this package has no runtime dependency and ships no binary
 // ([/decisions/ad-012.md](/decisions/ad-012.md)).
@@ -73,6 +95,8 @@ export function createStyle(enabled = colorEnabled()): Style {
     dim: (text) => paint("textDim", text),
     heading: (text) => paint("accent", `${SYMBOLS.rule} ${text} ${SYMBOLS.rule}`),
     footer: (text) => paint("textDim", `${SYMBOLS.dash} ${text} ${SYMBOLS.dash}`),
+    kv: (label, value, width = KV_WIDTH) => `  ${paint("textMuted", `${label}:`.padEnd(width))} ${value}`,
+    status: (level, text) => `${paint(STATUS_COLOR[level], STATUS_MARK[level])} ${text}`,
   };
 }
 

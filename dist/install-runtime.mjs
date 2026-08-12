@@ -649,6 +649,19 @@ function colorEnabled(env = process.env, argv = process.argv, isTty = process.st
   }
   return isTty;
 }
+var STATUS_COLOR = {
+  ok: "success",
+  warn: "warning",
+  fail: "error",
+  info: "info"
+};
+var STATUS_MARK = {
+  ok: SYMBOLS.check,
+  warn: SYMBOLS.warning,
+  fail: SYMBOLS.cross,
+  info: SYMBOLS.arrowRight
+};
+var KV_WIDTH = 16;
 function createStyle(enabled = colorEnabled()) {
   const wrap = (code, text) => enabled ? `${ESC}[${code}m${text}${RESET}` : text;
   const paint = (name, text) => wrap(`38;2;${rgb(COLORS[name])}`, text);
@@ -658,7 +671,9 @@ function createStyle(enabled = colorEnabled()) {
     bold: (text) => wrap("1", text),
     dim: (text) => paint("textDim", text),
     heading: (text) => paint("accent", `${SYMBOLS.rule} ${text} ${SYMBOLS.rule}`),
-    footer: (text) => paint("textDim", `${SYMBOLS.dash} ${text} ${SYMBOLS.dash}`)
+    footer: (text) => paint("textDim", `${SYMBOLS.dash} ${text} ${SYMBOLS.dash}`),
+    kv: (label, value, width = KV_WIDTH) => `  ${paint("textMuted", `${label}:`.padEnd(width))} ${value}`,
+    status: (level, text) => `${paint(STATUS_COLOR[level], STATUS_MARK[level])} ${text}`
   };
 }
 var PLAIN = createStyle(false);

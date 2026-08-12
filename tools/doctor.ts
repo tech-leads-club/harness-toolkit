@@ -9,6 +9,7 @@ import type { ProviderWiring } from "../src/contracts/index.ts";
 import { coreFacade } from "../src/core/index.ts";
 import { emitJson, takeJsonFlag } from "../src/platform/cli-output.ts";
 import { projectConfigPath, projectStateDir, runtimeHome } from "../src/platform/paths.ts";
+import { type ColorName, createStyle, PLAIN, type Style, SYMBOLS } from "../src/platform/style.ts";
 import { mergeClaudeSettings } from "../src/providers/claude/claude.wiring.ts";
 import {
   cursorWiringProblems,
@@ -571,20 +572,34 @@ export function toReport(checks: readonly Check[]): DoctorReport {
   };
 }
 
-export function formatReport(checks: readonly Check[]): string {
+export function formatReport(checks: readonly Check[], style: Style = PLAIN): string {
   const marks: Record<CheckLevel, string> = { ok: "OK  ", warn: "WARN", fail: "FAIL" };
-  const lines = checks.map((c) => `${marks[c.level]}  ${c.name} — ${c.detail}`);
+  const paint: Record<CheckLevel, ColorName> = { ok: "success", warn: "warning", fail: "error" };
+  const lines = checks.map(
+    (c) =>
+      `${style.paint(paint[c.level], marks[c.level])}  ${style.paint("textMuted", c.name)} ${style.dim("—")} ${c.detail}`,
+  );
   const failed = checks.filter((c) => c.level === "fail").length;
   const warned = checks.filter((c) => c.level === "warn").length;
   lines.push("");
   // hazard: this said "all checks passed" under twelve warnings, which is a contradiction the reader has to resolve
   // by deciding one of the two is lying ([/decisions/ad-034.md](/decisions/ad-034.md)).
   if (failed > 0) {
-    lines.push(`doctor: ${plural(failed, "failure")}${warned > 0 ? `, ${plural(warned, "warning")}` : ""}`);
+    lines.push(
+      style.paint(
+        "error",
+        `${SYMBOLS.cross} doctor: ${plural(failed, "failure")}${warned > 0 ? `, ${plural(warned, "warning")}` : ""}`,
+      ),
+    );
   } else if (warned > 0) {
-    lines.push(`doctor: no failures, ${plural(warned, "warning")} to read above`);
+    lines.push(
+      style.paint(
+        "warning",
+        `${SYMBOLS.warning} doctor: no failures, ${plural(warned, "warning")} to read above`,
+      ),
+    );
   } else {
-    lines.push("doctor: all checks passed");
+    lines.push(style.paint("success", `${SYMBOLS.check} doctor: all checks passed`));
   }
   return lines.join("\n");
 }
@@ -610,7 +625,7 @@ if (import.meta.main) {
   if (json) {
     emitJson(toReport(checks));
   } else {
-    console.log(formatReport(checks));
+    console.log(formatReport(checks, createStyle()));
   }
   process.exit(exitCodeFor(checks));
 }

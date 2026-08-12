@@ -263,7 +263,7 @@ describe("statusText / help text", () => {
     const root = newRoot();
     const text = statusText(root);
     assert.ok(text.includes(root));
-    assert.ok(text.includes("mode:   solo"));
+    assert.match(text, /mode:\s+.*solo/);
   });
 
   test("statusJson carries the same three facts as data, with no prose", () => {
@@ -413,6 +413,7 @@ describe("harness test — step plan and runner", () => {
         "check-suppressions",
         "check-wiring",
         "check-docs-bundle",
+        "check-screens",
         "capabilities in sync",
         "changelog in sync",
       ],
@@ -441,8 +442,9 @@ describe("harness test — step plan and runner", () => {
     assert.deepEqual(steps[5]?.args, ["tools/check-suppressions.ts"]);
     assert.deepEqual(steps[6]?.args, ["tools/check-wiring.ts"]);
     assert.deepEqual(steps[7]?.args, ["tools/check-docs-bundle.ts"]);
-    assert.deepEqual(steps[8]?.args, ["tools/render-capabilities.ts", "--check"]);
-    assert.deepEqual(steps[9]?.args, ["tools/render-changelog.ts", "--check"]);
+    assert.deepEqual(steps[8]?.args, ["tools/check-screens.ts"]);
+    assert.deepEqual(steps[9]?.args, ["tools/render-capabilities.ts", "--check"]);
+    assert.deepEqual(steps[10]?.args, ["tools/render-changelog.ts", "--check"]);
   });
 
   test("stops at the first failing step and does not run the rest", () => {
@@ -556,7 +558,7 @@ describe("status agrees with the policy the hooks resolve", () => {
     const text = statusText(root);
     assert.ok(text.includes(report.mode));
     assert.ok(text.includes(`from ${report.modeOrigin}`));
-    assert.match(text, /grind: {2}ON/);
+    assert.match(text, /grind:\s+.*ON/);
   });
 
   test("pause still comes from the flag the stop reads", () => {

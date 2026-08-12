@@ -3802,6 +3802,19 @@ function colorEnabled(env = process.env, argv = process.argv, isTty = process.st
   }
   return isTty;
 }
+var STATUS_COLOR = {
+  ok: "success",
+  warn: "warning",
+  fail: "error",
+  info: "info"
+};
+var STATUS_MARK = {
+  ok: SYMBOLS.check,
+  warn: SYMBOLS.warning,
+  fail: SYMBOLS.cross,
+  info: SYMBOLS.arrowRight
+};
+var KV_WIDTH = 16;
 function createStyle(enabled = colorEnabled()) {
   const wrap = (code, text) => enabled ? `${ESC}[${code}m${text}${RESET}` : text;
   const paint = (name, text) => wrap(`38;2;${rgb(COLORS[name])}`, text);
@@ -3811,7 +3824,9 @@ function createStyle(enabled = colorEnabled()) {
     bold: (text) => wrap("1", text),
     dim: (text) => paint("textDim", text),
     heading: (text) => paint("accent", `${SYMBOLS.rule} ${text} ${SYMBOLS.rule}`),
-    footer: (text) => paint("textDim", `${SYMBOLS.dash} ${text} ${SYMBOLS.dash}`)
+    footer: (text) => paint("textDim", `${SYMBOLS.dash} ${text} ${SYMBOLS.dash}`),
+    kv: (label, value, width = KV_WIDTH) => `  ${paint("textMuted", `${label}:`.padEnd(width))} ${value}`,
+    status: (level, text) => `${paint(STATUS_COLOR[level], STATUS_MARK[level])} ${text}`
   };
 }
 var PLAIN = createStyle(false);
@@ -6131,6 +6146,33 @@ function unknownFlags(args) {
   return args.filter((arg) => arg.startsWith("--"));
 }
 
+// src/platform/screen.ts
+function render(screen, style) {
+  const out = [style.heading(screen.title.toUpperCase())];
+  if (screen.summary && screen.summary.length > 0) {
+    out.push(`   ${screen.summary.join(style.dim(` ${SYMBOLS.bar} `))}`);
+  }
+  const width = Math.max(KV_WIDTH, ...screen.sections.flatMap((section) => (section.rows ?? []).map((row) => row.label.length + 1)));
+  for (const section of screen.sections) {
+    out.push("");
+    if (section.title) {
+      out.push(style.paint("accent", section.title));
+    }
+    for (const row of section.rows ?? []) {
+      const value = row.level ? style.status(row.level, row.value) : row.value;
+      out.push(style.kv(row.label, value, width));
+    }
+    for (const line of section.lines ?? []) {
+      out.push(line === "" ? "" : `  ${line}`);
+    }
+  }
+  if (screen.footer) {
+    out.push("", style.footer(screen.footer));
+  }
+  return out.join(`
+`);
+}
+
 // bin/tlc-cli.ts
 class UsageError extends Error {
 }
@@ -6167,24 +6209,42 @@ function gatesPaused(root) {
 function acceptedModes() {
   return coreFacade.policy.OPERATOR_MODES.join(" | ");
 }
-function statusText(root) {
+function statusScreen(root) {
   const report = statusJson(root);
   const origin = report.modeInvalid === undefined ? `from ${report.modeOrigin}` : `${report.modeOrigin} — \`${report.modeInvalid}\` is not a posture; accepted: ${acceptedModes()}`;
-  return [
-    `harness @ ${root}`,
-    `  mode:   ${report.mode} [${origin}]`,
-    `  grind:  ${report.grind ? "ON  — stop hook re-runs lint/tests and auto-retries on fail" : "OFF — no auto fix loops"}`,
-    `  gates:  ${report.gatesPaused ? "PAUSED — stop checks disabled" : "active"}`,
-    "",
-    "Quick help:",
-    "  grind ON  = after each agent turn, lint/test changed files; if fail → agent must fix",
-    "  pause     = temporarily disable those stop checks",
-    "  posture   = how much the agent surfaces. Verification is identical at all three.",
-    "  paired    = explains as it goes, and asks before any sizable move",
-    "  solo      = works on its own; a destructive action, a dead-end or real ambiguity reaches you",
-    "  focus     = only a destructive action or a dead-end reaches you; it settles ambiguity itself"
-  ].join(`
-`);
+  return {
+    title: "harness status",
+    summary: [root],
+    sections: [
+      {
+        rows: [
+          { label: "mode", value: `${report.mode} [${origin}]`, level: "info" },
+          {
+            label: "grind",
+            value: report.grind ? "ON — stop hook re-runs lint/tests and auto-retries on fail" : "OFF — no auto fix loops",
+            level: report.grind ? "ok" : "info"
+          },
+          {
+            label: "gates",
+            value: report.gatesPaused ? "PAUSED — stop checks disabled" : "active",
+            level: report.gatesPaused ? "warn" : "ok"
+          }
+        ]
+      },
+      {
+        title: "Postures",
+        lines: [
+          "paired  explains as it goes, and asks before any sizable move",
+          "solo    works on its own; a destructive action, a dead-end or real ambiguity reaches you",
+          "focus   only a destructive action or a dead-end reaches you; it settles ambiguity itself"
+        ]
+      }
+    ],
+    footer: "verification is identical at all three postures  ·  tlc harness why  ·  tlc harness doctor"
+  };
+}
+function statusText(root, style = PLAIN) {
+  return render(statusScreen(root), style);
 }
 function statusJson(root) {
   const policy = coreFacade.policy.loadPolicy(root);
@@ -6250,27 +6310,30 @@ function handoffJson(root) {
   }
   return { root, providers };
 }
-function handoffText(report) {
-  const names = Object.keys(report.providers);
+function handoffScreen(report) {
+  const names = Object.keys(report.providers).sort();
   if (names.length === 0) {
-    return `handoff @ ${report.root}
-  nothing recorded yet — this is a fresh start, not a missing file`;
+    return {
+      title: "handoff",
+      summary: [report.root],
+      sections: [{ lines: ["nothing recorded yet — this is a fresh start, not a missing file"] }]
+    };
   }
-  const lines = [`handoff @ ${report.root}`];
-  for (const name of names.sort()) {
+  const sections = [];
+  for (const name of names) {
     const slice = report.providers[name];
     if (!slice) {
       continue;
     }
-    lines.push(`  ${name} (updated ${slice.updated_at})`);
-    for (const [label, value] of [
-      ["blockers", slice.blockers],
-      ["next", slice.next_action],
-      ["last gate", slice.last_gate_result],
-      ["last failure", slice.last_failure_category]
+    const rows = [];
+    for (const [label, value, level] of [
+      ["blockers", slice.blockers, "warn"],
+      ["next", slice.next_action, "info"],
+      ["last gate", slice.last_gate_result, slice.last_gate_result === "pass" ? "ok" : "warn"],
+      ["last failure", slice.last_failure_category, "fail"]
     ]) {
       if (value) {
-        lines.push(`    ${label}: ${value}`);
+        rows.push({ label, value: String(value), level });
       }
     }
     for (const [label, list] of [
@@ -6279,33 +6342,59 @@ function handoffText(report) {
       ["gaps", slice.previous_gaps?.map((gap) => gap.summary)]
     ]) {
       if (list && list.length > 0) {
-        lines.push(`    ${label}: ${list.slice(0, 6).join(" | ")}`);
+        rows.push({ label, value: list.slice(0, 6).join(" | ") });
       }
     }
+    sections.push({ title: `${name} (updated ${slice.updated_at})`, rows });
   }
-  return lines.join(`
-`);
+  return { title: "handoff", summary: [report.root], sections };
 }
-function attestText(root) {
+function handoffText(report, style = PLAIN) {
+  return render(handoffScreen(report), style);
+}
+function attestScreen(root) {
   const records = coreFacade.attest.readAttestations(root);
   const verdict = coreFacade.attest.verifyChain(records);
-  const head = verdict.ok ? `attestation chain OK — ${verdict.length} session(s)` : `attestation chain BROKEN at record ${verdict.brokenAt} (${verdict.reason})`;
+  const head = verdict.ok ? { label: "chain", value: `attestation chain OK — ${verdict.length} session(s)`, level: "ok" } : {
+    label: "chain",
+    value: `attestation chain BROKEN at record ${verdict.brokenAt} (${verdict.reason})`,
+    level: "fail"
+  };
   if (records.length === 0) {
-    return `${head}
-  no sessions recorded yet`;
+    return {
+      title: "attestation",
+      summary: [root],
+      sections: [{ rows: [head] }, { lines: ["no sessions recorded yet"] }]
+    };
   }
-  const rows = records.slice(-10).map((record) => {
+  const sections = [{ rows: [head] }];
+  for (const record of records.slice(-10).reverse()) {
     const rules = Object.entries(record.decisionsByRule).map(([rule, count]) => `${rule}=${count}`).join(" ");
-    return [
-      `  ${record.ts}  ${record.provider}/${record.session}`,
-      `    policy ${record.policyFingerprint}${record.policyDiverged ? " (DIVERGED mid-session)" : ""}`,
-      `    rails  ${record.railsActive.join(", ") || "none"}`,
-      `    gates  ${record.gates.pass} pass / ${record.gates.fail} fail${rules ? `  |  ${rules}` : ""}`
-    ].join(`
-`);
-  });
-  return [head, ...rows].join(`
-`);
+    sections.push({
+      title: `${record.ts}  ${record.provider}/${record.session}`,
+      rows: [
+        {
+          label: "policy",
+          value: `${record.policyFingerprint}${record.policyDiverged ? " (DIVERGED mid-session)" : ""}`,
+          level: record.policyDiverged ? "warn" : "ok"
+        },
+        { label: "rails", value: record.railsActive.join(", ") || "none" },
+        {
+          label: "gates",
+          value: `${record.gates.pass} pass / ${record.gates.fail} fail${rules ? `  |  ${rules}` : ""}`
+        }
+      ]
+    });
+  }
+  return {
+    title: "attestation",
+    summary: [root],
+    sections,
+    footer: "chained, not signed — it detects a rewritten record and proves nothing about authorship"
+  };
+}
+function attestText(root, style = PLAIN) {
+  return render(attestScreen(root), style);
 }
 function attestJson(root) {
   const records = coreFacade.attest.readAttestations(root);
@@ -6777,6 +6866,7 @@ function buildTestSteps() {
     { label: "check-suppressions", bin: "node", args: ["tools/check-suppressions.ts"] },
     { label: "check-wiring", bin: "node", args: ["tools/check-wiring.ts"] },
     { label: "check-docs-bundle", bin: "node", args: ["tools/check-docs-bundle.ts"] },
+    { label: "check-screens", bin: "node", args: ["tools/check-screens.ts"] },
     { label: "capabilities in sync", bin: "node", args: ["tools/render-capabilities.ts", "--check"] },
     { label: "changelog in sync", bin: "node", args: ["tools/render-changelog.ts", "--check"] }
   ];
@@ -6975,7 +7065,7 @@ function main(argv) {
       if (json) {
         emitJson(statusJson(root));
       } else {
-        console.log(statusText(root));
+        console.log(statusText(root, createStyle()));
       }
       break;
     }
@@ -7005,7 +7095,7 @@ function main(argv) {
       if (json) {
         emitJson(report);
       } else {
-        console.log(attestText(root));
+        console.log(attestText(root, createStyle()));
       }
       process.exit(report.ok ? 0 : 1);
       break;
@@ -7121,6 +7211,7 @@ export {
   upstreamRef,
   unmanagedRuntimeMessage,
   statusText,
+  statusScreen,
   statusJson,
   skipFlagPath,
   setPaused,
@@ -7148,6 +7239,7 @@ export {
   linkedRuntimeMessage,
   helpText,
   handoffText,
+  handoffScreen,
   handoffJson,
   grindOn,
   grindFlagPath,
@@ -7160,6 +7252,7 @@ export {
   buildTestSteps,
   buildBinPath,
   attestText,
+  attestScreen,
   attestJson,
   acceptedModes,
   acceptPolicy,

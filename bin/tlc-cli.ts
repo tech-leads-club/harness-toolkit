@@ -14,6 +14,8 @@ import { delimiter, join } from "node:path";
 import { coreFacade } from "../src/core/index.ts";
 import { emitJson, JSON_FLAG, takeJsonFlag, unknownFlags } from "../src/platform/cli-output.ts";
 import { flagsDir, projectConfigPath, projectStateDir, runtimeHome } from "../src/platform/paths.ts";
+import { type Row, render, type Screen, type Section } from "../src/platform/screen.ts";
+import { createStyle, PLAIN, type Style } from "../src/platform/style.ts";
 
 export class UsageError extends Error {}
 
@@ -67,28 +69,50 @@ export function acceptedModes(): string {
   return coreFacade.policy.OPERATOR_MODES.join(" | ");
 }
 
-export function statusText(root: string): string {
+export function statusScreen(root: string): Screen {
   const report = statusJson(root);
-  // why: a rejected value is reported next to the posture that replaced it. Printing only `fallback` would
-  // leave the operator with a posture they did not set and no way to see which word was refused.
+  // why: a rejected value is reported next to the posture that replaced it. Printing only `fallback` would leave
+  // the operator with a posture they did not set and no way to see which word was refused.
   const origin =
     report.modeInvalid === undefined
       ? `from ${report.modeOrigin}`
       : `${report.modeOrigin} — \`${report.modeInvalid}\` is not a posture; accepted: ${acceptedModes()}`;
-  return [
-    `harness @ ${root}`,
-    `  mode:   ${report.mode} [${origin}]`,
-    `  grind:  ${report.grind ? "ON  — stop hook re-runs lint/tests and auto-retries on fail" : "OFF — no auto fix loops"}`,
-    `  gates:  ${report.gatesPaused ? "PAUSED — stop checks disabled" : "active"}`,
-    "",
-    "Quick help:",
-    "  grind ON  = after each agent turn, lint/test changed files; if fail → agent must fix",
-    "  pause     = temporarily disable those stop checks",
-    "  posture   = how much the agent surfaces. Verification is identical at all three.",
-    "  paired    = explains as it goes, and asks before any sizable move",
-    "  solo      = works on its own; a destructive action, a dead-end or real ambiguity reaches you",
-    "  focus     = only a destructive action or a dead-end reaches you; it settles ambiguity itself",
-  ].join("\n");
+  return {
+    title: "harness status",
+    summary: [root],
+    sections: [
+      {
+        rows: [
+          { label: "mode", value: `${report.mode} [${origin}]`, level: "info" },
+          {
+            label: "grind",
+            value: report.grind
+              ? "ON — stop hook re-runs lint/tests and auto-retries on fail"
+              : "OFF — no auto fix loops",
+            level: report.grind ? "ok" : "info",
+          },
+          {
+            label: "gates",
+            value: report.gatesPaused ? "PAUSED — stop checks disabled" : "active",
+            level: report.gatesPaused ? "warn" : "ok",
+          },
+        ],
+      },
+      {
+        title: "Postures",
+        lines: [
+          "paired  explains as it goes, and asks before any sizable move",
+          "solo    works on its own; a destructive action, a dead-end or real ambiguity reaches you",
+          "focus   only a destructive action or a dead-end reaches you; it settles ambiguity itself",
+        ],
+      },
+    ],
+    footer: "verification is identical at all three postures  ·  tlc harness why  ·  tlc harness doctor",
+  };
+}
+
+export function statusText(root: string, style: Style = PLAIN): string {
+  return render(statusScreen(root), style);
 }
 
 export type StatusReport = {
@@ -191,26 +215,30 @@ export function handoffJson(root: string): HandoffReport {
   return { root, providers };
 }
 
-export function handoffText(report: HandoffReport): string {
-  const names = Object.keys(report.providers);
+export function handoffScreen(report: HandoffReport): Screen {
+  const names = Object.keys(report.providers).sort();
   if (names.length === 0) {
-    return `handoff @ ${report.root}\n  nothing recorded yet — this is a fresh start, not a missing file`;
+    return {
+      title: "handoff",
+      summary: [report.root],
+      sections: [{ lines: ["nothing recorded yet — this is a fresh start, not a missing file"] }],
+    };
   }
-  const lines = [`handoff @ ${report.root}`];
-  for (const name of names.sort()) {
+  const sections: Section[] = [];
+  for (const name of names) {
     const slice = report.providers[name];
     if (!slice) {
       continue;
     }
-    lines.push(`  ${name} (updated ${slice.updated_at})`);
-    for (const [label, value] of [
-      ["blockers", slice.blockers],
-      ["next", slice.next_action],
-      ["last gate", slice.last_gate_result],
-      ["last failure", slice.last_failure_category],
+    const rows: Row[] = [];
+    for (const [label, value, level] of [
+      ["blockers", slice.blockers, "warn"],
+      ["next", slice.next_action, "info"],
+      ["last gate", slice.last_gate_result, slice.last_gate_result === "pass" ? "ok" : "warn"],
+      ["last failure", slice.last_failure_category, "fail"],
     ] as const) {
       if (value) {
-        lines.push(`    ${label}: ${value}`);
+        rows.push({ label, value: String(value), level });
       }
     }
     for (const [label, list] of [
@@ -219,38 +247,70 @@ export function handoffText(report: HandoffReport): string {
       ["gaps", slice.previous_gaps?.map((gap) => gap.summary)],
     ] as const) {
       if (list && list.length > 0) {
-        lines.push(`    ${label}: ${list.slice(0, 6).join(" | ")}`);
+        rows.push({ label, value: list.slice(0, 6).join(" | ") });
       }
     }
+    sections.push({ title: `${name} (updated ${slice.updated_at})`, rows });
   }
-  return lines.join("\n");
+  return { title: "handoff", summary: [report.root], sections };
+}
+
+export function handoffText(report: HandoffReport, style: Style = PLAIN): string {
+  return render(handoffScreen(report), style);
 }
 
 /**
  * why: the artifact a reviewer can read. Everything in it is something the harness observed, and the chain is what
  * makes a rewritten middle detectable ([/decisions/ad-028.md](/decisions/ad-028.md)).
  */
-export function attestText(root: string): string {
+export function attestScreen(root: string): Screen {
   const records = coreFacade.attest.readAttestations(root);
   const verdict = coreFacade.attest.verifyChain(records);
-  const head = verdict.ok
-    ? `attestation chain OK — ${verdict.length} session(s)`
-    : `attestation chain BROKEN at record ${verdict.brokenAt} (${verdict.reason})`;
+  const head: Row = verdict.ok
+    ? { label: "chain", value: `attestation chain OK — ${verdict.length} session(s)`, level: "ok" }
+    : {
+        label: "chain",
+        value: `attestation chain BROKEN at record ${verdict.brokenAt} (${verdict.reason})`,
+        level: "fail",
+      };
   if (records.length === 0) {
-    return `${head}\n  no sessions recorded yet`;
+    return {
+      title: "attestation",
+      summary: [root],
+      sections: [{ rows: [head] }, { lines: ["no sessions recorded yet"] }],
+    };
   }
-  const rows = records.slice(-10).map((record) => {
+  const sections: Section[] = [{ rows: [head] }];
+  for (const record of records.slice(-10).reverse()) {
     const rules = Object.entries(record.decisionsByRule)
       .map(([rule, count]) => `${rule}=${count}`)
       .join(" ");
-    return [
-      `  ${record.ts}  ${record.provider}/${record.session}`,
-      `    policy ${record.policyFingerprint}${record.policyDiverged ? " (DIVERGED mid-session)" : ""}`,
-      `    rails  ${record.railsActive.join(", ") || "none"}`,
-      `    gates  ${record.gates.pass} pass / ${record.gates.fail} fail${rules ? `  |  ${rules}` : ""}`,
-    ].join("\n");
-  });
-  return [head, ...rows].join("\n");
+    sections.push({
+      title: `${record.ts}  ${record.provider}/${record.session}`,
+      rows: [
+        {
+          label: "policy",
+          value: `${record.policyFingerprint}${record.policyDiverged ? " (DIVERGED mid-session)" : ""}`,
+          level: record.policyDiverged ? "warn" : "ok",
+        },
+        { label: "rails", value: record.railsActive.join(", ") || "none" },
+        {
+          label: "gates",
+          value: `${record.gates.pass} pass / ${record.gates.fail} fail${rules ? `  |  ${rules}` : ""}`,
+        },
+      ],
+    });
+  }
+  return {
+    title: "attestation",
+    summary: [root],
+    sections,
+    footer: "chained, not signed — it detects a rewritten record and proves nothing about authorship",
+  };
+}
+
+export function attestText(root: string, style: Style = PLAIN): string {
+  return render(attestScreen(root), style);
 }
 
 export type AttestReport = {
@@ -952,6 +1012,7 @@ export function buildTestSteps(): TestStep[] {
     { label: "check-suppressions", bin: "node", args: ["tools/check-suppressions.ts"] },
     { label: "check-wiring", bin: "node", args: ["tools/check-wiring.ts"] },
     { label: "check-docs-bundle", bin: "node", args: ["tools/check-docs-bundle.ts"] },
+    { label: "check-screens", bin: "node", args: ["tools/check-screens.ts"] },
     { label: "capabilities in sync", bin: "node", args: ["tools/render-capabilities.ts", "--check"] },
     { label: "changelog in sync", bin: "node", args: ["tools/render-changelog.ts", "--check"] },
   ];
@@ -1212,7 +1273,7 @@ function main(argv: string[]): void {
       if (json) {
         emitJson(statusJson(root));
       } else {
-        console.log(statusText(root));
+        console.log(statusText(root, createStyle()));
       }
       break;
     }
@@ -1242,7 +1303,7 @@ function main(argv: string[]): void {
       if (json) {
         emitJson(report);
       } else {
-        console.log(attestText(root));
+        console.log(attestText(root, createStyle()));
       }
       // why: a broken chain exits non-zero so a pipeline can gate on it. An empty chain is not broken.
       process.exit(report.ok ? 0 : 1);
