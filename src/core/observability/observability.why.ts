@@ -81,6 +81,28 @@ export function decisionsFrom(events: readonly ObsEvent[], sessionKey?: string):
       });
       continue;
     }
+    // hazard: observation mode exists to produce a reading an operator acts on, and no command showed one. The
+    // orphan report found it on its first run ([/decisions/ad-065.md](/decisions/ad-065.md)).
+    if (event.kind === "policy.observe") {
+      out.push({
+        ts: event.ts,
+        about: `observe ${attr(event, "rail") ?? attr(event, "rule") ?? "?"}`,
+        verdict: attr(event, "reading") ?? "observed",
+        rule: ruleOf(event),
+        detail: truncate(attr(event, "violations") ? `${attr(event, "violations")} violation(s)` : ""),
+      });
+      continue;
+    }
+    if (event.kind === "cost.session_alert") {
+      out.push({
+        ts: event.ts,
+        about: "cost alert",
+        verdict: "alert",
+        rule: null,
+        detail: truncate(`$${attr(event, "estimated_cost_usd") ?? "?"} passed the session threshold`),
+      });
+      continue;
+    }
     if (event.kind === "session.start") {
       out.push({
         ts: event.ts,
@@ -171,3 +193,14 @@ export function whyText(
     style.footer("newest first  ·  tlc harness why 30 widens the window  ·  --json for the records"),
   ].join("\n");
 }
+
+// invariant: what `decisionsFrom` branches on, declared so `check-obs-contract` can verify both sides. A kind
+// added to the switch and not to this set is a consumer the contract cannot see.
+export const WHY_KINDS = [
+  "policy.deny",
+  "shell.start",
+  "gate.outcome",
+  "session.start",
+  "policy.observe",
+  "cost.session_alert",
+] as const;

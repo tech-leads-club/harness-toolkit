@@ -1,11 +1,13 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ROLLUP_KINDS } from "../src/core/observability/observability.service.ts";
 import {
   EVENT_KIND_TO_OBS_KIND,
   type ObsKind,
   resolveObsLevel,
 } from "../src/core/observability/observability.types.ts";
+import { WHY_KINDS } from "../src/core/observability/observability.why.ts";
 import { ACTIVITY_PLANES, TOOL_KINDS } from "../src/core/turn/turn.activity.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -19,10 +21,22 @@ export type Violation = { rule: string; detail: string };
  * what the idle-turn counter got wrong — it read the signal plane while every kind it counted resolves to debug
  * ([/decisions/ad-065.md](/decisions/ad-065.md)).
  */
-export type ObsConsumer = { name: string; kinds: readonly string[]; planes: readonly string[] };
+export type ObsConsumer = {
+  name: string;
+  kinds: readonly string[];
+  /**
+   * The plane files it reads, or `"inline"` for a consumer fed at `recordObs` time.
+   *
+   * why: an inline consumer sees the event before plane routing, so a plane mismatch cannot happen to it. Saying
+   * so is the difference between "checked and fine" and "not checked" ([/decisions/ad-065.md](/decisions/ad-065.md)).
+   */
+  planes: readonly string[] | "inline";
+};
 
 export const CONSUMERS: ObsConsumer[] = [
   { name: "turn.activity", kinds: [...TOOL_KINDS], planes: [...ACTIVITY_PLANES] },
+  { name: "observability.why", kinds: [...WHY_KINDS], planes: [...ACTIVITY_PLANES] },
+  { name: "session rollup", kinds: [...ROLLUP_KINDS], planes: "inline" },
 ];
 
 function listFiles(dir: string): string[] {
@@ -94,11 +108,14 @@ export function check(
         });
         continue;
       }
+      if (consumer.planes === "inline") {
+        continue;
+      }
       const plane = planeOf(kind);
       if (!consumer.planes.includes(plane)) {
         violations.push({
           rule: "plane-mismatch",
-          detail: `${consumer.name} counts \`${kind}\`, which lands on ${plane}, but reads only ${consumer.planes.join(", ")}`,
+          detail: `${consumer.name} counts \`${kind}\`, which lands on ${plane}, but reads only ${[...consumer.planes].join(", ")}`,
         });
       }
     }

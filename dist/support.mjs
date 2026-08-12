@@ -3954,6 +3954,26 @@ function decisionsFrom(events, sessionKey) {
       });
       continue;
     }
+    if (event.kind === "policy.observe") {
+      out.push({
+        ts: event.ts,
+        about: `observe ${attr(event, "rail") ?? attr(event, "rule") ?? "?"}`,
+        verdict: attr(event, "reading") ?? "observed",
+        rule: ruleOf(event),
+        detail: truncate(attr(event, "violations") ? `${attr(event, "violations")} violation(s)` : "")
+      });
+      continue;
+    }
+    if (event.kind === "cost.session_alert") {
+      out.push({
+        ts: event.ts,
+        about: "cost alert",
+        verdict: "alert",
+        rule: null,
+        detail: truncate(`$${attr(event, "estimated_cost_usd") ?? "?"} passed the session threshold`)
+      });
+      continue;
+    }
     if (event.kind === "session.start") {
       out.push({
         ts: event.ts,

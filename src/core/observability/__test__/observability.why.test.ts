@@ -125,3 +125,31 @@ test("a record from another day carries its date; today's does not", () => {
   assert.match(whyText([{ ...base, ts: "2025-12-28T09:15:00.000Z" }], undefined, now), /2025-12-28 09:15:00/);
   assert.doesNotMatch(whyText([{ ...base, ts: "2026-01-01T09:15:00.000Z" }], undefined, now), /2026-01-01 /);
 });
+
+/**
+ * hazard: observation mode exists to produce a reading an operator acts on, and no command showed one — the rail
+ * recorded into a plane nothing read. The orphan report in `check-obs-contract` found it on its first run
+ * ([/decisions/ad-065.md](/decisions/ad-065.md)).
+ */
+test("an observation reading and a cost alert are decisions the harness made", () => {
+  const decisions = decisionsFrom([
+    event("policy.observe", { rail: "comments", reading: "held-without-prose", violations: 0 }),
+    event("cost.session_alert", { estimated_cost_usd: 12.5 }),
+  ]);
+  assert.deepEqual(decisions.map((d) => [d.about, d.verdict]).sort(), [
+    ["cost alert", "alert"],
+    ["observe comments", "held-without-prose"],
+  ]);
+  assert.match(whyText(decisions), /passed the session threshold/);
+});
+
+// invariant: the declared set is what the contract checks against. A kind added to the switch and not here is a
+// consumer the contract cannot see.
+test("every kind the renderer branches on is declared", async () => {
+  const { WHY_KINDS } = await import("../observability.why.ts");
+  const source = await import("node:fs").then((fs) =>
+    fs.readFileSync(new URL("../observability.why.ts", import.meta.url), "utf8"),
+  );
+  const branched = [...source.matchAll(/event\.kind === "([a-z._]+)"/g)].map((m) => m[1] as string);
+  assert.deepEqual([...new Set(branched)].sort(), [...WHY_KINDS].sort());
+});

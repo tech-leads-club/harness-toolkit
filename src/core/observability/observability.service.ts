@@ -306,3 +306,23 @@ export function recordFromEvent(
 }
 
 export { DEFAULT_OBS };
+
+// invariant: what `recordRollup` branches on. Fed inline at record time, so it sees every event before plane
+// routing — which is why the contract marks it `inline` rather than naming planes.
+export const ROLLUP_KINDS = [
+  "agent.response",
+  "agent.thought",
+  "compact",
+  "gate.outcome",
+  "mcp.end",
+  "mcp.start",
+  "policy.deny",
+  "prompt.submit",
+  "session.start",
+  "shell.end",
+  "shell.start",
+  "subagent.start",
+  "tool.end",
+  "tool.fail",
+  "tool.start",
+] as const;
