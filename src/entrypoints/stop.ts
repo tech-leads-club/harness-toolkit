@@ -41,6 +41,9 @@ function recordGateOutcome(args: {
       exit_code: args.artifact.exitCode,
       duration_ms: args.artifact.durationMs,
       file_count: args.artifact.files.length,
+      // why: so `obs report` and `attest` can answer "what environment did this gate run under" after the fact,
+      // without the follow-up having had to say it.
+      scoped_env: (args.artifact.scopedEnv ?? []).join(",") || "none",
       // why: a reused verdict costs no time, so counting it as a run would make the total gate time read lower
       // than it is and hide the saving instead of showing it ([/decisions/ad-045.md](/decisions/ad-045.md)).
       reused: args.reused,
@@ -282,6 +285,10 @@ async function failGate(args: {
         gaps,
         gateOutput: args.artifact.outputTail,
         suggestion: plan?.next_action ?? suggestion,
+        // why: the environment the gate actually ran under, and the command that settles it outside the hook.
+        // Named from the second attempt only ([/decisions/ad-060.md](/decisions/ad-060.md)).
+        scopedEnv: args.artifact.scopedEnv ?? [],
+        command: args.artifact.command,
       }),
     );
   } else {

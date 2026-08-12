@@ -23,6 +23,15 @@ export type LastGateArtifact = {
    * ([/decisions/ad-045.md](/decisions/ad-045.md)).
    */
   inputsHash?: string;
+  /**
+   * Project-scoping environment variables that were set when this gate ran, by name.
+   *
+   * why: recorded always, as a fact rather than an alarm. A gate failing because the hook's environment points
+   * its fixtures at the real repository is indistinguishable, from the follow-up alone, from a gate failing
+   * because the code is wrong — and it cost four stop loops of editing code that was not broken. Absent on an
+   * artifact written before the field existed ([/decisions/ad-060.md](/decisions/ad-060.md)).
+   */
+  scopedEnv?: string[];
 };
 
 export type AppendFilesMode = "auto" | "always" | "never";

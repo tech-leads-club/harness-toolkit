@@ -28,6 +28,8 @@
     "testCommand": [
       "node",
       "--test",
+      "--import",
+      "./tools/test-env.mjs",
       "src/**/__test__/*.test.ts"
     ]
   },

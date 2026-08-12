@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { setProjectScopedEnv } from "../../platform/env-scope.ts";
 import { projectStateDir } from "../../platform/paths.ts";
 import { findingsFromLines } from "./gate.findings.ts";
 import { GATE_SCHEMA, type GateFinding, type LastGateArtifact } from "./gate.types.ts";
@@ -129,6 +130,10 @@ export function writeLastGate(args: {
     ts: new Date().toISOString(),
     outputTail,
     findings,
+    // invariant: read here rather than passed in, so every gate records it and a gate added later cannot forget.
+    // Core never spells a variable name — `platform/env-scope.ts` owns the list, because `check-boundaries`
+    // forbids a vendor identifier under `core/` ([/decisions/ad-060.md](/decisions/ad-060.md)).
+    scopedEnv: setProjectScopedEnv(),
     ...(args.inputsHash ? { inputsHash: args.inputsHash } : {}),
   };
   const path = lastGatePath(args.root);

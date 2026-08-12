@@ -175,3 +175,45 @@ test("clearGateReport removes an existing report and is a no-op when absent", ()
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+/**
+ * why: recorded on every gate, as a fact rather than an alarm, so a later reader can answer "what environment did
+ * this run under" without the follow-up having had to say it ([/decisions/ad-060.md](/decisions/ad-060.md)).
+ */
+test("the artifact records which project-scoping variables were set", () => {
+  const root = mkdtempSync(join(tmpdir(), "gate-env-"));
+  const original = process.env.TLC_PROJECT_DIR;
+  try {
+    process.env.TLC_PROJECT_DIR = "/somewhere";
+    const set = writeLastGate({
+      root,
+      gate: "test",
+      exitCode: 1,
+      command: ["node", "--test"],
+      files: ["a.ts"],
+      durationMs: 1,
+      output: "boom",
+    });
+    assert.deepEqual(set.scopedEnv, ["TLC_PROJECT_DIR"]);
+
+    delete process.env.TLC_PROJECT_DIR;
+    const none = writeLastGate({
+      root,
+      gate: "test",
+      exitCode: 0,
+      command: ["node", "--test"],
+      files: [],
+      durationMs: 1,
+      output: "",
+    });
+    // invariant: an empty list, not an absent field — "none were set" is a reading, and absent means "unknown".
+    assert.deepEqual(none.scopedEnv, []);
+  } finally {
+    if (original === undefined) {
+      delete process.env.TLC_PROJECT_DIR;
+    } else {
+      process.env.TLC_PROJECT_DIR = original;
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});

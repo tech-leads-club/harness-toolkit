@@ -74,5 +74,6 @@ Handoff section and a link back to this index.
 | [AD-057](/decisions/ad-057.md) | The release PR is a mechanism, not a gate, and the bot merges it | active |
 | [AD-058](/decisions/ad-058.md) | Gates diff against the turn's base, and language knowledge is one table | active |
 | [AD-059](/decisions/ad-059.md) | A rail never writes a field it reads, and a counter reads the plane its events land on | active |
+| [AD-060](/decisions/ad-060.md) | The gate records the environment it ran under, and names it only once the cheap explanations are spent | active |
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).

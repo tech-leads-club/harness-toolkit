@@ -1604,6 +1604,16 @@ import { createHash as createHash2 } from "node:crypto";
 import { existsSync as existsSync5, mkdirSync as mkdirSync3, readFileSync as readFileSync6, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { dirname as dirname3, join as join6 } from "node:path";
 
+// src/platform/env-scope.ts
+var PROJECT_SCOPED_ENV_NAMES = [
+  "CLAUDE_PROJECT_DIR",
+  "CURSOR_PROJECT_DIR",
+  "TLC_PROJECT_DIR"
+];
+function setProjectScopedEnv(env = process.env) {
+  return PROJECT_SCOPED_ENV_NAMES.filter((name) => (env[name] ?? "").trim() !== "");
+}
+
 // src/core/gate/gate.findings.ts
 var DETAIL_MAX = 500;
 var SUMMARY_MAX = 200;
@@ -1813,6 +1823,7 @@ function writeLastGate(args) {
     ts: new Date().toISOString(),
     outputTail,
     findings,
+    scopedEnv: setProjectScopedEnv(),
     ...args.inputsHash ? { inputsHash: args.inputsHash } : {}
   };
   const path = lastGatePath(args.root);
@@ -5421,6 +5432,19 @@ function mergeGaps(prior, current, max = 12) {
   }
   return out;
 }
+function formatScopedEnvNote(scopedEnv, command) {
+  if (scopedEnv.length === 0) {
+    return "";
+  }
+  return [
+    `NOTE: this gate ran with ${scopedEnv.join(", ")} set by the hook.`,
+    "  A suite that builds fixtures in temporary directories reads the real project under those, so a failure",
+    "  here can be the environment rather than the code. Confirm outside the hook before editing:",
+    `    ${command.join(" ")}`,
+    "  If it passes there, the gate command is the thing to change — and only the operator can change it."
+  ].join(`
+`);
+}
 function formatProgressiveContext(args) {
   const attempt = args.loopCount + 1;
   const level = args.loopCount <= 0 ? 1 : args.loopCount === 1 ? 2 : 3;
@@ -5432,6 +5456,12 @@ function formatProgressiveContext(args) {
   }
   if (level >= 3) {
     parts.push("ESCALATION: two+ stop loops without clearance. Change strategy (different files, smaller patch, or BLOCKED/TRIED/NEED). Do not re-apply the last failing edit.");
+  }
+  if (level >= 2) {
+    const note = formatScopedEnvNote(args.scopedEnv ?? [], args.command ?? []);
+    if (note) {
+      parts.push("", note);
+    }
   }
   const gapLimit = level === 1 ? 6 : level === 2 ? 10 : 12;
   const outputLines = level === 1 ? 40 : level === 2 ? 80 : 120;
@@ -6893,6 +6923,7 @@ function recordGateOutcome(args) {
       exit_code: args.artifact.exitCode,
       duration_ms: args.artifact.durationMs,
       file_count: args.artifact.files.length,
+      scoped_env: (args.artifact.scopedEnv ?? []).join(",") || "none",
       reused: args.reused
     }
   });
@@ -7044,7 +7075,9 @@ async function failGate(args) {
       category,
       gaps,
       gateOutput: args.artifact.outputTail,
-      suggestion: plan?.next_action ?? suggestion
+      suggestion: plan?.next_action ?? suggestion,
+      scopedEnv: args.artifact.scopedEnv ?? [],
+      command: args.artifact.command
     }));
   } else {
     parts.push("", args.artifact.outputTail);

@@ -121,6 +121,29 @@ export function mergeGaps(prior: GateGap[] | undefined, current: GateGap[], max 
   return out;
 }
 
+/**
+ * why: the note appears from the second attempt, never the first. A project-scoping variable is set on every hook
+ * invocation under some providers, so mentioning it on every failure would be an alarm that fires on a healthy
+ * run — which is what [/decisions/ad-034.md](/decisions/ad-034.md) removed from the update digest. By the second
+ * attempt the cheap explanations are spent, and "perhaps it is not your code" has earned its space: this cost four
+ * stop loops of editing code that was not broken ([/decisions/ad-060.md](/decisions/ad-060.md)).
+ *
+ * invariant: it states the fact and the command that settles it. It never claims the variable caused the failure,
+ * because nothing here can know that.
+ */
+export function formatScopedEnvNote(scopedEnv: readonly string[], command: readonly string[]): string {
+  if (scopedEnv.length === 0) {
+    return "";
+  }
+  return [
+    `NOTE: this gate ran with ${scopedEnv.join(", ")} set by the hook.`,
+    "  A suite that builds fixtures in temporary directories reads the real project under those, so a failure",
+    "  here can be the environment rather than the code. Confirm outside the hook before editing:",
+    `    ${command.join(" ")}`,
+    "  If it passes there, the gate command is the thing to change — and only the operator can change it.",
+  ].join("\n");
+}
+
 export function formatProgressiveContext(args: {
   loopCount: number;
   maxLoops: number;
@@ -129,6 +152,8 @@ export function formatProgressiveContext(args: {
   gaps: GateGap[];
   gateOutput: string;
   suggestion: string;
+  scopedEnv?: readonly string[];
+  command?: readonly string[];
 }): string {
   const attempt = args.loopCount + 1;
   const level = args.loopCount <= 0 ? 1 : args.loopCount === 1 ? 2 : 3;
@@ -145,6 +170,12 @@ export function formatProgressiveContext(args: {
     parts.push(
       "ESCALATION: two+ stop loops without clearance. Change strategy (different files, smaller patch, or BLOCKED/TRIED/NEED). Do not re-apply the last failing edit.",
     );
+  }
+  if (level >= 2) {
+    const note = formatScopedEnvNote(args.scopedEnv ?? [], args.command ?? []);
+    if (note) {
+      parts.push("", note);
+    }
   }
 
   const gapLimit = level === 1 ? 6 : level === 2 ? 10 : 12;
