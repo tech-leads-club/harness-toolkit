@@ -7,6 +7,8 @@ import type { HarnessLesson, LessonLink } from "../src/core/lesson/lesson.types.
 import { loadPolicy } from "../src/core/policy/policy.loader.ts";
 import type { LessonsPolicyConfig } from "../src/core/policy/policy.types.ts";
 import { emitJson, takeJsonFlag } from "../src/platform/cli-output.ts";
+import { render, type Screen, type Section } from "../src/platform/screen.ts";
+import { createStyle, PLAIN, type Style } from "../src/platform/style.ts";
 import { plural } from "./doctor.ts";
 
 export type LessonRow = {
@@ -136,15 +138,10 @@ export function listReport(
   };
 }
 
-export function listText(report: LessonsListReport): string {
-  const lines: string[] = [];
+export function listScreen(report: LessonsListReport): Screen {
+  const sections: Section[] = [];
   for (const row of report.lessons) {
-    const withheld = row.injected ? "" : "  WITHHELD";
-    const pin = row.pinned ? "  PINNED" : "";
-    lines.push(
-      `${row.status.padEnd(10)} ${row.score.toFixed(3).padStart(7)}  ${row.id}  gate=${row.gate} tier=${row.tier} hits=${row.hits} sessions=${row.sessions} src=${row.source}${pin}${withheld}`,
-    );
-    lines.push(`           ${row.instruction.slice(0, 120)}`);
+    const flags = [row.pinned ? "PINNED" : "", row.injected ? "" : "WITHHELD"].filter(Boolean);
     const notes = [`effect=${row.effectiveness}`, `validity=${row.validity}`];
     if (row.stale) {
       notes.push(`stale=${row.stale}`);
@@ -152,46 +149,80 @@ export function listText(report: LessonsListReport): string {
     if (row.refs.length > 0) {
       notes.push(`refs=${row.refs.join(",")}`);
     }
-    lines.push(`           ${notes.join("  ")}`);
+    sections.push({
+      title: `${row.id}  ${row.score.toFixed(3)}${flags.length > 0 ? `  ${flags.join(" ")}` : ""}`,
+      rows: [
+        { label: "status", value: row.status, level: row.injected ? "ok" : "warn" },
+        {
+          label: "where",
+          value: `gate=${row.gate} tier=${row.tier} hits=${row.hits} sessions=${row.sessions} src=${row.source}`,
+        },
+        { label: "notes", value: notes.join("  ") },
+      ],
+      lines: ["", row.instruction.slice(0, 160)],
+    });
   }
-  const tiers = Object.entries(report.totals.byTier)
-    .map(([tier, count]) => `${tier}=${count}`)
-    .join(" ");
-  const noun = report.count === 1 ? "lesson" : "lessons";
-  lines.push(`\n${report.count} ${noun} — ${tiers || "none"}`);
-  lines.push(
-    `stale=${report.totals.stale} out-of-window=${report.totals.outOfWindow} unproven=${report.totals.unproven} not-injected=${report.totals.notInjected}`,
-  );
-  // why: the counts above are what would be injected, after the nearer tier wins a duplicate id. These are what is
-  // on disk, so `promote` is visible instead of looking like it did nothing.
+
+  const tiers =
+    Object.entries(report.totals.byTier)
+      .map(([tier, count]) => `${tier}=${count}`)
+      .join(" ") || "none";
   const shared = report.stores.shared > 0 ? `, ${report.stores.shared} also in this project` : "";
-  lines.push(`project store: ${report.storePath}  (${plural(report.stores.project, "lesson")})`);
-  lines.push(
-    `global store:  ${report.globalStorePath}  (${plural(report.stores.global, "lesson")}${shared})`,
-  );
-  lines.push(
-    `enabled=${report.config.enabled} promoteHitCount=${report.config.promoteHitCount} syncRulesFile=${report.config.syncRulesFile}`,
-  );
+  sections.push({
+    title: "Totals",
+    rows: [
+      {
+        label: "lessons",
+        value: `${report.count} ${report.count === 1 ? "lesson" : "lessons"} — ${tiers}`,
+      },
+      {
+        label: "withheld",
+        value: `stale=${report.totals.stale} out-of-window=${report.totals.outOfWindow} unproven=${report.totals.unproven} not-injected=${report.totals.notInjected}`,
+        level: report.totals.notInjected > 0 ? "warn" : "ok",
+      },
+      { label: "project store", value: `${report.storePath} (${plural(report.stores.project, "lesson")})` },
+      {
+        label: "global store",
+        value: `${report.globalStorePath} (${plural(report.stores.global, "lesson")}${shared})`,
+      },
+      {
+        label: "config",
+        value: `enabled=${report.config.enabled} promoteHitCount=${report.config.promoteHitCount} syncRulesFile=${report.config.syncRulesFile}`,
+      },
+    ],
+  });
+
   // why: the loader coerces silently so nothing breaks, and silence is how a config stays wrong for months. Named
   // once, next to the value it produced ([/decisions/ad-050.md](/decisions/ad-050.md)).
   if (report.config.syncRulesFileCoercedFrom !== undefined) {
-    lines.push(
-      `  syncRulesFile is still the old boolean ${report.config.syncRulesFileCoercedFrom} in ${report.config.syncRulesFileCoercedIn}; it reads as ${report.config.syncRulesFile}. Set "auto" to let the provider decide.`,
-    );
+    sections.push({
+      rows: [
+        {
+          label: "syncRulesFile",
+          value: `still the old boolean ${report.config.syncRulesFileCoercedFrom} in ${report.config.syncRulesFileCoercedIn}; it reads as ${report.config.syncRulesFile}. Set "auto" to let the provider decide.`,
+          level: "warn",
+        },
+      ],
+    });
   }
-  return lines.join("\n");
+
+  return {
+    title: "lessons",
+    summary: [`${report.count} ${report.count === 1 ? "lesson" : "lessons"}`],
+    sections,
+    footer: "the counts above are what would be injected, after the nearer tier wins a duplicate id",
+  };
 }
 
-/**
- * why: the raw report was printed as JSON, so `"stale": ["manual:f70cc…"]` told an operator an id and not what
- * happened to it. Each line says what changed and what it means from now on
- * ([/decisions/ad-034.md](/decisions/ad-034.md)).
- */
-export function gardenText(report: GardenReport): string {
-  const lines: string[] = [];
+export function listText(report: LessonsListReport, style: Style = PLAIN): string {
+  return render(listScreen(report), style);
+}
+
+export function gardenScreen(report: GardenReport): Screen {
+  const verdicts: string[] = [];
   const say = (ids: readonly string[], what: string): void => {
     if (ids.length > 0) {
-      lines.push(`${what}: ${ids.join(", ")}`);
+      verdicts.push(`${what}: ${ids.join(", ")}`);
     }
   };
   say(report.promoted, "promoted to active (seen in enough distinct sessions)");
@@ -200,11 +231,16 @@ export function gardenText(report: GardenReport): string {
   say(report.expired, "pruned — past its validity window");
   say(report.quarantined, "quarantined — idle and never promoted");
   say(report.pruned, "pruned — decayed below the floor, or its cause can no longer recur");
-  if (lines.length === 0) {
-    lines.push("nothing changed");
-  }
-  lines.push(`${report.active} active, ${report.candidates} candidate(s) across the writable tiers`);
-  return lines.join("\n");
+
+  return {
+    title: "lessons garden",
+    summary: [`${report.active} active`, `${report.candidates} candidate(s) across the writable tiers`],
+    sections: [verdicts.length === 0 ? { lines: ["nothing changed"] } : { lines: verdicts }],
+  };
+}
+
+export function gardenText(report: GardenReport, style: Style = PLAIN): string {
+  return render(gardenScreen(report), style);
 }
 
 function usage(): never {
@@ -281,7 +317,7 @@ async function main(argv: string[]): Promise<void> {
     if (json) {
       emitJson(report);
     } else {
-      console.log(listText(report));
+      console.log(listText(report, createStyle()));
     }
     return;
   }
@@ -410,7 +446,7 @@ async function main(argv: string[]): Promise<void> {
     if (json) {
       emitJson({ report, markdownPath });
     } else {
-      console.log(gardenText(report));
+      console.log(gardenText(report, createStyle()));
       if (markdownPath) {
         console.log(`synced rules → ${markdownPath}`);
       }

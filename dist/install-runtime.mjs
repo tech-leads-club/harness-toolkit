@@ -559,55 +559,6 @@ var CORE_LESSONS = [
   })
 ];
 
-// src/core/observability/observability.types.ts
-var DEFAULT_OBS = {
-  enabled: true,
-  signalPath: "obs.jsonl",
-  debugPath: "debug.jsonl",
-  debugEnabled: false,
-  includePayloads: false,
-  maxAttrChars: 500,
-  sessionCostAlertUsd: 5,
-  retentionDays: 14,
-  maxSignalEvents: 50000,
-  globalSpool: false
-};
-var SIGNAL_KINDS = new Set([
-  "session.start",
-  "session.end",
-  "generation.end",
-  "tool.fail",
-  "subagent.start",
-  "subagent.end",
-  "prompt.submit",
-  "compact",
-  "gate.outcome",
-  "cost.turn",
-  "cost.session_alert",
-  "ship.claim",
-  "policy.deny",
-  "policy.observe"
-]);
-var LIVE_ALLOWLIST = new Set([
-  "session.start",
-  "session.end",
-  "generation.end",
-  "tool.fail",
-  "shell.end",
-  "subagent.start",
-  "subagent.end",
-  "gate.outcome",
-  "cost.turn",
-  "cost.session_alert",
-  "ship.claim",
-  "policy.deny",
-  "compact",
-  "prompt.submit"
-]);
-
-// src/core/observability/observability.service.ts
-var PAYLOAD_KEYS = new Set(["tool_input", "tool_output", "prompt", "text", "content", "output"]);
-
 // src/platform/style.ts
 var COLORS = {
   structure: "#3d3a4a",
@@ -677,6 +628,82 @@ function createStyle(enabled = colorEnabled()) {
   };
 }
 var PLAIN = createStyle(false);
+
+// src/platform/screen.ts
+function render(screen, style) {
+  const out = [style.heading(screen.title.toUpperCase())];
+  if (screen.summary && screen.summary.length > 0) {
+    out.push(`   ${screen.summary.join(style.dim(` ${SYMBOLS.bar} `))}`);
+  }
+  const width = Math.max(KV_WIDTH, ...screen.sections.flatMap((section) => (section.rows ?? []).map((row) => row.label.length + 1)));
+  for (const section of screen.sections) {
+    out.push("");
+    if (section.title) {
+      out.push(style.paint("accent", section.title));
+    }
+    for (const row of section.rows ?? []) {
+      const value = row.level ? style.status(row.level, row.value) : row.value;
+      out.push(style.kv(row.label, value, width));
+    }
+    for (const line of section.lines ?? []) {
+      out.push(line === "" ? "" : `  ${line}`);
+    }
+  }
+  if (screen.footer) {
+    out.push("", style.footer(screen.footer));
+  }
+  return out.join(`
+`);
+}
+
+// src/core/observability/observability.types.ts
+var DEFAULT_OBS = {
+  enabled: true,
+  signalPath: "obs.jsonl",
+  debugPath: "debug.jsonl",
+  debugEnabled: false,
+  includePayloads: false,
+  maxAttrChars: 500,
+  sessionCostAlertUsd: 5,
+  retentionDays: 14,
+  maxSignalEvents: 50000,
+  globalSpool: false
+};
+var SIGNAL_KINDS = new Set([
+  "session.start",
+  "session.end",
+  "generation.end",
+  "tool.fail",
+  "subagent.start",
+  "subagent.end",
+  "prompt.submit",
+  "compact",
+  "gate.outcome",
+  "cost.turn",
+  "cost.session_alert",
+  "ship.claim",
+  "policy.deny",
+  "policy.observe"
+]);
+var LIVE_ALLOWLIST = new Set([
+  "session.start",
+  "session.end",
+  "generation.end",
+  "tool.fail",
+  "shell.end",
+  "subagent.start",
+  "subagent.end",
+  "gate.outcome",
+  "cost.turn",
+  "cost.session_alert",
+  "ship.claim",
+  "policy.deny",
+  "compact",
+  "prompt.submit"
+]);
+
+// src/core/observability/observability.service.ts
+var PAYLOAD_KEYS = new Set(["tool_input", "tool_output", "prompt", "text", "content", "output"]);
 
 // src/core/observability/observability.why.ts
 var NONE = new Set(["none", "", "undefined"]);
@@ -860,16 +887,30 @@ Update with: npm i -g ${NPM_PACKAGE}@latest && tlc harness install
   }
   return { kind: "copied", source, dest, entries, missing };
 }
-function installReportText(report) {
+function installScreen(report) {
   if (report.kind === "in-place") {
-    return `install: runtime already at ${report.dest} — nothing to copy`;
+    return {
+      title: "harness install",
+      sections: [
+        { rows: [{ label: "runtime", value: `already at ${report.dest} — nothing to copy`, level: "ok" }] }
+      ]
+    };
   }
-  const lines = [`install: ${report.entries.length} path(s) → ${report.dest}`, `  from ${report.source}`];
+  const rows = [
+    { label: "installed", value: `${report.entries.length} path(s) → ${report.dest}`, level: "ok" },
+    { label: "from", value: report.source }
+  ];
   if (report.missing.length > 0) {
-    lines.push(`  MISSING from the source: ${report.missing.join(", ")}`);
+    rows.push({
+      label: "packaging",
+      value: `MISSING from the source: ${report.missing.join(", ")}`,
+      level: "fail"
+    });
   }
-  return lines.join(`
-`);
+  return { title: "harness install", sections: [{ rows }] };
+}
+function installReportText(report, style = PLAIN) {
+  return render(installScreen(report), style);
 }
 function installDest(env = process.env) {
   const explicit = env.TLC_INSTALL_DEST?.trim();
@@ -882,11 +923,12 @@ if (__require.main == __require.module) {
   const source = originRoot();
   const dest = installDest();
   const report = installRuntime(source, dest);
-  console.log(installReportText(report));
+  console.log(installReportText(report, createStyle()));
   process.exit(report.missing.length > 0 ? 1 : 0);
 }
 export {
   originRoot,
+  installScreen,
   installRuntime,
   installReportText,
   installDest,

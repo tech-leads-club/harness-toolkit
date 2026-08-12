@@ -67,7 +67,11 @@ export const SCREEN_DIRS = ["bin", "tools", "src/core/observability", "src/core/
  * invariant: a ratchet, not a wall. Converting every screen at once would be one unreviewable change, and a
  * checker that merely allowed a list would hide the remainder. The count may only fall.
  */
-export const UNSTYLED_BUDGET = 10;
+/**
+ * invariant: zero. Every human surface goes through the shared renderer or the shared palette, so a new screen
+ * that does neither fails the gate rather than drifting quietly.
+ */
+export const UNSTYLED_BUDGET = 0;
 
 export function report(findings: readonly ScreenFinding[]): { text: string; ok: boolean } {
   const unstyled = findings.filter((finding) => !finding.styled);
@@ -80,7 +84,7 @@ export function report(findings: readonly ScreenFinding[]): { text: string; ok: 
   const ok = unstyled.length <= UNSTYLED_BUDGET;
   lines.push(
     ok
-      ? `budget ${UNSTYLED_BUDGET} — lower it as screens convert`
+      ? "every screen is on the shared renderer or the shared palette"
       : `budget ${UNSTYLED_BUDGET} exceeded: a new screen must go through render() in src/platform/screen.ts`,
   );
   return { text: lines.join("\n"), ok };

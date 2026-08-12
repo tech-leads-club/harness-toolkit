@@ -1,3 +1,5 @@
+import { type Row, render, type Screen } from "../../platform/screen.ts";
+import { PLAIN, type Style } from "../../platform/style.ts";
 import type { SessionRollup } from "./observability.store.ts";
 import type { ObsEvent } from "./observability.types.ts";
 
@@ -232,4 +234,80 @@ ${gateTimeSection(rollup)}
 ${railActivity(rollup, activeRules)}
 ${costLines(rollup).join("\n")}
 `;
+}
+
+// why: the markdown is an artifact — written to a file and pasted into a pull request — so it stays plain. The
+// terminal gets its own shape over the same rollup, because colouring one string for both would put escapes in
+// the file ([/decisions/ad-063.md](/decisions/ad-063.md)).
+export function sessionReportScreen(rollup: SessionRollup): Screen {
+  const top = (counts: Record<string, number>, limit = 6): string[] =>
+    Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([name, count]) => `${name} ${count}`);
+
+  const costLabel = rollup.cost_incomplete
+    ? `$${rollup.estimated_cost_usd.toFixed(4)} (incomplete — some models lacked catalog rates)`
+    : `$${rollup.estimated_cost_usd.toFixed(4)}`;
+
+  const shell = rollup.shell;
+  const toolRows: Row[] = Object.entries(rollup.tools)
+    .sort((a, b) => b[1].ok + b[1].fail - (a[1].ok + a[1].fail))
+    .slice(0, 8)
+    .map(([tool, stats]) => ({
+      label: tool,
+      value: `${stats.ok} ok, ${stats.fail} fail`,
+      level: stats.fail > 0 ? ("warn" as const) : ("ok" as const),
+    }));
+
+  const ruleRows: Row[] = Object.entries(rollup.shell.byRule ?? {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([rule, count]) => ({ label: rule, value: String(count), level: "warn" as const }));
+
+  return {
+    title: "session report",
+    summary: [`${rollup.provider}/${rollup.session_id}`, rollup.updated_at],
+    sections: [
+      {
+        title: "Cost",
+        rows: [
+          { label: "estimated", value: costLabel, level: rollup.cost_incomplete ? "warn" : "info" },
+          { label: "tokens in/out", value: `${rollup.input_tokens} / ${rollup.output_tokens}` },
+        ],
+      },
+      {
+        title: "Activity",
+        rows: [
+          { label: "prompts", value: String(rollup.prompts) },
+          {
+            label: "gates",
+            value: `${rollup.gates.pass} pass / ${rollup.gates.fail} fail`,
+            level: rollup.gates.fail > 0 ? "fail" : "ok",
+          },
+          {
+            label: "policy denials",
+            value: String(rollup.denials),
+            level: rollup.denials > 0 ? "warn" : "ok",
+          },
+          {
+            label: "shell",
+            value: `${shell.allow} allow / ${shell.ask} ask / ${shell.deny} deny`,
+            level: shell.deny > 0 ? "warn" : "ok",
+          },
+          { label: "compactions", value: String(rollup.comped) },
+        ],
+      },
+      ...(ruleRows.length > 0 ? [{ title: "Interruptions by rule", rows: ruleRows }] : []),
+      ...(toolRows.length > 0 ? [{ title: "Tools", rows: toolRows }] : []),
+      ...(Object.keys(rollup.models).length > 0
+        ? [{ title: "Models", lines: [top(rollup.models).join("  ·  ")] }]
+        : []),
+    ],
+    footer:
+      "tlc harness why for the decisions  ·  --json for the rollup  ·  the markdown copy is under state/reports",
+  };
+}
+
+export function sessionReportText(rollup: SessionRollup, style: Style = PLAIN): string {
+  return render(sessionReportScreen(rollup), style);
 }

@@ -3127,6 +3127,103 @@ function durableViewVerdict(mode, hookContextReliable) {
   };
 }
 
+// src/platform/style.ts
+var COLORS = {
+  structure: "#3d3a4a",
+  accent: "#a78bfa",
+  success: "#6ee7b7",
+  warning: "#d4a574",
+  error: "#f87171",
+  info: "#93c5fd",
+  textMain: "#f5f5f7",
+  textMuted: "#9ca3af",
+  textDim: "#6b7280"
+};
+var SYMBOLS = {
+  check: "✔",
+  cross: "✖",
+  warning: "⚠",
+  arrow: "→",
+  arrowRight: "▸",
+  dot: "•",
+  bar: "│",
+  rule: "══",
+  dash: "──"
+};
+function rgb(hex) {
+  const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+  if (!match) {
+    return "255;255;255";
+  }
+  return [match[1], match[2], match[3]].map((part) => Number.parseInt(part, 16)).join(";");
+}
+var ESC = String.fromCharCode(27);
+var RESET = `${ESC}[0m`;
+function colorEnabled(env = process.env, argv = process.argv, isTty = process.stdout.isTTY === true) {
+  if ("NO_COLOR" in env) {
+    return false;
+  }
+  if (argv.includes("--no-color")) {
+    return false;
+  }
+  return isTty;
+}
+var STATUS_COLOR = {
+  ok: "success",
+  warn: "warning",
+  fail: "error",
+  info: "info"
+};
+var STATUS_MARK = {
+  ok: SYMBOLS.check,
+  warn: SYMBOLS.warning,
+  fail: SYMBOLS.cross,
+  info: SYMBOLS.arrowRight
+};
+var KV_WIDTH = 16;
+function createStyle(enabled = colorEnabled()) {
+  const wrap = (code, text) => enabled ? `${ESC}[${code}m${text}${RESET}` : text;
+  const paint = (name, text) => wrap(`38;2;${rgb(COLORS[name])}`, text);
+  return {
+    enabled,
+    paint,
+    bold: (text) => wrap("1", text),
+    dim: (text) => paint("textDim", text),
+    heading: (text) => paint("accent", `${SYMBOLS.rule} ${text} ${SYMBOLS.rule}`),
+    footer: (text) => paint("textDim", `${SYMBOLS.dash} ${text} ${SYMBOLS.dash}`),
+    kv: (label, value, width = KV_WIDTH) => `  ${paint("textMuted", `${label}:`.padEnd(width))} ${value}`,
+    status: (level, text) => `${paint(STATUS_COLOR[level], STATUS_MARK[level])} ${text}`
+  };
+}
+var PLAIN = createStyle(false);
+
+// src/platform/screen.ts
+function render(screen, style) {
+  const out = [style.heading(screen.title.toUpperCase())];
+  if (screen.summary && screen.summary.length > 0) {
+    out.push(`   ${screen.summary.join(style.dim(` ${SYMBOLS.bar} `))}`);
+  }
+  const width = Math.max(KV_WIDTH, ...screen.sections.flatMap((section) => (section.rows ?? []).map((row) => row.label.length + 1)));
+  for (const section of screen.sections) {
+    out.push("");
+    if (section.title) {
+      out.push(style.paint("accent", section.title));
+    }
+    for (const row of section.rows ?? []) {
+      const value = row.level ? style.status(row.level, row.value) : row.value;
+      out.push(style.kv(row.label, value, width));
+    }
+    for (const line of section.lines ?? []) {
+      out.push(line === "" ? "" : `  ${line}`);
+    }
+  }
+  if (screen.footer) {
+    out.push("", style.footer(screen.footer));
+  }
+  return out.join(`
+`);
+}
+
 // src/core/observability/observability.report.ts
 function emptyTotals(provider) {
   return { provider, events: 0, signals: 0, denials: 0, gates: { pass: 0, fail: 0 }, estimated_cost_usd: 0 };
@@ -3297,6 +3394,59 @@ ${railActivity(rollup, activeRules)}
 ${costLines(rollup).join(`
 `)}
 `;
+}
+function sessionReportScreen(rollup) {
+  const top = (counts, limit = 6) => Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, limit).map(([name, count]) => `${name} ${count}`);
+  const costLabel = rollup.cost_incomplete ? `$${rollup.estimated_cost_usd.toFixed(4)} (incomplete — some models lacked catalog rates)` : `$${rollup.estimated_cost_usd.toFixed(4)}`;
+  const shell = rollup.shell;
+  const toolRows = Object.entries(rollup.tools).sort((a, b) => b[1].ok + b[1].fail - (a[1].ok + a[1].fail)).slice(0, 8).map(([tool, stats]) => ({
+    label: tool,
+    value: `${stats.ok} ok, ${stats.fail} fail`,
+    level: stats.fail > 0 ? "warn" : "ok"
+  }));
+  const ruleRows = Object.entries(rollup.shell.byRule ?? {}).sort((a, b) => b[1] - a[1]).map(([rule, count]) => ({ label: rule, value: String(count), level: "warn" }));
+  return {
+    title: "session report",
+    summary: [`${rollup.provider}/${rollup.session_id}`, rollup.updated_at],
+    sections: [
+      {
+        title: "Cost",
+        rows: [
+          { label: "estimated", value: costLabel, level: rollup.cost_incomplete ? "warn" : "info" },
+          { label: "tokens in/out", value: `${rollup.input_tokens} / ${rollup.output_tokens}` }
+        ]
+      },
+      {
+        title: "Activity",
+        rows: [
+          { label: "prompts", value: String(rollup.prompts) },
+          {
+            label: "gates",
+            value: `${rollup.gates.pass} pass / ${rollup.gates.fail} fail`,
+            level: rollup.gates.fail > 0 ? "fail" : "ok"
+          },
+          {
+            label: "policy denials",
+            value: String(rollup.denials),
+            level: rollup.denials > 0 ? "warn" : "ok"
+          },
+          {
+            label: "shell",
+            value: `${shell.allow} allow / ${shell.ask} ask / ${shell.deny} deny`,
+            level: shell.deny > 0 ? "warn" : "ok"
+          },
+          { label: "compactions", value: String(rollup.comped) }
+        ]
+      },
+      ...ruleRows.length > 0 ? [{ title: "Interruptions by rule", rows: ruleRows }] : [],
+      ...toolRows.length > 0 ? [{ title: "Tools", rows: toolRows }] : [],
+      ...Object.keys(rollup.models).length > 0 ? [{ title: "Models", lines: [top(rollup.models).join("  ·  ")] }] : []
+    ],
+    footer: "tlc harness why for the decisions  ·  --json for the rollup  ·  the markdown copy is under state/reports"
+  };
+}
+function sessionReportText(rollup, style = PLAIN) {
+  return render(sessionReportScreen(rollup), style);
 }
 
 // src/core/observability/observability.service.ts
@@ -3815,76 +3965,6 @@ function recordFromEvent(root, config, event, extra = {}) {
     }
   });
 }
-
-// src/platform/style.ts
-var COLORS = {
-  structure: "#3d3a4a",
-  accent: "#a78bfa",
-  success: "#6ee7b7",
-  warning: "#d4a574",
-  error: "#f87171",
-  info: "#93c5fd",
-  textMain: "#f5f5f7",
-  textMuted: "#9ca3af",
-  textDim: "#6b7280"
-};
-var SYMBOLS = {
-  check: "✔",
-  cross: "✖",
-  warning: "⚠",
-  arrow: "→",
-  arrowRight: "▸",
-  dot: "•",
-  bar: "│",
-  rule: "══",
-  dash: "──"
-};
-function rgb(hex) {
-  const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
-  if (!match) {
-    return "255;255;255";
-  }
-  return [match[1], match[2], match[3]].map((part) => Number.parseInt(part, 16)).join(";");
-}
-var ESC = String.fromCharCode(27);
-var RESET = `${ESC}[0m`;
-function colorEnabled(env = process.env, argv = process.argv, isTty = process.stdout.isTTY === true) {
-  if ("NO_COLOR" in env) {
-    return false;
-  }
-  if (argv.includes("--no-color")) {
-    return false;
-  }
-  return isTty;
-}
-var STATUS_COLOR = {
-  ok: "success",
-  warn: "warning",
-  fail: "error",
-  info: "info"
-};
-var STATUS_MARK = {
-  ok: SYMBOLS.check,
-  warn: SYMBOLS.warning,
-  fail: SYMBOLS.cross,
-  info: SYMBOLS.arrowRight
-};
-var KV_WIDTH = 16;
-function createStyle(enabled = colorEnabled()) {
-  const wrap = (code, text) => enabled ? `${ESC}[${code}m${text}${RESET}` : text;
-  const paint = (name, text) => wrap(`38;2;${rgb(COLORS[name])}`, text);
-  return {
-    enabled,
-    paint,
-    bold: (text) => wrap("1", text),
-    dim: (text) => paint("textDim", text),
-    heading: (text) => paint("accent", `${SYMBOLS.rule} ${text} ${SYMBOLS.rule}`),
-    footer: (text) => paint("textDim", `${SYMBOLS.dash} ${text} ${SYMBOLS.dash}`),
-    kv: (label, value, width = KV_WIDTH) => `  ${paint("textMuted", `${label}:`.padEnd(width))} ${value}`,
-    status: (level, text) => `${paint(STATUS_COLOR[level], STATUS_MARK[level])} ${text}`
-  };
-}
-var PLAIN = createStyle(false);
 
 // src/core/observability/observability.why.ts
 var NONE = new Set(["none", "", "undefined"]);
@@ -6054,6 +6134,7 @@ var coreFacade = {
     recordAudit,
     groupByProvider,
     sessionReportMarkdown,
+    sessionReportText,
     railsNeverFired,
     readSignalEvents,
     getRollup,

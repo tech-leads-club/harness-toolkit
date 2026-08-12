@@ -56,7 +56,7 @@ function listFiles(dir) {
   return out;
 }
 var SCREEN_DIRS = ["bin", "tools", "src/core/observability", "src/core/lesson"];
-var UNSTYLED_BUDGET = 10;
+var UNSTYLED_BUDGET = 0;
 function report(findings) {
   const unstyled = findings.filter((finding) => !finding.styled);
   const lines = [
@@ -66,7 +66,7 @@ function report(findings) {
     lines.push(`  ${finding.file}  ${finding.renderer}`);
   }
   const ok = unstyled.length <= UNSTYLED_BUDGET;
-  lines.push(ok ? `budget ${UNSTYLED_BUDGET} — lower it as screens convert` : `budget ${UNSTYLED_BUDGET} exceeded: a new screen must go through render() in src/platform/screen.ts`);
+  lines.push(ok ? "every screen is on the shared renderer or the shared palette" : `budget ${UNSTYLED_BUDGET} exceeded: a new screen must go through render() in src/platform/screen.ts`);
   return { text: lines.join(`
 `), ok };
 }

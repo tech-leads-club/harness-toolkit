@@ -6,12 +6,19 @@ import { DEFAULT_OBS, type ObsEvent } from "../src/core/observability/observabil
 import { loadPolicy } from "../src/core/policy/policy.loader.ts";
 import { emitJson, takeJsonFlag } from "../src/platform/cli-output.ts";
 import { projectStateDir } from "../src/platform/paths.ts";
-import { createStyle } from "../src/platform/style.ts";
+import { createStyle, PLAIN, type Style } from "../src/platform/style.ts";
 
 export const NO_EVENTS = "(no signal events yet)";
 
-export function liveText(events: readonly ObsEvent[]): string {
-  const lines = events.map((e) => `${e.ts}\t${e.kind}\t${JSON.stringify(e.attrs).slice(0, 220)}`);
+// why: a tail, not a report. It gets the palette so it reads like the rest of the CLI, and stays one line per
+// event because forcing it into sections would destroy what it is for ([/decisions/ad-063.md](/decisions/ad-063.md)).
+export function liveText(events: readonly ObsEvent[], style: Style = PLAIN): string {
+  // invariant: tab-separated with the full timestamp, because this output is piped — `cut -f2` gives the kind.
+  // Colour only wraps it; with colour off the bytes are what they always were.
+  const lines = events.map(
+    (event) =>
+      `${style.dim(event.ts)}\t${style.paint("accent", event.kind)}\t${style.dim(JSON.stringify(event.attrs).slice(0, 220))}`,
+  );
   return lines.join("\n") || NO_EVENTS;
 }
 
@@ -64,7 +71,7 @@ function main(argv: string[]): void {
     if (json) {
       emitJson(liveJson(events));
     } else {
-      console.log(liveText(events));
+      console.log(liveText(events, createStyle()));
     }
     process.exit(0);
   }
@@ -124,8 +131,10 @@ function main(argv: string[]): void {
     if (json) {
       emitJson({ session: conversationId, path, rollup });
     } else {
-      console.log(markdown);
-      console.log(`\nWrote ${path}`);
+      // why: the terminal gets the screen, the file keeps the markdown. One string for both would put colour
+      // escapes into an artifact people paste into pull requests.
+      console.log(coreFacade.observability.sessionReportText(rollup, createStyle()));
+      console.log(createStyle().dim(`\nmarkdown copy: ${path}`));
     }
     process.exit(0);
   }

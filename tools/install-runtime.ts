@@ -2,6 +2,8 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { join, resolve } from "node:path";
 import { NPM_MARKER, NPM_PACKAGE } from "../bin/tlc-cli.ts";
 import { conventionalRuntimeHome, runtimeHome, runtimeHomeWasChosen } from "../src/platform/paths.ts";
+import { type Row, render, type Screen } from "../src/platform/screen.ts";
+import { createStyle, PLAIN, type Style } from "../src/platform/style.ts";
 
 /**
  * why: an npm-installed copy lives under a directory npm replaces wholesale, so the runtime cannot keep its state
@@ -86,17 +88,33 @@ export function installRuntime(source: string, dest: string): InstallReport {
   return { kind: "copied", source, dest, entries, missing };
 }
 
-export function installReportText(report: InstallReport): string {
+export function installScreen(report: InstallReport): Screen {
   if (report.kind === "in-place") {
-    return `install: runtime already at ${report.dest} — nothing to copy`;
+    return {
+      title: "harness install",
+      sections: [
+        { rows: [{ label: "runtime", value: `already at ${report.dest} — nothing to copy`, level: "ok" }] },
+      ],
+    };
   }
-  const lines = [`install: ${report.entries.length} path(s) → ${report.dest}`, `  from ${report.source}`];
+  const rows: Row[] = [
+    { label: "installed", value: `${report.entries.length} path(s) → ${report.dest}`, level: "ok" },
+    { label: "from", value: report.source },
+  ];
   if (report.missing.length > 0) {
     // why: a payload entry absent from the source is a packaging fault, not a passing install. `tools/` was
     // missing from the published `files` list the first time this ran.
-    lines.push(`  MISSING from the source: ${report.missing.join(", ")}`);
+    rows.push({
+      label: "packaging",
+      value: `MISSING from the source: ${report.missing.join(", ")}`,
+      level: "fail",
+    });
   }
-  return lines.join("\n");
+  return { title: "harness install", sections: [{ rows }] };
+}
+
+export function installReportText(report: InstallReport, style: Style = PLAIN): string {
+  return render(installScreen(report), style);
 }
 
 /**
@@ -119,6 +137,6 @@ if (import.meta.main) {
   const source = originRoot();
   const dest = installDest();
   const report = installRuntime(source, dest);
-  console.log(installReportText(report));
+  console.log(installReportText(report, createStyle()));
   process.exit(report.missing.length > 0 ? 1 : 0);
 }

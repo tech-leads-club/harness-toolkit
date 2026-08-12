@@ -4,6 +4,8 @@ import { applyCursorWiring, renderCursorHooksDocument } from "../bin/write-user-
 import type { WiringEntry } from "../src/contracts/index.ts";
 import { DEFAULTS } from "../src/core/policy/policy.defaults.ts";
 import { claudeConfigDir, cursorConfigDir, projectConfigPath, runtimeHome } from "../src/platform/paths.ts";
+import { render, type Screen } from "../src/platform/screen.ts";
+import { PLAIN, type Style } from "../src/platform/style.ts";
 import { applyClaudeWiring } from "../src/providers/claude/claude.wiring.ts";
 
 export class UsageError extends Error {}
@@ -26,13 +28,27 @@ export function parseFlags(args: readonly string[]): InitFlags {
   };
 }
 
-export function usageText(): string {
-  return `usage:
-  tlc harness init --dry-run
+export function usageScreen(): Screen {
+  return {
+    title: "harness init",
+    sections: [
+      {
+        lines: `  tlc harness init --dry-run
   tlc harness init --write [--stdin-json] [--force]
   tlc harness init --minimal
 
---minimal writes a safe agnostic stub (grind/ship off). Prefer the harness-init skill for full discovery.`;
+--minimal writes a safe agnostic stub (grind/ship off). Prefer the harness-init skill for full discovery.`.split(
+          "\n",
+        ),
+      },
+    ],
+  };
+}
+
+// why: plain by default and never given a style here — the only caller throws it as a UsageError, and an error
+// message is printed on a path that may be redirected.
+export function usageText(style: Style = PLAIN): string {
+  return render(usageScreen(), style);
 }
 
 export function launcherPath(home = runtimeHome()): string {

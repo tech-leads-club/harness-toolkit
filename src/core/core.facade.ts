@@ -72,6 +72,7 @@ import {
   groupByProvider,
   railsNeverFired,
   sessionReportMarkdown,
+  sessionReportText,
 } from "./observability/observability.report.ts";
 import {
   DEFAULT_OBS,
@@ -292,6 +293,7 @@ export const coreFacade = {
     recordAudit,
     groupByProvider,
     sessionReportMarkdown,
+    sessionReportText,
     railsNeverFired,
     readSignalEvents,
     getRollup,

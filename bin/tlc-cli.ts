@@ -405,20 +405,40 @@ export function acceptPolicy(root: string, paths: string[], interactive: boolean
   return lines.join("\n");
 }
 
-export function policyText(root: string): string {
+export function policyScreen(root: string): Screen {
   const diverged = coreFacade.policy.allDivergedPaths(root);
   if (diverged.length === 0) {
-    return "policy baseline matches — nothing changed out of band during any live session";
+    return {
+      title: "policy baseline",
+      sections: [
+        {
+          rows: [
+            {
+              label: "baseline",
+              value: "matches — nothing changed out of band during any live session",
+              level: "ok",
+            },
+          ],
+        },
+      ],
+    };
   }
-  return [
-    `policy changed out of band during a live session (${diverged.length}):`,
-    ...diverged.map((path) => `  ${path}`),
-    "",
-    "If that was you, accept it from your own terminal with:",
-    `  tlc harness policy accept ${diverged.join(" ")}`,
-    "",
-    "Accepting is per path, so anything you leave out keeps blocking.",
-  ].join("\n");
+  return {
+    title: "policy baseline",
+    summary: [`policy changed out of band during a live session (${diverged.length})`],
+    sections: [
+      { rows: diverged.map((path) => ({ label: "changed", value: path, level: "warn" as const })) },
+      {
+        title: "If that was you, accept it from your own terminal with",
+        lines: [`tlc harness policy accept ${diverged.join(" ")}`, "", "or: tlc harness policy accept --all"],
+      },
+    ],
+    footer: "accepting is per path, so anything you leave out keeps blocking",
+  };
+}
+
+export function policyText(root: string, style: Style = PLAIN): string {
+  return render(policyScreen(root), style);
 }
 
 export type PolicyReport = { diverged: string[]; ok: boolean };
@@ -622,20 +642,32 @@ export function versionJson(root: string): VersionReport {
   };
 }
 
-export function versionText(root: string): string {
+export function versionScreen(root: string): Screen {
   const report = versionJson(root);
-  if (report.revision === null) {
-    // why: says so rather than printing an empty revision. A linked checkout with no `.git` is a real install shape.
-    return [
-      `harness runtime: ${report.runtime}`,
-      "  revision: unknown — the runtime path is not a git checkout, so `update` cannot pull either",
-    ].join("\n");
-  }
-  return [
-    `harness runtime: ${report.runtime}`,
-    `  revision: ${report.revision} (${report.date ?? "date unknown"})`,
-    `  this project last saw: ${report.seenRevision ?? "nothing yet — the next update will announce what landed"}`,
-  ].join("\n");
+  const rows: Row[] =
+    report.revision === null
+      ? [
+          { label: "runtime", value: report.runtime },
+          // why: says so rather than printing an empty revision. A linked checkout with no `.git` is a real shape.
+          {
+            label: "revision",
+            value: "unknown — the runtime path is not a git checkout, so `update` cannot pull either",
+            level: "warn",
+          },
+        ]
+      : [
+          { label: "runtime", value: report.runtime },
+          { label: "revision", value: `${report.revision} (${report.date ?? "date unknown"})`, level: "ok" },
+          {
+            label: "project last saw",
+            value: report.seenRevision ?? "nothing yet — the next update will announce what landed",
+          },
+        ];
+  return { title: "harness version", sections: [{ rows }] };
+}
+
+export function versionText(root: string, style: Style = PLAIN): string {
+  return render(versionScreen(root), style);
 }
 
 export type PendingReport = {
@@ -674,16 +706,35 @@ export function pendingUpdate(dest: string, mergeRef: string): PendingReport {
   return { ok: true, commits, decisions: coreFacade.release.readDecisions(dest, files) };
 }
 
-export function pendingText(report: PendingReport): string {
+export function pendingScreen(report: PendingReport): Screen {
   if (!report.ok) {
-    return `update --check: ${report.reason} — nothing to compare against`;
+    return {
+      title: "update --check",
+      sections: [
+        {
+          rows: [{ label: "status", value: `${report.reason} — nothing to compare against`, level: "warn" }],
+        },
+      ],
+    };
   }
   if (report.commits === 0) {
-    return "update --check: the runtime is current — nothing to pull";
+    return {
+      title: "update --check",
+      sections: [
+        { rows: [{ label: "status", value: "the runtime is current — nothing to pull", level: "ok" }] },
+      ],
+    };
   }
   const digest = coreFacade.release.formatDecisionDigest(report.decisions);
-  const head = `update --check: ${report.commits} commit(s) would be pulled. Nothing has changed yet.`;
-  return digest === "" ? `${head}\n  no decisions landed in that range` : `${head}\n\n${digest}`;
+  return {
+    title: "update --check",
+    summary: [`${report.commits} commit(s) would be pulled`, "Nothing has changed yet."],
+    sections: [{ lines: digest === "" ? ["no decisions landed in that range"] : digest.split("\n") }],
+  };
+}
+
+export function pendingText(report: PendingReport, style: Style = PLAIN): string {
+  return render(pendingScreen(report), style);
 }
 
 export type GateField = "test" | "lint";
@@ -759,10 +810,12 @@ export function setGateCommand(root: string, field: GateField, argv: string[], i
   return `grind.${field}Command = ${JSON.stringify(argv)}`;
 }
 
-export function helpText(): string {
-  return `tlc harness — agent steering (gates / follow-up / handoff / policy)
-
-Requires Node.js 24+ (Active LTS 24 or Current 26).
+export function helpScreen(): Screen {
+  return {
+    title: "tlc harness",
+    sections: [
+      {
+        lines: `Requires Node.js 24+ (Active LTS 24 or Current 26).
 
 Read commands accept --json: status, doctor, obs, lessons, prices lookup, attest, policy.
 
@@ -794,14 +847,23 @@ MEASURE
   tlc harness lessons list|show|garden|sync-rules
 
 PROJECT
-  tlc harness init --minimal | tlc harness init --write --stdin-json
-`;
+  tlc harness init --minimal | tlc harness init --write --stdin-json`.split("\n"),
+      },
+    ],
+    footer: "tlc harness help <topic> for a document  ·  tlc harness why to see what it decided",
+  };
 }
 
-export function pricesHelpText(): string {
-  return `tlc harness prices
+export function helpText(style: Style = PLAIN): string {
+  return render(helpScreen(), style);
+}
 
-  tlc harness prices refresh [all|cursor|litellm]
+export function pricesHelpScreen(): Screen {
+  return {
+    title: "price catalogs",
+    sections: [
+      {
+        lines: `  tlc harness prices refresh [all|cursor|litellm]
   tlc harness prices lookup <model-id>
 
   refresh / refresh all   Cursor catalog + LiteLLM fallback
@@ -810,8 +872,15 @@ export function pricesHelpText(): string {
   lookup <model-id>       catalog key, pool, USD for 1M in + 1M out
 
   Resolution: overrides → Cursor → LiteLLM → null
-  Documentation: tlc harness help prices
-`;
+  Documentation: tlc harness help prices`.split("\n"),
+      },
+    ],
+    footer: "resolution: local overrides → the provider's own catalog → LiteLLM → null",
+  };
+}
+
+export function pricesHelpText(style: Style = PLAIN): string {
+  return render(pricesHelpScreen(), style);
 }
 
 export function resolveHarnessRoot(): string {
@@ -1314,7 +1383,7 @@ function main(argv: string[]): void {
         if (json) {
           emitJson(policyJson(root));
         } else {
-          console.log(policyText(root));
+          console.log(policyText(root, createStyle()));
         }
         break;
       }
@@ -1330,7 +1399,7 @@ function main(argv: string[]): void {
       break;
     }
     case "help":
-      console.log(helpText());
+      console.log(helpText(createStyle()));
       break;
     case "build": {
       const r = spawnSync(buildBinPath(), [], { stdio: "inherit", env: process.env });
@@ -1341,7 +1410,7 @@ function main(argv: string[]): void {
       if (json) {
         emitJson(versionJson(root));
       } else {
-        console.log(versionText(root));
+        console.log(versionText(root, createStyle()));
       }
       break;
     case "update-check": {
@@ -1350,7 +1419,7 @@ function main(argv: string[]): void {
       if (json) {
         emitJson(report);
       } else {
-        console.log(pendingText(report));
+        console.log(pendingText(report, createStyle()));
       }
       break;
     }
@@ -1394,7 +1463,7 @@ function main(argv: string[]): void {
       }
       break;
     case "prices-help":
-      console.log(pricesHelpText());
+      console.log(pricesHelpText(createStyle()));
       break;
     case "prices-refresh":
       runEntry("refresh-model-prices", [action.scope], root);
@@ -1407,7 +1476,7 @@ function main(argv: string[]): void {
       break;
     case "unknown":
       console.error(`unknown: ${action.cmd}`);
-      console.log(helpText());
+      console.log(helpText(createStyle()));
       process.exit(1);
   }
 }

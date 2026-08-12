@@ -3072,6 +3072,103 @@ function durableViewVerdict(mode, hookContextReliable) {
   };
 }
 
+// src/platform/style.ts
+var COLORS = {
+  structure: "#3d3a4a",
+  accent: "#a78bfa",
+  success: "#6ee7b7",
+  warning: "#d4a574",
+  error: "#f87171",
+  info: "#93c5fd",
+  textMain: "#f5f5f7",
+  textMuted: "#9ca3af",
+  textDim: "#6b7280"
+};
+var SYMBOLS = {
+  check: "✔",
+  cross: "✖",
+  warning: "⚠",
+  arrow: "→",
+  arrowRight: "▸",
+  dot: "•",
+  bar: "│",
+  rule: "══",
+  dash: "──"
+};
+function rgb(hex) {
+  const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+  if (!match) {
+    return "255;255;255";
+  }
+  return [match[1], match[2], match[3]].map((part) => Number.parseInt(part, 16)).join(";");
+}
+var ESC = String.fromCharCode(27);
+var RESET = `${ESC}[0m`;
+function colorEnabled(env = process.env, argv = process.argv, isTty = process.stdout.isTTY === true) {
+  if ("NO_COLOR" in env) {
+    return false;
+  }
+  if (argv.includes("--no-color")) {
+    return false;
+  }
+  return isTty;
+}
+var STATUS_COLOR = {
+  ok: "success",
+  warn: "warning",
+  fail: "error",
+  info: "info"
+};
+var STATUS_MARK = {
+  ok: SYMBOLS.check,
+  warn: SYMBOLS.warning,
+  fail: SYMBOLS.cross,
+  info: SYMBOLS.arrowRight
+};
+var KV_WIDTH = 16;
+function createStyle(enabled = colorEnabled()) {
+  const wrap = (code, text) => enabled ? `${ESC}[${code}m${text}${RESET}` : text;
+  const paint = (name, text) => wrap(`38;2;${rgb(COLORS[name])}`, text);
+  return {
+    enabled,
+    paint,
+    bold: (text) => wrap("1", text),
+    dim: (text) => paint("textDim", text),
+    heading: (text) => paint("accent", `${SYMBOLS.rule} ${text} ${SYMBOLS.rule}`),
+    footer: (text) => paint("textDim", `${SYMBOLS.dash} ${text} ${SYMBOLS.dash}`),
+    kv: (label, value, width = KV_WIDTH) => `  ${paint("textMuted", `${label}:`.padEnd(width))} ${value}`,
+    status: (level, text) => `${paint(STATUS_COLOR[level], STATUS_MARK[level])} ${text}`
+  };
+}
+var PLAIN = createStyle(false);
+
+// src/platform/screen.ts
+function render(screen, style) {
+  const out = [style.heading(screen.title.toUpperCase())];
+  if (screen.summary && screen.summary.length > 0) {
+    out.push(`   ${screen.summary.join(style.dim(` ${SYMBOLS.bar} `))}`);
+  }
+  const width = Math.max(KV_WIDTH, ...screen.sections.flatMap((section) => (section.rows ?? []).map((row) => row.label.length + 1)));
+  for (const section of screen.sections) {
+    out.push("");
+    if (section.title) {
+      out.push(style.paint("accent", section.title));
+    }
+    for (const row of section.rows ?? []) {
+      const value = row.level ? style.status(row.level, row.value) : row.value;
+      out.push(style.kv(row.label, value, width));
+    }
+    for (const line of section.lines ?? []) {
+      out.push(line === "" ? "" : `  ${line}`);
+    }
+  }
+  if (screen.footer) {
+    out.push("", style.footer(screen.footer));
+  }
+  return out.join(`
+`);
+}
+
 // src/core/observability/observability.report.ts
 function emptyTotals(provider) {
   return { provider, events: 0, signals: 0, denials: 0, gates: { pass: 0, fail: 0 }, estimated_cost_usd: 0 };
@@ -3242,6 +3339,59 @@ ${railActivity(rollup, activeRules)}
 ${costLines(rollup).join(`
 `)}
 `;
+}
+function sessionReportScreen(rollup) {
+  const top = (counts, limit = 6) => Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, limit).map(([name, count]) => `${name} ${count}`);
+  const costLabel = rollup.cost_incomplete ? `$${rollup.estimated_cost_usd.toFixed(4)} (incomplete — some models lacked catalog rates)` : `$${rollup.estimated_cost_usd.toFixed(4)}`;
+  const shell = rollup.shell;
+  const toolRows = Object.entries(rollup.tools).sort((a, b) => b[1].ok + b[1].fail - (a[1].ok + a[1].fail)).slice(0, 8).map(([tool, stats]) => ({
+    label: tool,
+    value: `${stats.ok} ok, ${stats.fail} fail`,
+    level: stats.fail > 0 ? "warn" : "ok"
+  }));
+  const ruleRows = Object.entries(rollup.shell.byRule ?? {}).sort((a, b) => b[1] - a[1]).map(([rule, count]) => ({ label: rule, value: String(count), level: "warn" }));
+  return {
+    title: "session report",
+    summary: [`${rollup.provider}/${rollup.session_id}`, rollup.updated_at],
+    sections: [
+      {
+        title: "Cost",
+        rows: [
+          { label: "estimated", value: costLabel, level: rollup.cost_incomplete ? "warn" : "info" },
+          { label: "tokens in/out", value: `${rollup.input_tokens} / ${rollup.output_tokens}` }
+        ]
+      },
+      {
+        title: "Activity",
+        rows: [
+          { label: "prompts", value: String(rollup.prompts) },
+          {
+            label: "gates",
+            value: `${rollup.gates.pass} pass / ${rollup.gates.fail} fail`,
+            level: rollup.gates.fail > 0 ? "fail" : "ok"
+          },
+          {
+            label: "policy denials",
+            value: String(rollup.denials),
+            level: rollup.denials > 0 ? "warn" : "ok"
+          },
+          {
+            label: "shell",
+            value: `${shell.allow} allow / ${shell.ask} ask / ${shell.deny} deny`,
+            level: shell.deny > 0 ? "warn" : "ok"
+          },
+          { label: "compactions", value: String(rollup.comped) }
+        ]
+      },
+      ...ruleRows.length > 0 ? [{ title: "Interruptions by rule", rows: ruleRows }] : [],
+      ...toolRows.length > 0 ? [{ title: "Tools", rows: toolRows }] : [],
+      ...Object.keys(rollup.models).length > 0 ? [{ title: "Models", lines: [top(rollup.models).join("  ·  ")] }] : []
+    ],
+    footer: "tlc harness why for the decisions  ·  --json for the rollup  ·  the markdown copy is under state/reports"
+  };
+}
+function sessionReportText(rollup, style = PLAIN) {
+  return render(sessionReportScreen(rollup), style);
 }
 
 // src/core/observability/observability.service.ts
@@ -3760,76 +3910,6 @@ function recordFromEvent(root, config, event, extra = {}) {
     }
   });
 }
-
-// src/platform/style.ts
-var COLORS = {
-  structure: "#3d3a4a",
-  accent: "#a78bfa",
-  success: "#6ee7b7",
-  warning: "#d4a574",
-  error: "#f87171",
-  info: "#93c5fd",
-  textMain: "#f5f5f7",
-  textMuted: "#9ca3af",
-  textDim: "#6b7280"
-};
-var SYMBOLS = {
-  check: "✔",
-  cross: "✖",
-  warning: "⚠",
-  arrow: "→",
-  arrowRight: "▸",
-  dot: "•",
-  bar: "│",
-  rule: "══",
-  dash: "──"
-};
-function rgb(hex) {
-  const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
-  if (!match) {
-    return "255;255;255";
-  }
-  return [match[1], match[2], match[3]].map((part) => Number.parseInt(part, 16)).join(";");
-}
-var ESC = String.fromCharCode(27);
-var RESET = `${ESC}[0m`;
-function colorEnabled(env = process.env, argv = process.argv, isTty = process.stdout.isTTY === true) {
-  if ("NO_COLOR" in env) {
-    return false;
-  }
-  if (argv.includes("--no-color")) {
-    return false;
-  }
-  return isTty;
-}
-var STATUS_COLOR = {
-  ok: "success",
-  warn: "warning",
-  fail: "error",
-  info: "info"
-};
-var STATUS_MARK = {
-  ok: SYMBOLS.check,
-  warn: SYMBOLS.warning,
-  fail: SYMBOLS.cross,
-  info: SYMBOLS.arrowRight
-};
-var KV_WIDTH = 16;
-function createStyle(enabled = colorEnabled()) {
-  const wrap = (code, text) => enabled ? `${ESC}[${code}m${text}${RESET}` : text;
-  const paint = (name, text) => wrap(`38;2;${rgb(COLORS[name])}`, text);
-  return {
-    enabled,
-    paint,
-    bold: (text) => wrap("1", text),
-    dim: (text) => paint("textDim", text),
-    heading: (text) => paint("accent", `${SYMBOLS.rule} ${text} ${SYMBOLS.rule}`),
-    footer: (text) => paint("textDim", `${SYMBOLS.dash} ${text} ${SYMBOLS.dash}`),
-    kv: (label, value, width = KV_WIDTH) => `  ${paint("textMuted", `${label}:`.padEnd(width))} ${value}`,
-    status: (level, text) => `${paint(STATUS_COLOR[level], STATUS_MARK[level])} ${text}`
-  };
-}
-var PLAIN = createStyle(false);
 
 // src/core/observability/observability.why.ts
 var NONE = new Set(["none", "", "undefined"]);
@@ -5999,6 +6079,7 @@ var coreFacade = {
     recordAudit,
     groupByProvider,
     sessionReportMarkdown,
+    sessionReportText,
     railsNeverFired,
     readSignalEvents,
     getRollup,
@@ -6144,33 +6225,6 @@ function writeStdout(text) {
 }
 function unknownFlags(args) {
   return args.filter((arg) => arg.startsWith("--"));
-}
-
-// src/platform/screen.ts
-function render(screen, style) {
-  const out = [style.heading(screen.title.toUpperCase())];
-  if (screen.summary && screen.summary.length > 0) {
-    out.push(`   ${screen.summary.join(style.dim(` ${SYMBOLS.bar} `))}`);
-  }
-  const width = Math.max(KV_WIDTH, ...screen.sections.flatMap((section) => (section.rows ?? []).map((row) => row.label.length + 1)));
-  for (const section of screen.sections) {
-    out.push("");
-    if (section.title) {
-      out.push(style.paint("accent", section.title));
-    }
-    for (const row of section.rows ?? []) {
-      const value = row.level ? style.status(row.level, row.value) : row.value;
-      out.push(style.kv(row.label, value, width));
-    }
-    for (const line of section.lines ?? []) {
-      out.push(line === "" ? "" : `  ${line}`);
-    }
-  }
-  if (screen.footer) {
-    out.push("", style.footer(screen.footer));
-  }
-  return out.join(`
-`);
 }
 
 // bin/tlc-cli.ts
@@ -6445,21 +6499,39 @@ function acceptPolicy(root, paths, interactive) {
   return lines.join(`
 `);
 }
-function policyText(root) {
+function policyScreen(root) {
   const diverged = coreFacade.policy.allDivergedPaths(root);
   if (diverged.length === 0) {
-    return "policy baseline matches — nothing changed out of band during any live session";
+    return {
+      title: "policy baseline",
+      sections: [
+        {
+          rows: [
+            {
+              label: "baseline",
+              value: "matches — nothing changed out of band during any live session",
+              level: "ok"
+            }
+          ]
+        }
+      ]
+    };
   }
-  return [
-    `policy changed out of band during a live session (${diverged.length}):`,
-    ...diverged.map((path) => `  ${path}`),
-    "",
-    "If that was you, accept it from your own terminal with:",
-    `  tlc harness policy accept ${diverged.join(" ")}`,
-    "",
-    "Accepting is per path, so anything you leave out keeps blocking."
-  ].join(`
-`);
+  return {
+    title: "policy baseline",
+    summary: [`policy changed out of band during a live session (${diverged.length})`],
+    sections: [
+      { rows: diverged.map((path) => ({ label: "changed", value: path, level: "warn" })) },
+      {
+        title: "If that was you, accept it from your own terminal with",
+        lines: [`tlc harness policy accept ${diverged.join(" ")}`, "", "or: tlc harness policy accept --all"]
+      }
+    ],
+    footer: "accepting is per path, so anything you leave out keeps blocking"
+  };
+}
+function policyText(root, style = PLAIN) {
+  return render(policyScreen(root), style);
 }
 function policyJson(root) {
   const diverged = coreFacade.policy.allDivergedPaths(root);
@@ -6576,21 +6648,27 @@ function versionJson(root) {
     seenRevision: coreFacade.release.readReleaseSeen(root)?.revision ?? null
   };
 }
-function versionText(root) {
+function versionScreen(root) {
   const report = versionJson(root);
-  if (report.revision === null) {
-    return [
-      `harness runtime: ${report.runtime}`,
-      "  revision: unknown — the runtime path is not a git checkout, so `update` cannot pull either"
-    ].join(`
-`);
-  }
-  return [
-    `harness runtime: ${report.runtime}`,
-    `  revision: ${report.revision} (${report.date ?? "date unknown"})`,
-    `  this project last saw: ${report.seenRevision ?? "nothing yet — the next update will announce what landed"}`
-  ].join(`
-`);
+  const rows = report.revision === null ? [
+    { label: "runtime", value: report.runtime },
+    {
+      label: "revision",
+      value: "unknown — the runtime path is not a git checkout, so `update` cannot pull either",
+      level: "warn"
+    }
+  ] : [
+    { label: "runtime", value: report.runtime },
+    { label: "revision", value: `${report.revision} (${report.date ?? "date unknown"})`, level: "ok" },
+    {
+      label: "project last saw",
+      value: report.seenRevision ?? "nothing yet — the next update will announce what landed"
+    }
+  ];
+  return { title: "harness version", sections: [{ rows }] };
+}
+function versionText(root, style = PLAIN) {
+  return render(versionScreen(root), style);
 }
 function pendingUpdate(dest, mergeRef) {
   if (!existsSync24(join25(dest, ".git"))) {
@@ -6610,19 +6688,35 @@ function pendingUpdate(dest, mergeRef) {
 `).map((line) => line.trim().split("/").pop() ?? "").filter(Boolean);
   return { ok: true, commits, decisions: coreFacade.release.readDecisions(dest, files) };
 }
-function pendingText(report) {
+function pendingScreen(report) {
   if (!report.ok) {
-    return `update --check: ${report.reason} — nothing to compare against`;
+    return {
+      title: "update --check",
+      sections: [
+        {
+          rows: [{ label: "status", value: `${report.reason} — nothing to compare against`, level: "warn" }]
+        }
+      ]
+    };
   }
   if (report.commits === 0) {
-    return "update --check: the runtime is current — nothing to pull";
+    return {
+      title: "update --check",
+      sections: [
+        { rows: [{ label: "status", value: "the runtime is current — nothing to pull", level: "ok" }] }
+      ]
+    };
   }
   const digest = coreFacade.release.formatDecisionDigest(report.decisions);
-  const head = `update --check: ${report.commits} commit(s) would be pulled. Nothing has changed yet.`;
-  return digest === "" ? `${head}
-  no decisions landed in that range` : `${head}
-
-${digest}`;
+  return {
+    title: "update --check",
+    summary: [`${report.commits} commit(s) would be pulled`, "Nothing has changed yet."],
+    sections: [{ lines: digest === "" ? ["no decisions landed in that range"] : digest.split(`
+`) }]
+  };
+}
+function pendingText(report, style = PLAIN) {
+  return render(pendingScreen(report), style);
 }
 var GATE_FIELDS = {
   "test-command": "test",
@@ -6667,10 +6761,12 @@ function setGateCommand(root, field, argv, interactive) {
   coreFacade.policy.refreshPolicyBaselines(root);
   return `grind.${field}Command = ${JSON.stringify(argv)}`;
 }
-function helpText() {
-  return `tlc harness — agent steering (gates / follow-up / handoff / policy)
-
-Requires Node.js 24+ (Active LTS 24 or Current 26).
+function helpScreen() {
+  return {
+    title: "tlc harness",
+    sections: [
+      {
+        lines: `Requires Node.js 24+ (Active LTS 24 or Current 26).
 
 Read commands accept --json: status, doctor, obs, lessons, prices lookup, attest, policy.
 
@@ -6702,13 +6798,22 @@ MEASURE
   tlc harness lessons list|show|garden|sync-rules
 
 PROJECT
-  tlc harness init --minimal | tlc harness init --write --stdin-json
-`;
+  tlc harness init --minimal | tlc harness init --write --stdin-json`.split(`
+`)
+      }
+    ],
+    footer: "tlc harness help <topic> for a document  ·  tlc harness why to see what it decided"
+  };
 }
-function pricesHelpText() {
-  return `tlc harness prices
-
-  tlc harness prices refresh [all|cursor|litellm]
+function helpText(style = PLAIN) {
+  return render(helpScreen(), style);
+}
+function pricesHelpScreen() {
+  return {
+    title: "price catalogs",
+    sections: [
+      {
+        lines: `  tlc harness prices refresh [all|cursor|litellm]
   tlc harness prices lookup <model-id>
 
   refresh / refresh all   Cursor catalog + LiteLLM fallback
@@ -6717,8 +6822,15 @@ function pricesHelpText() {
   lookup <model-id>       catalog key, pool, USD for 1M in + 1M out
 
   Resolution: overrides → Cursor → LiteLLM → null
-  Documentation: tlc harness help prices
-`;
+  Documentation: tlc harness help prices`.split(`
+`)
+      }
+    ],
+    footer: "resolution: local overrides → the provider's own catalog → LiteLLM → null"
+  };
+}
+function pricesHelpText(style = PLAIN) {
+  return render(pricesHelpScreen(), style);
 }
 function resolveHarnessRoot() {
   const home = runtimeHome();
@@ -7105,7 +7217,7 @@ function main(argv) {
         if (json) {
           emitJson(policyJson(root));
         } else {
-          console.log(policyText(root));
+          console.log(policyText(root, createStyle()));
         }
         break;
       }
@@ -7121,7 +7233,7 @@ function main(argv) {
       break;
     }
     case "help":
-      console.log(helpText());
+      console.log(helpText(createStyle()));
       break;
     case "build": {
       const r = spawnSync(buildBinPath(), [], { stdio: "inherit", env: process.env });
@@ -7132,7 +7244,7 @@ function main(argv) {
       if (json) {
         emitJson(versionJson(root));
       } else {
-        console.log(versionText(root));
+        console.log(versionText(root, createStyle()));
       }
       break;
     case "update-check": {
@@ -7141,7 +7253,7 @@ function main(argv) {
       if (json) {
         emitJson(report);
       } else {
-        console.log(pendingText(report));
+        console.log(pendingText(report, createStyle()));
       }
       break;
     }
@@ -7185,7 +7297,7 @@ function main(argv) {
       }
       break;
     case "prices-help":
-      console.log(pricesHelpText());
+      console.log(pricesHelpText(createStyle()));
       break;
     case "prices-refresh":
       runEntry("refresh-model-prices", [action.scope], root);
@@ -7198,7 +7310,7 @@ function main(argv) {
       break;
     case "unknown":
       console.error(`unknown: ${action.cmd}`);
-      console.log(helpText());
+      console.log(helpText(createStyle()));
       process.exit(1);
   }
 }
@@ -7207,6 +7319,7 @@ if (__require.main == __require.module) {
 }
 export {
   versionText,
+  versionScreen,
   versionJson,
   upstreamRef,
   unmanagedRuntimeMessage,
@@ -7228,16 +7341,20 @@ export {
   resetFailureMessage,
   readMode,
   pricesHelpText,
+  pricesHelpScreen,
   policyText,
+  policyScreen,
   policyJson,
   pendingUpdate,
   pendingText,
+  pendingScreen,
   pairedFlagPath,
   npmUpdateFailureMessage,
   modeFilePath,
   missingBundles,
   linkedRuntimeMessage,
   helpText,
+  helpScreen,
   handoffText,
   handoffScreen,
   handoffJson,
