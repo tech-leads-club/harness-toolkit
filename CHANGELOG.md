@@ -72,3 +72,4 @@ doctor reports against your own configuration.
 - **AD-060** — The gate records the environment it ran under, and names it only once the cheap explanations are spent
 - **AD-061** — A decision that refuses names its rule, and degrading preserves it
 - **AD-062** — One command answers whether the harness did that, and says so plainly when it did not
+- **AD-063** — One palette for human output, and a checker keeping it out of everything else

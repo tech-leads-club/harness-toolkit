@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decisionsFrom, NOTHING_WAS_THE_HARNESS, whyText } from "../observability.why.ts";
+import { decisionsFrom, NOTHING_WAS_THE_HARNESS, summarise, whyText } from "../observability.why.ts";
 
 let clock = 0;
 function event(kind: string, attrs: Record<string, unknown>, session = "s1") {
@@ -86,7 +86,9 @@ test("newest first, whichever plane it arrived from", () => {
  * an empty table would leave the operator exactly as unsure as before ([/decisions/ad-062.md](/decisions/ad-062.md)).
  */
 test("no decision in the window says so, in words", () => {
-  assert.equal(whyText([]), NOTHING_WAS_THE_HARNESS);
+  for (const line of NOTHING_WAS_THE_HARNESS.split("\n")) {
+    assert.ok(whyText([]).includes(line), line);
+  }
   assert.match(whyText([]), /was the model, not a rail/);
 });
 
@@ -94,4 +96,32 @@ test("a record written before rule was required reads as unattributed, never as 
   const text = whyText(decisionsFrom([event("policy.deny", { permission: "deny", rule: "none" })]));
   assert.match(text, /rule=unattributed/);
   assert.doesNotMatch(text, / +$/m);
+});
+
+test("the plain rendering carries no escape, whatever it contains", () => {
+  const text = whyText(
+    decisionsFrom([event("policy.deny", { permission: "deny", rule: "r", tool_name: "Task" })]),
+  );
+  assert.equal(text.includes(String.fromCharCode(27)), false);
+});
+
+test("a summary line counts the verdicts, so ten lines have a headline", () => {
+  const decisions = decisionsFrom([
+    event("policy.deny", { permission: "deny", rule: "a" }),
+    event("policy.deny", { permission: "deny", rule: "b" }),
+    event("shell.start", { permission: "ask", rule: "c", command: "x" }),
+    event("shell.start", { permission: "allow", command: "y" }),
+  ]);
+  assert.deepEqual(summarise(decisions), { denied: 2, asked: 1, allowed: 1, other: 0 });
+  assert.match(whyText(decisions), /2 denied .* 1 asked .* 1 allowed/);
+});
+
+// hazard: the first version printed ten identical times with no date. It read as one burst and spanned three
+// days, which is the opposite of what the reader needed to know.
+test("a record from another day carries its date; today's does not", () => {
+  const now = new Date("2026-01-01T12:00:30.000Z");
+  const base = decisionsFrom([event("policy.deny", { permission: "deny", rule: "r" })])[0];
+  assert.ok(base);
+  assert.match(whyText([{ ...base, ts: "2025-12-28T09:15:00.000Z" }], undefined, now), /2025-12-28 09:15:00/);
+  assert.doesNotMatch(whyText([{ ...base, ts: "2026-01-01T09:15:00.000Z" }], undefined, now), /2026-01-01 /);
 });

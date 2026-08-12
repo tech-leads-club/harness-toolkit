@@ -77,5 +77,6 @@ Handoff section and a link back to this index.
 | [AD-060](/decisions/ad-060.md) | The gate records the environment it ran under, and names it only once the cheap explanations are spent | active |
 | [AD-061](/decisions/ad-061.md) | A decision that refuses names its rule, and degrading preserves it | active |
 | [AD-062](/decisions/ad-062.md) | One command answers whether the harness did that, and says so plainly when it did not | active |
+| [AD-063](/decisions/ad-063.md) | One palette for human output, and a checker keeping it out of everything else | active |
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).

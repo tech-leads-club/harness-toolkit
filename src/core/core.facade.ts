@@ -80,7 +80,12 @@ import {
   recordObs,
 } from "./observability/observability.service.ts";
 import { getRollup, pruneObs, pruneSpool, readSignalEvents } from "./observability/observability.store.ts";
-import { decisionsFrom, NOTHING_WAS_THE_HARNESS, whyText } from "./observability/observability.why.ts";
+import {
+  decisionsFrom,
+  NOTHING_WAS_THE_HARNESS,
+  summarise,
+  whyText,
+} from "./observability/observability.why.ts";
 import {
   isObservableRail,
   OBSERVABLE_RAILS,
@@ -292,6 +297,7 @@ export const coreFacade = {
     getRollup,
     decisionsFrom,
     whyText,
+    summarise,
     NOTHING_WAS_THE_HARNESS,
     pruneObs,
     pruneSpool,

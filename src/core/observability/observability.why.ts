@@ -1,3 +1,4 @@
+import { type ColorName, PLAIN, type Style, SYMBOLS } from "../../platform/style.ts";
 import type { ObsEvent } from "./observability.types.ts";
 
 /**
@@ -98,21 +99,75 @@ export const NOTHING_WAS_THE_HARNESS = [
   "Whatever you just saw was the model, not a rail — the harness allowed everything it was asked about.",
 ].join("\n");
 
+export type WhySummary = { denied: number; asked: number; allowed: number; other: number };
+
+export function summarise(decisions: readonly HarnessDecision[]): WhySummary {
+  const tally = { denied: 0, asked: 0, allowed: 0, other: 0 };
+  for (const decision of decisions) {
+    if (decision.verdict === "deny") {
+      tally.denied += 1;
+    } else if (decision.verdict === "ask") {
+      tally.asked += 1;
+    } else if (decision.verdict === "allow") {
+      tally.allowed += 1;
+    } else {
+      tally.other += 1;
+    }
+  }
+  return tally;
+}
+
 /**
  * why: the empty case is the feature. "Nothing here was the harness" is the sentence an operator cannot get from
  * any other command, and printing an empty table instead would leave them exactly as unsure as before.
  */
-export function whyText(decisions: readonly HarnessDecision[]): string {
+export function whyText(
+  decisions: readonly HarnessDecision[],
+  style: Style = PLAIN,
+  now = new Date(),
+): string {
   if (decisions.length === 0) {
-    return NOTHING_WAS_THE_HARNESS;
+    return [
+      style.paint("success", `${SYMBOLS.check} ${NOTHING_WAS_THE_HARNESS.split("\n")[0]}`),
+      style.dim(NOTHING_WAS_THE_HARNESS.split("\n")[1] ?? ""),
+    ].join("\n");
   }
+
+  const tally = summarise(decisions);
+  const today = now.toISOString().slice(0, 10);
+  const parts = [
+    tally.denied > 0 ? style.paint("error", `${tally.denied} denied`) : "",
+    tally.asked > 0 ? style.paint("warning", `${tally.asked} asked`) : "",
+    tally.allowed > 0 ? style.paint("success", `${tally.allowed} allowed`) : "",
+    tally.other > 0 ? style.dim(`${tally.other} other`) : "",
+  ].filter(Boolean);
+
   const lines = decisions.map((decision) => {
-    const when = decision.ts.slice(11, 19);
-    // why: a record written before `rule` was required carries none, and the reading for that is "unattributed"
-    // rather than a blank — a blank reads as "no rule applied", which is a different and wrong fact.
-    const rule = decision.rule === null ? "rule=unattributed" : `rule=${decision.rule}`;
-    const head = `${when}  ${decision.about.padEnd(14)} ${decision.verdict.padEnd(7)} ${rule}`.trimEnd();
-    return decision.detail ? `${head}\n${" ".repeat(10)}${decision.detail}` : head;
+    // why: the date appears only when the record is not from today. Ten identical timestamps with no date was
+    // the reading that made the first version unreadable — it looked like one burst and spanned three days.
+    const day = decision.ts.slice(0, 10);
+    const when = day === today ? decision.ts.slice(11, 19) : `${day} ${decision.ts.slice(11, 19)}`;
+    const verdictColor: ColorName =
+      decision.verdict === "deny" ? "error" : decision.verdict === "ask" ? "warning" : "success";
+    // why: the `rule=` prefix survives because it is what every denial message prints and what the
+    // troubleshooting page tells people to grep for. Colour is not available when the output is piped.
+    const rule =
+      decision.rule === null ? style.dim("rule=unattributed") : style.paint("info", `rule=${decision.rule}`);
+    const head = [
+      style.dim(when.padEnd(day === today ? 8 : 19)),
+      style.paint("textMuted", decision.about.padEnd(14)),
+      style.paint(verdictColor, decision.verdict.padEnd(7)),
+      rule,
+    ].join(" ");
+    return decision.detail ? `${head}\n${" ".repeat(4)}${style.dim(SYMBOLS.bar)} ${decision.detail}` : head;
   });
-  return [`Last ${decisions.length} harness decision(s), newest first:`, "", ...lines].join("\n");
+
+  return [
+    style.heading(`LAST ${decisions.length} HARNESS DECISION${decisions.length === 1 ? "" : "S"}`),
+    `   ${parts.join(style.dim(` ${SYMBOLS.bar} `))}`,
+    "",
+    ...lines,
+    "",
+    style.footer("newest first  ·  tlc harness why 30 widens the window  ·  --json for the records"),
+  ].join("\n");
 }

@@ -3750,6 +3750,61 @@ function recordFromEvent(root, config, event, extra = {}) {
   });
 }
 
+// src/platform/style.ts
+var COLORS = {
+  structure: "#3d3a4a",
+  accent: "#a78bfa",
+  success: "#6ee7b7",
+  warning: "#d4a574",
+  error: "#f87171",
+  info: "#93c5fd",
+  textMain: "#f5f5f7",
+  textMuted: "#9ca3af",
+  textDim: "#6b7280"
+};
+var SYMBOLS = {
+  check: "✔",
+  cross: "✖",
+  warning: "⚠",
+  arrow: "→",
+  arrowRight: "▸",
+  dot: "•",
+  bar: "│",
+  rule: "══",
+  dash: "──"
+};
+function rgb(hex) {
+  const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+  if (!match) {
+    return "255;255;255";
+  }
+  return [match[1], match[2], match[3]].map((part) => Number.parseInt(part, 16)).join(";");
+}
+var ESC = String.fromCharCode(27);
+var RESET = `${ESC}[0m`;
+function colorEnabled(env = process.env, argv = process.argv, isTty = process.stdout.isTTY === true) {
+  if ("NO_COLOR" in env) {
+    return false;
+  }
+  if (argv.includes("--no-color")) {
+    return false;
+  }
+  return isTty;
+}
+function createStyle(enabled = colorEnabled()) {
+  const wrap = (code, text) => enabled ? `${ESC}[${code}m${text}${RESET}` : text;
+  const paint = (name, text) => wrap(`38;2;${rgb(COLORS[name])}`, text);
+  return {
+    enabled,
+    paint,
+    bold: (text) => wrap("1", text),
+    dim: (text) => paint("textDim", text),
+    heading: (text) => paint("accent", `${SYMBOLS.rule} ${text} ${SYMBOLS.rule}`),
+    footer: (text) => paint("textDim", `${SYMBOLS.dash} ${text} ${SYMBOLS.dash}`)
+  };
+}
+var PLAIN = createStyle(false);
+
 // src/core/observability/observability.why.ts
 var NONE = new Set(["none", "", "undefined"]);
 function attr(event, name) {
@@ -3820,18 +3875,61 @@ var NOTHING_WAS_THE_HARNESS = [
   "Whatever you just saw was the model, not a rail — the harness allowed everything it was asked about."
 ].join(`
 `);
-function whyText(decisions) {
-  if (decisions.length === 0) {
-    return NOTHING_WAS_THE_HARNESS;
+function summarise(decisions) {
+  const tally = { denied: 0, asked: 0, allowed: 0, other: 0 };
+  for (const decision of decisions) {
+    if (decision.verdict === "deny") {
+      tally.denied += 1;
+    } else if (decision.verdict === "ask") {
+      tally.asked += 1;
+    } else if (decision.verdict === "allow") {
+      tally.allowed += 1;
+    } else {
+      tally.other += 1;
+    }
   }
+  return tally;
+}
+function whyText(decisions, style = PLAIN, now = new Date) {
+  if (decisions.length === 0) {
+    return [
+      style.paint("success", `${SYMBOLS.check} ${NOTHING_WAS_THE_HARNESS.split(`
+`)[0]}`),
+      style.dim(NOTHING_WAS_THE_HARNESS.split(`
+`)[1] ?? "")
+    ].join(`
+`);
+  }
+  const tally = summarise(decisions);
+  const today = now.toISOString().slice(0, 10);
+  const parts = [
+    tally.denied > 0 ? style.paint("error", `${tally.denied} denied`) : "",
+    tally.asked > 0 ? style.paint("warning", `${tally.asked} asked`) : "",
+    tally.allowed > 0 ? style.paint("success", `${tally.allowed} allowed`) : "",
+    tally.other > 0 ? style.dim(`${tally.other} other`) : ""
+  ].filter(Boolean);
   const lines = decisions.map((decision) => {
-    const when = decision.ts.slice(11, 19);
-    const rule = decision.rule === null ? "rule=unattributed" : `rule=${decision.rule}`;
-    const head = `${when}  ${decision.about.padEnd(14)} ${decision.verdict.padEnd(7)} ${rule}`.trimEnd();
+    const day = decision.ts.slice(0, 10);
+    const when = day === today ? decision.ts.slice(11, 19) : `${day} ${decision.ts.slice(11, 19)}`;
+    const verdictColor = decision.verdict === "deny" ? "error" : decision.verdict === "ask" ? "warning" : "success";
+    const rule = decision.rule === null ? style.dim("rule=unattributed") : style.paint("info", `rule=${decision.rule}`);
+    const head = [
+      style.dim(when.padEnd(day === today ? 8 : 19)),
+      style.paint("textMuted", decision.about.padEnd(14)),
+      style.paint(verdictColor, decision.verdict.padEnd(7)),
+      rule
+    ].join(" ");
     return decision.detail ? `${head}
-${" ".repeat(10)}${decision.detail}` : head;
+${" ".repeat(4)}${style.dim(SYMBOLS.bar)} ${decision.detail}` : head;
   });
-  return [`Last ${decisions.length} harness decision(s), newest first:`, "", ...lines].join(`
+  return [
+    style.heading(`LAST ${decisions.length} HARNESS DECISION${decisions.length === 1 ? "" : "S"}`),
+    `   ${parts.join(style.dim(` ${SYMBOLS.bar} `))}`,
+    "",
+    ...lines,
+    "",
+    style.footer("newest first  ·  tlc harness why 30 widens the window  ·  --json for the records")
+  ].join(`
 `);
 }
 
@@ -5880,6 +5978,7 @@ var coreFacade = {
     getRollup,
     decisionsFrom,
     whyText,
+    summarise,
     NOTHING_WAS_THE_HARNESS,
     pruneObs,
     pruneSpool
@@ -6079,7 +6178,7 @@ function main(argv) {
     if (json) {
       emitJson({ count: decisions.length, decisions });
     } else {
-      console.log(coreFacade.observability.whyText(decisions));
+      console.log(coreFacade.observability.whyText(decisions, createStyle()));
     }
     process.exit(0);
   }

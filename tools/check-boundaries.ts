@@ -18,6 +18,14 @@ export type BoundaryCheckConfig = {
   contractsDir: string;
   platformDir: string;
   entrypointsDir: string;
+  /**
+   * hazard: a colour escape reaching output a machine parses is a defect, not a cosmetic. One already matched the
+   * path pattern in gate output and sent an agent to fix `39msrc/…`, a file that does not exist. These directories
+   * answer the host and render `--json`, so they never style anything
+   * ([/decisions/ad-063.md](/decisions/ad-063.md)).
+   */
+  noStyleDirs: string[];
+  styleModule: string;
 };
 
 export const DEFAULT_CONFIG: Omit<BoundaryCheckConfig, "root"> = {
@@ -29,6 +37,8 @@ export const DEFAULT_CONFIG: Omit<BoundaryCheckConfig, "root"> = {
   contractsDir: "src/contracts",
   platformDir: "src/platform",
   entrypointsDir: "src/entrypoints",
+  noStyleDirs: ["src/providers", "src/entrypoints"],
+  styleModule: "src/platform/style.ts",
 };
 
 const VENDOR_PATTERN = /\b(cursor|claude|codex|composer|anthropic)\b/i;
@@ -122,6 +132,11 @@ export function runBoundaryChecks(config: BoundaryCheckConfig): Violation[] {
         "cursor-legacy-path",
         config.root,
       ),
+    );
+  }
+  for (const rel of config.noStyleDirs) {
+    violations.push(
+      ...checkCrossImports(config.root, rel, config.styleModule, "styles-machine-readable-output"),
     );
   }
   violations.push(

@@ -608,6 +608,61 @@ var LIVE_ALLOWLIST = new Set([
 // src/core/observability/observability.service.ts
 var PAYLOAD_KEYS = new Set(["tool_input", "tool_output", "prompt", "text", "content", "output"]);
 
+// src/platform/style.ts
+var COLORS = {
+  structure: "#3d3a4a",
+  accent: "#a78bfa",
+  success: "#6ee7b7",
+  warning: "#d4a574",
+  error: "#f87171",
+  info: "#93c5fd",
+  textMain: "#f5f5f7",
+  textMuted: "#9ca3af",
+  textDim: "#6b7280"
+};
+var SYMBOLS = {
+  check: "✔",
+  cross: "✖",
+  warning: "⚠",
+  arrow: "→",
+  arrowRight: "▸",
+  dot: "•",
+  bar: "│",
+  rule: "══",
+  dash: "──"
+};
+function rgb(hex) {
+  const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+  if (!match) {
+    return "255;255;255";
+  }
+  return [match[1], match[2], match[3]].map((part) => Number.parseInt(part, 16)).join(";");
+}
+var ESC = String.fromCharCode(27);
+var RESET = `${ESC}[0m`;
+function colorEnabled(env = process.env, argv = process.argv, isTty = process.stdout.isTTY === true) {
+  if ("NO_COLOR" in env) {
+    return false;
+  }
+  if (argv.includes("--no-color")) {
+    return false;
+  }
+  return isTty;
+}
+function createStyle(enabled = colorEnabled()) {
+  const wrap = (code, text) => enabled ? `${ESC}[${code}m${text}${RESET}` : text;
+  const paint = (name, text) => wrap(`38;2;${rgb(COLORS[name])}`, text);
+  return {
+    enabled,
+    paint,
+    bold: (text) => wrap("1", text),
+    dim: (text) => paint("textDim", text),
+    heading: (text) => paint("accent", `${SYMBOLS.rule} ${text} ${SYMBOLS.rule}`),
+    footer: (text) => paint("textDim", `${SYMBOLS.dash} ${text} ${SYMBOLS.dash}`)
+  };
+}
+var PLAIN = createStyle(false);
+
 // src/core/observability/observability.why.ts
 var NONE = new Set(["none", "", "undefined"]);
 var NOTHING_WAS_THE_HARNESS = [

@@ -6,6 +6,7 @@ import { DEFAULT_OBS, type ObsEvent } from "../src/core/observability/observabil
 import { loadPolicy } from "../src/core/policy/policy.loader.ts";
 import { emitJson, takeJsonFlag } from "../src/platform/cli-output.ts";
 import { projectStateDir } from "../src/platform/paths.ts";
+import { createStyle } from "../src/platform/style.ts";
 
 export const NO_EVENTS = "(no signal events yet)";
 
@@ -91,7 +92,7 @@ function main(argv: string[]): void {
     if (json) {
       emitJson({ count: decisions.length, decisions });
     } else {
-      console.log(coreFacade.observability.whyText(decisions));
+      console.log(coreFacade.observability.whyText(decisions, createStyle()));
     }
     process.exit(0);
   }
