@@ -7,8 +7,8 @@
 export type Decision =
   | { kind: "abstain" }
   | { kind: "allow" }
-  | { kind: "deny"; reason: string; userNote?: string; rule?: string }
-  | { kind: "ask"; reason: string; userNote?: string; rule?: string }
+  | { kind: "deny"; reason: string; userNote?: string; rule: string }
+  | { kind: "ask"; reason: string; userNote?: string; rule: string }
   | { kind: "context"; text: string; env?: Record<string, string> }
   | { kind: "continue"; text: string }
   | { kind: "rewriteInput"; input: Record<string, unknown>; reason: string };

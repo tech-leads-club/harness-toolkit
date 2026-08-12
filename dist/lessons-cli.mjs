@@ -5180,22 +5180,29 @@ function allowlistRefusal(model, allowed) {
   const base = `"${model}" is not in \`${ALLOWLIST_KEY}\`. Use one of: ${allowed.join(", ")}.`;
   return model === "inherit" ? `${base} \`inherit\` is a value that list may contain; add it there to permit it.` : base;
 }
+var SUBAGENT_RULES = {
+  blockedPattern: "subagent-blocked-pattern",
+  modelRequired: "subagent-model-required",
+  allowlist: "subagent-allowlist",
+  minEffort: "subagent-min-effort",
+  parentFast: "subagent-parent-fast"
+};
 function evaluateSubagentSpawn(args) {
   const patterns = forProvider(args.blockedPatterns, args.provider) ?? [];
-  const block = (reason2, userNote) => args.blockMode === "ask" ? { kind: "ask", reason: reason2, userNote } : { kind: "deny", reason: reason2, userNote };
+  const block = (reason2, userNote, rule) => args.blockMode === "ask" ? { kind: "ask", reason: reason2, userNote, rule } : { kind: "deny", reason: reason2, userNote, rule };
   const blockedBy = candidateModelBlocked(args.model, patterns, args.modelParams);
   if (blockedBy) {
-    return block(`Do not use *-fast models. Pattern hit: ${blockedBy}.`, `Blocked subagent model "${args.model}" (matches ${blockedBy}).`);
+    return block(`Do not use *-fast models. Pattern hit: ${blockedBy}.`, `Blocked subagent model "${args.model}" (matches ${blockedBy}).`, SUBAGENT_RULES.blockedPattern);
   }
   if (args.requireModel && !args.model.trim()) {
-    return block("Set model explicitly on every Task spawn. Do not omit model.", "Subagent spawned without an explicit model.");
+    return block("Set model explicitly on every Task spawn. Do not omit model.", "Subagent spawned without an explicit model.", SUBAGENT_RULES.modelRequired);
   }
   const allowed = forProvider(args.allowedModels, args.provider);
   if (args.enforceAllowlist && args.model && allowed !== null && allowed.length > 0 && !isModelAllowlisted(args.model, allowed)) {
-    return block(allowlistRefusal(args.model, allowed), `Subagent model "${args.model}" is not on the allowlist.`);
+    return block(allowlistRefusal(args.model, allowed), `Subagent model "${args.model}" is not on the allowlist.`, SUBAGENT_RULES.allowlist);
   }
   if (args.minEffort && args.effort !== undefined && isEffortLevel(args.effort) && compareEffort(args.effort, args.minEffort) < 0) {
-    return block(`Subagent effort "${args.effort}" is below the required minimum "${args.minEffort}".`, `Raise the subagent effort to at least "${args.minEffort}" and retry.`);
+    return block(`Subagent effort "${args.effort}" is below the required minimum "${args.minEffort}".`, `Raise the subagent effort to at least "${args.minEffort}" and retry.`, SUBAGENT_RULES.minEffort);
   }
   if (shouldDenyParentFast({
     enabled: args.blockParentFast,
@@ -5203,7 +5210,7 @@ function evaluateSubagentSpawn(args) {
     sessionKey: args.sessionKey,
     patterns
   })) {
-    return block("Parent Fast mode is forbidden for Task/subagent spawns. Turn Fast off on the parent model and retry.", "Blocked subagent spawn: parent conversation is in Fast mode.");
+    return block("Parent Fast mode is forbidden for Task/subagent spawns. Turn Fast off on the parent model and retry.", "Blocked subagent spawn: parent conversation is in Fast mode.", SUBAGENT_RULES.parentFast);
   }
   return { kind: "allow" };
 }

@@ -42,16 +42,33 @@ export function allowlistRefusal(model: string, allowed: readonly string[]): str
     : base;
 }
 
+/**
+ * why: one rule per reason a spawn is refused, not one for the aggregate. `obs report` attributes refusals by rule
+ * and `tlc harness why` reads the same field, so "blocked by the allowlist" and "blocked because the parent is in
+ * Fast mode" have to be distinguishable — a teammate hit the first and spent the loop guessing which
+ * ([/decisions/ad-061.md](/decisions/ad-061.md)).
+ */
+export const SUBAGENT_RULES = {
+  blockedPattern: "subagent-blocked-pattern",
+  modelRequired: "subagent-model-required",
+  allowlist: "subagent-allowlist",
+  minEffort: "subagent-min-effort",
+  parentFast: "subagent-parent-fast",
+} as const;
+
 export function evaluateSubagentSpawn(args: EvaluateSubagentSpawnArgs): Decision {
   const patterns = forProvider(args.blockedPatterns, args.provider) ?? [];
-  const block = (reason: string, userNote: string): Decision =>
-    args.blockMode === "ask" ? { kind: "ask", reason, userNote } : { kind: "deny", reason, userNote };
+  const block = (reason: string, userNote: string, rule: string): Decision =>
+    args.blockMode === "ask"
+      ? { kind: "ask", reason, userNote, rule }
+      : { kind: "deny", reason, userNote, rule };
 
   const blockedBy = candidateModelBlocked(args.model, patterns, args.modelParams);
   if (blockedBy) {
     return block(
       `Do not use *-fast models. Pattern hit: ${blockedBy}.`,
       `Blocked subagent model "${args.model}" (matches ${blockedBy}).`,
+      SUBAGENT_RULES.blockedPattern,
     );
   }
 
@@ -59,6 +76,7 @@ export function evaluateSubagentSpawn(args: EvaluateSubagentSpawnArgs): Decision
     return block(
       "Set model explicitly on every Task spawn. Do not omit model.",
       "Subagent spawned without an explicit model.",
+      SUBAGENT_RULES.modelRequired,
     );
   }
 
@@ -76,6 +94,7 @@ export function evaluateSubagentSpawn(args: EvaluateSubagentSpawnArgs): Decision
     return block(
       allowlistRefusal(args.model, allowed),
       `Subagent model "${args.model}" is not on the allowlist.`,
+      SUBAGENT_RULES.allowlist,
     );
   }
 
@@ -88,6 +107,7 @@ export function evaluateSubagentSpawn(args: EvaluateSubagentSpawnArgs): Decision
     return block(
       `Subagent effort "${args.effort}" is below the required minimum "${args.minEffort}".`,
       `Raise the subagent effort to at least "${args.minEffort}" and retry.`,
+      SUBAGENT_RULES.minEffort,
     );
   }
 
@@ -102,6 +122,7 @@ export function evaluateSubagentSpawn(args: EvaluateSubagentSpawnArgs): Decision
     return block(
       "Parent Fast mode is forbidden for Task/subagent spawns. Turn Fast off on the parent model and retry.",
       "Blocked subagent spawn: parent conversation is in Fast mode.",
+      SUBAGENT_RULES.parentFast,
     );
   }
 

@@ -70,3 +70,4 @@ doctor reports against your own configuration.
   - **Needs your action:** If a project has the comment gate on, expect it to start firing on turns that commit and on languages it never covered. Nothing changes in your config.
 - **AD-059** — A rail never writes a field it reads, and a counter reads the plane its events land on
 - **AD-060** — The gate records the environment it ran under, and names it only once the cheap explanations are spent
+- **AD-061** — A decision that refuses names its rule, and degrading preserves it

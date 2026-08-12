@@ -37,14 +37,18 @@ test("allow never includes permissionDecisionReason", () => {
 });
 
 test("deny renders hookSpecificOutput.permissionDecision:deny with permissionDecisionReason", () => {
-  const decision: Decision = { kind: "deny", reason: "blocked pattern hit: -fast" };
+  const decision: Decision = { kind: "deny", reason: "blocked pattern hit: -fast", rule: "test-deny" };
   const rendered = claudeRender(decision, TOOL_BEFORE_EVENT);
   assert.equal(rendered.stdout, golden("deny"));
   assert.equal(rendered.exitCode, 0);
 });
 
 test("ask renders hookSpecificOutput.permissionDecision:ask with permissionDecisionReason", () => {
-  const decision: Decision = { kind: "ask", reason: "confirm before running this catastrophic command" };
+  const decision: Decision = {
+    kind: "ask",
+    reason: "confirm before running this catastrophic command",
+    rule: "test-ask",
+  };
   const rendered = claudeRender(decision, TOOL_BEFORE_EVENT);
   assert.equal(rendered.stdout, golden("ask"));
   assert.equal(rendered.exitCode, 0);
@@ -129,8 +133,8 @@ test("every decision kind renders with exit code 0 — exit code 2 is never prod
   const decisions: Decision[] = [
     { kind: "abstain" },
     { kind: "allow" },
-    { kind: "deny", reason: "r" },
-    { kind: "ask", reason: "r" },
+    { kind: "deny", reason: "r", rule: "test-deny" },
+    { kind: "ask", reason: "r", rule: "test-ask" },
     { kind: "context", text: "t" },
     { kind: "continue", text: "t" },
     { kind: "rewriteInput", input: {}, reason: "r" },
@@ -162,7 +166,7 @@ test("context text with embedded quotes and newlines round-trips through JSON es
 
 test("ask at a kind outside askSupportedOn is degraded to deny before it ever reaches the renderer", () => {
   const toolAfterEvent: HarnessEvent = { ...TOOL_BEFORE_EVENT, event: "tool.after" };
-  const askDecision: Decision = { kind: "ask", reason: "confirm deletion" };
+  const askDecision: Decision = { kind: "ask", reason: "confirm deletion", rule: "test-ask" };
   const degraded = degrade(askDecision, toolAfterEvent, claudeCapabilities());
   assert.equal(degraded.kind, "deny");
   const rendered = claudeRender(degraded, toolAfterEvent);
@@ -179,7 +183,7 @@ test("context at tool.before uses hookEventName PreToolUse, not a hardcoded Sess
 
 test("ask on a kind inside askSupportedOn (read.before) passes through unchanged", () => {
   const readBeforeEvent: HarnessEvent = { ...TOOL_BEFORE_EVENT, event: "read.before" };
-  const askDecision: Decision = { kind: "ask", reason: "confirm read of a sensitive file" };
+  const askDecision: Decision = { kind: "ask", reason: "confirm read of a sensitive file", rule: "test-ask" };
   const degraded = degrade(askDecision, readBeforeEvent, claudeCapabilities());
   assert.equal(degraded.kind, "ask");
   const rendered = claudeRender(degraded, readBeforeEvent);

@@ -33,7 +33,12 @@ test('allow renders {"permission":"allow"} — captured from guard-mcp.mjs / gua
 
 test("ask reconstructs the exact captured guard-shell.mjs catastrophic-command output", () => {
   const parsed = JSON.parse(golden("ask")) as { user_message: string; agent_message: string };
-  const decision: Decision = { kind: "ask", reason: parsed.agent_message, userNote: parsed.user_message };
+  const decision: Decision = {
+    kind: "ask",
+    reason: parsed.agent_message,
+    userNote: parsed.user_message,
+    rule: "test-ask",
+  };
   const rendered = cursorRender(decision, EVENT);
   assert.equal(rendered.stdout, golden("ask"));
   assert.equal(rendered.exitCode, 0);
@@ -41,7 +46,12 @@ test("ask reconstructs the exact captured guard-shell.mjs catastrophic-command o
 
 test("deny reconstructs the exact captured guard-subagent.mjs blocked_pattern output", () => {
   const parsed = JSON.parse(golden("deny")) as { user_message: string; agent_message: string };
-  const decision: Decision = { kind: "deny", reason: parsed.agent_message, userNote: parsed.user_message };
+  const decision: Decision = {
+    kind: "deny",
+    reason: parsed.agent_message,
+    userNote: parsed.user_message,
+    rule: "test-deny",
+  };
   const rendered = cursorRender(decision, EVENT);
   assert.equal(rendered.stdout, golden("deny"));
   assert.equal(rendered.exitCode, 0);
@@ -91,12 +101,12 @@ test("rewriteInput never leaks the reason field into rendered output", () => {
 });
 
 test("deny with no userNote omits user_message and keeps agent_message", () => {
-  const rendered = cursorRender({ kind: "deny", reason: "no explicit model" }, EVENT);
+  const rendered = cursorRender({ kind: "deny", reason: "no explicit model", rule: "test-deny" }, EVENT);
   assert.equal(rendered.stdout, '{"permission":"deny","agent_message":"no explicit model"}');
 });
 
 test("ask with no userNote omits user_message and keeps agent_message", () => {
-  const rendered = cursorRender({ kind: "ask", reason: "confirm" }, EVENT);
+  const rendered = cursorRender({ kind: "ask", reason: "confirm", rule: "test-ask" }, EVENT);
   assert.equal(rendered.stdout, '{"permission":"ask","agent_message":"confirm"}');
 });
 
@@ -104,8 +114,8 @@ test("every decision kind renders with exit code 0 — exit code is never a poli
   const decisions: Decision[] = [
     { kind: "abstain" },
     { kind: "allow" },
-    { kind: "deny", reason: "r" },
-    { kind: "ask", reason: "r" },
+    { kind: "deny", reason: "r", rule: "test-deny" },
+    { kind: "ask", reason: "r", rule: "test-ask" },
     { kind: "context", text: "t" },
     { kind: "continue", text: "t" },
     { kind: "rewriteInput", input: {}, reason: "r" },
@@ -130,7 +140,7 @@ test("context text with embedded quotes and newlines round-trips through JSON es
 
 test("ask at tool.before never reaches the renderer — degrade converts it to deny first", () => {
   const toolBeforeEvent: HarnessEvent = { ...EVENT, event: "tool.before" };
-  const askDecision: Decision = { kind: "ask", reason: "confirm deletion" };
+  const askDecision: Decision = { kind: "ask", reason: "confirm deletion", rule: "test-ask" };
   const degraded = degrade(askDecision, toolBeforeEvent, cursorCapabilities());
   assert.equal(degraded.kind, "deny");
   const rendered = cursorRender(degraded, toolBeforeEvent);

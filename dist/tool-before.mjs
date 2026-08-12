@@ -5195,22 +5195,29 @@ function allowlistRefusal(model, allowed) {
   const base = `"${model}" is not in \`${ALLOWLIST_KEY}\`. Use one of: ${allowed.join(", ")}.`;
   return model === "inherit" ? `${base} \`inherit\` is a value that list may contain; add it there to permit it.` : base;
 }
+var SUBAGENT_RULES = {
+  blockedPattern: "subagent-blocked-pattern",
+  modelRequired: "subagent-model-required",
+  allowlist: "subagent-allowlist",
+  minEffort: "subagent-min-effort",
+  parentFast: "subagent-parent-fast"
+};
 function evaluateSubagentSpawn(args) {
   const patterns = forProvider(args.blockedPatterns, args.provider) ?? [];
-  const block = (reason2, userNote) => args.blockMode === "ask" ? { kind: "ask", reason: reason2, userNote } : { kind: "deny", reason: reason2, userNote };
+  const block = (reason2, userNote, rule) => args.blockMode === "ask" ? { kind: "ask", reason: reason2, userNote, rule } : { kind: "deny", reason: reason2, userNote, rule };
   const blockedBy = candidateModelBlocked(args.model, patterns, args.modelParams);
   if (blockedBy) {
-    return block(`Do not use *-fast models. Pattern hit: ${blockedBy}.`, `Blocked subagent model "${args.model}" (matches ${blockedBy}).`);
+    return block(`Do not use *-fast models. Pattern hit: ${blockedBy}.`, `Blocked subagent model "${args.model}" (matches ${blockedBy}).`, SUBAGENT_RULES.blockedPattern);
   }
   if (args.requireModel && !args.model.trim()) {
-    return block("Set model explicitly on every Task spawn. Do not omit model.", "Subagent spawned without an explicit model.");
+    return block("Set model explicitly on every Task spawn. Do not omit model.", "Subagent spawned without an explicit model.", SUBAGENT_RULES.modelRequired);
   }
   const allowed = forProvider(args.allowedModels, args.provider);
   if (args.enforceAllowlist && args.model && allowed !== null && allowed.length > 0 && !isModelAllowlisted(args.model, allowed)) {
-    return block(allowlistRefusal(args.model, allowed), `Subagent model "${args.model}" is not on the allowlist.`);
+    return block(allowlistRefusal(args.model, allowed), `Subagent model "${args.model}" is not on the allowlist.`, SUBAGENT_RULES.allowlist);
   }
   if (args.minEffort && args.effort !== undefined && isEffortLevel(args.effort) && compareEffort(args.effort, args.minEffort) < 0) {
-    return block(`Subagent effort "${args.effort}" is below the required minimum "${args.minEffort}".`, `Raise the subagent effort to at least "${args.minEffort}" and retry.`);
+    return block(`Subagent effort "${args.effort}" is below the required minimum "${args.minEffort}".`, `Raise the subagent effort to at least "${args.minEffort}" and retry.`, SUBAGENT_RULES.minEffort);
   }
   if (shouldDenyParentFast({
     enabled: args.blockParentFast,
@@ -5218,7 +5225,7 @@ function evaluateSubagentSpawn(args) {
     sessionKey: args.sessionKey,
     patterns
   })) {
-    return block("Parent Fast mode is forbidden for Task/subagent spawns. Turn Fast off on the parent model and retry.", "Blocked subagent spawn: parent conversation is in Fast mode.");
+    return block("Parent Fast mode is forbidden for Task/subagent spawns. Turn Fast off on the parent model and retry.", "Blocked subagent spawn: parent conversation is in Fast mode.", SUBAGENT_RULES.parentFast);
   }
   return { kind: "allow" };
 }
@@ -5915,6 +5922,7 @@ var coreFacade = {
 // src/entrypoints/run.ts
 import { join as join27 } from "node:path";
 // src/providers/provider.degrade.ts
+var DEGRADE_RULES = { rewriteUnavailable: "rewrite-unavailable" };
 var ESCALATION_PREFIX = "Escalation unavailable on this provider — ";
 var NO_HUMAN_PREFIX = "No operator is answering prompts in this permission mode — ";
 var NO_HUMAN_MODES = new Set(["bypassPermissions", "dontAsk"]);
@@ -5976,17 +5984,28 @@ function degrade(decision, event, capabilities, options = {}) {
   }
   if (decision.kind === "ask") {
     if (!capabilities.askSupportedOn.includes(event.event)) {
-      return { kind: "deny", reason: `${ESCALATION_PREFIX}${decision.reason}`, userNote: decision.userNote };
+      return {
+        kind: "deny",
+        reason: `${ESCALATION_PREFIX}${decision.reason}`,
+        userNote: decision.userNote,
+        rule: decision.rule
+      };
     }
     if (event.permissionMode !== undefined && NO_HUMAN_MODES.has(event.permissionMode)) {
-      return { kind: "deny", reason: `${NO_HUMAN_PREFIX}${decision.reason}`, userNote: decision.userNote };
+      return {
+        kind: "deny",
+        reason: `${NO_HUMAN_PREFIX}${decision.reason}`,
+        userNote: decision.userNote,
+        rule: decision.rule
+      };
     }
     return decision;
   }
   if (decision.kind === "rewriteInput" && !capabilities.toolInputRewrite) {
     return {
       kind: "ask",
-      reason: `Input rewrite unavailable on this provider — proposed input: ${JSON.stringify(decision.input)}. ${decision.reason}`
+      reason: `Input rewrite unavailable on this provider — proposed input: ${JSON.stringify(decision.input)}. ${decision.reason}`,
+      rule: DEGRADE_RULES.rewriteUnavailable
     };
   }
   if (decision.kind === "context") {
@@ -6899,7 +6918,8 @@ async function handleToolBefore(event, ctx) {
   if (isReadOnlySubagent && event.toolName !== undefined && READONLY_BLOCKED_TOOLS.has(event.toolName)) {
     return {
       kind: "deny",
-      reason: `Explore/read-only subagents cannot use ${event.toolName}. Return findings to the parent agent.`
+      reason: `Explore/read-only subagents cannot use ${event.toolName}. Return findings to the parent agent.`,
+      rule: "subagent-read-only"
     };
   }
   if (event.toolName === "Task") {

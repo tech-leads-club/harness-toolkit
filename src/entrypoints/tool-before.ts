@@ -87,6 +87,7 @@ async function handleToolBefore(event: HarnessEvent, ctx: HandlerContext): Promi
     return {
       kind: "deny",
       reason: `Explore/read-only subagents cannot use ${event.toolName}. Return findings to the parent agent.`,
+      rule: "subagent-read-only",
     };
   }
 

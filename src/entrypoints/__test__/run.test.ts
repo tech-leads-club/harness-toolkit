@@ -192,7 +192,7 @@ test("an ask decision at tool.before degrades to deny with the escalation prefix
   try {
     const payload = cursorPayload(root);
     const outcome = await runHandler(
-      () => ({ kind: "ask", reason: "confirm first" }),
+      () => ({ kind: "ask", reason: "confirm first", rule: "test-ask" }),
       stdinOf(JSON.stringify(payload)),
     );
     assert.equal(outcome.decision.kind, "deny");
@@ -210,7 +210,7 @@ test("an ask decision at tool.before stays ask under Claude, which supports it",
   try {
     const payload = claudePayload(root);
     const outcome = await runHandler(
-      () => ({ kind: "ask", reason: "confirm first" }),
+      () => ({ kind: "ask", reason: "confirm first", rule: "test-ask" }),
       stdinOf(JSON.stringify(payload)),
     );
     assert.equal(outcome.decision.kind, "ask");

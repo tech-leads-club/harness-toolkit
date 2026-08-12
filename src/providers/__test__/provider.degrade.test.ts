@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Decision, HarnessEvent, ProviderCapabilities } from "../../contracts/index.ts";
-import { degrade } from "../provider.degrade.ts";
+import { DEGRADE_RULES, degrade } from "../provider.degrade.ts";
 
 const FULL_CAPS: ProviderCapabilities = {
   enforcesHooks: true,
@@ -41,7 +41,12 @@ function eventInMode(mode: string | undefined): HarnessEvent {
 
 for (const mode of ["bypassPermissions", "dontAsk"]) {
   test(`ask degrades to deny under permission mode ${mode}`, () => {
-    const decision: Decision = { kind: "ask", reason: "confirm deletion", userNote: "note" };
+    const decision: Decision = {
+      kind: "ask",
+      reason: "confirm deletion",
+      userNote: "note",
+      rule: "test-ask",
+    };
     const result = degrade(decision, eventInMode(mode), caps());
     assert.equal(result.kind, "deny");
     assert.match(result.kind === "deny" ? result.reason : "", /No operator is answering prompts/);
@@ -51,24 +56,24 @@ for (const mode of ["bypassPermissions", "dontAsk"]) {
 
 for (const mode of ["default", "plan", "acceptEdits", "auto"]) {
   test(`ask survives under permission mode ${mode}, where the operator still answers`, () => {
-    const decision: Decision = { kind: "ask", reason: "confirm deletion" };
+    const decision: Decision = { kind: "ask", reason: "confirm deletion", rule: "test-ask" };
     assert.equal(degrade(decision, eventInMode(mode), caps()).kind, "ask");
   });
 }
 
 test("ask survives when the provider reports no permission mode at all", () => {
-  const decision: Decision = { kind: "ask", reason: "confirm deletion" };
+  const decision: Decision = { kind: "ask", reason: "confirm deletion", rule: "test-ask" };
   assert.equal(degrade(decision, eventInMode(undefined), caps()).kind, "ask");
 });
 
 test("the unsupported-event denial wins over the permission-mode denial", () => {
-  const decision: Decision = { kind: "ask", reason: "confirm deletion" };
+  const decision: Decision = { kind: "ask", reason: "confirm deletion", rule: "test-ask" };
   const result = degrade(decision, eventInMode("bypassPermissions"), caps({ askSupportedOn: [] }));
   assert.match(result.kind === "deny" ? result.reason : "", /Escalation unavailable/);
 });
 
 test("ask at tool.before degrades to deny when tool.before is absent from askSupportedOn", () => {
-  const decision: Decision = { kind: "ask", reason: "confirm deletion" };
+  const decision: Decision = { kind: "ask", reason: "confirm deletion", rule: "test-ask" };
   const result = degrade(
     decision,
     eventAt("tool.before"),
@@ -80,25 +85,25 @@ test("ask at tool.before degrades to deny when tool.before is absent from askSup
 });
 
 test("ask at shell.before passes through unchanged when shell.before is in askSupportedOn", () => {
-  const decision: Decision = { kind: "ask", reason: "catastrophic command" };
+  const decision: Decision = { kind: "ask", reason: "catastrophic command", rule: "test-ask" };
   const result = degrade(decision, eventAt("shell.before"), caps({ askSupportedOn: ["shell.before"] }));
   assert.equal(result, decision);
 });
 
 test("ask at shell.before degrades to deny when shell.before is absent from askSupportedOn", () => {
-  const decision: Decision = { kind: "ask", reason: "catastrophic command" };
+  const decision: Decision = { kind: "ask", reason: "catastrophic command", rule: "test-ask" };
   const result = degrade(decision, eventAt("shell.before"), caps({ askSupportedOn: ["mcp.before"] }));
   assert.equal(result.kind, "deny");
 });
 
 test("ask at mcp.before degrades to deny when mcp.before is absent from askSupportedOn", () => {
-  const decision: Decision = { kind: "ask", reason: "unapproved MCP tool" };
+  const decision: Decision = { kind: "ask", reason: "unapproved MCP tool", rule: "test-ask" };
   const result = degrade(decision, eventAt("mcp.before"), caps({ askSupportedOn: ["shell.before"] }));
   assert.equal(result.kind, "deny");
 });
 
 test("ask at mcp.after degrades to deny when mcp.after is absent from askSupportedOn — Cursor's real asymmetry", () => {
-  const decision: Decision = { kind: "ask", reason: "unexpected MCP result" };
+  const decision: Decision = { kind: "ask", reason: "unexpected MCP result", rule: "test-ask" };
   const result = degrade(decision, eventAt("mcp.after"), caps({ askSupportedOn: ["mcp.before"] }));
   assert.equal(result.kind, "deny");
 });
@@ -139,14 +144,14 @@ test("continue degrades to context with the advisory prefix when enforcesHooks i
 });
 
 test("deny degrades to context with the advisory prefix when enforcesHooks is false", () => {
-  const decision: Decision = { kind: "deny", reason: "blocked pattern" };
+  const decision: Decision = { kind: "deny", reason: "blocked pattern", rule: "test-deny" };
   const result = degrade(decision, eventAt("tool.before"), caps({ enforcesHooks: false }));
   assert.equal(result.kind, "context");
   assert.ok(result.kind === "context" && result.text.includes("blocked pattern"));
 });
 
 test("ask degrades to advisory context (not deny) when enforcesHooks is false, even if askSupportedOn excludes the kind", () => {
-  const decision: Decision = { kind: "ask", reason: "confirm" };
+  const decision: Decision = { kind: "ask", reason: "confirm", rule: "test-ask" };
   const result = degrade(
     decision,
     eventAt("tool.before"),
@@ -269,4 +274,47 @@ test("session.start context survives on a provider that declares the delivery un
   );
   assert.equal(decision.kind, "context");
   assert.deepEqual(decision.kind === "context" ? decision.env : null, { HARNESS_ACTIVE: "1" });
+});
+
+/**
+ * hazard: degrade dropped the rule on both conversions. `ask` becomes `deny` where the provider cannot ask, and
+ * that is the one place a decision changes shape — so it is the case an operator most needs attributed, and it was
+ * the only one with no attribution at all ([/decisions/ad-061.md](/decisions/ad-061.md)).
+ */
+test("an ask degraded to deny carries the rule of the rail that made it", () => {
+  const decision = degrade(
+    { kind: "ask", reason: "r", userNote: "u", rule: "shell-catastrophic" },
+    eventAt("tool.before"),
+    caps({ askSupportedOn: [] }),
+  );
+  assert.equal(decision.kind, "deny");
+  if (decision.kind === "deny") {
+    assert.equal(decision.rule, "shell-catastrophic");
+  }
+});
+
+test("an ask degraded because no human is present keeps its rule too", () => {
+  const decision = degrade(
+    { kind: "ask", reason: "r", rule: "shell-posture-paired" },
+    eventInMode("bypassPermissions"),
+    caps({ askSupportedOn: ["shell.before"] }),
+  );
+  assert.equal(decision.kind, "deny");
+  if (decision.kind === "deny") {
+    assert.equal(decision.rule, "shell-posture-paired");
+  }
+});
+
+// why: a rewrite refuses nothing, so it carries no rule of its own. The degraded ask names the transport limit
+// that produced it, which is the one rule this layer owns.
+test("a rewrite degraded to ask names the transport limit, not a rail", () => {
+  const decision = degrade(
+    { kind: "rewriteInput", input: { a: 1 }, reason: "r" },
+    eventAt("tool.before"),
+    caps({ toolInputRewrite: false }),
+  );
+  assert.equal(decision.kind, "ask");
+  if (decision.kind === "ask") {
+    assert.equal(decision.rule, DEGRADE_RULES.rewriteUnavailable);
+  }
 });

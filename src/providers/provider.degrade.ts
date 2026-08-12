@@ -5,6 +5,12 @@ export type DegradeOptions = {
   contextBudgetChars?: number;
 };
 
+/**
+ * why: the only rule this layer may name. Every other decision arrives with its rule already set by the rail that
+ * made it, and degrade preserves it ([/decisions/ad-061.md](/decisions/ad-061.md)).
+ */
+export const DEGRADE_RULES = { rewriteUnavailable: "rewrite-unavailable" } as const;
+
 const ESCALATION_PREFIX = "Escalation unavailable on this provider — ";
 const NO_HUMAN_PREFIX = "No operator is answering prompts in this permission mode — ";
 
@@ -96,10 +102,23 @@ export function degrade(
 
   if (decision.kind === "ask") {
     if (!capabilities.askSupportedOn.includes(event.event)) {
-      return { kind: "deny", reason: `${ESCALATION_PREFIX}${decision.reason}`, userNote: decision.userNote };
+      // invariant: the rule is carried through, never replaced. This is the one place a decision changes shape,
+      // so it is the case an operator most needs attributed — and inventing a rule here would attribute a refusal
+      // to the transport rather than to the rail that made it ([/decisions/ad-061.md](/decisions/ad-061.md)).
+      return {
+        kind: "deny",
+        reason: `${ESCALATION_PREFIX}${decision.reason}`,
+        userNote: decision.userNote,
+        rule: decision.rule,
+      };
     }
     if (event.permissionMode !== undefined && NO_HUMAN_MODES.has(event.permissionMode)) {
-      return { kind: "deny", reason: `${NO_HUMAN_PREFIX}${decision.reason}`, userNote: decision.userNote };
+      return {
+        kind: "deny",
+        reason: `${NO_HUMAN_PREFIX}${decision.reason}`,
+        userNote: decision.userNote,
+        rule: decision.rule,
+      };
     }
     return decision;
   }
@@ -108,6 +127,9 @@ export function degrade(
     return {
       kind: "ask",
       reason: `Input rewrite unavailable on this provider — proposed input: ${JSON.stringify(decision.input)}. ${decision.reason}`,
+      // why: a rewrite carries no rule of its own — nothing refused anything — so the degraded ask names the
+      // transport limit that produced it. It is the one rule this layer owns.
+      rule: DEGRADE_RULES.rewriteUnavailable,
     };
   }
 
