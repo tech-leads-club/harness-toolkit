@@ -9,7 +9,7 @@ import type { ObsEvent } from "../observability/observability.types.ts";
  * it counts what the harness recorded and therefore cannot be talked around — was inverted: nothing could
  * satisfy it ([/decisions/ad-059.md](/decisions/ad-059.md)).
  */
-const TOOL_KINDS = new Set([
+export const TOOL_KINDS = new Set([
   "tool.start",
   "tool.end",
   "tool.fail",

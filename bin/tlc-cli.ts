@@ -1082,6 +1082,7 @@ export function buildTestSteps(): TestStep[] {
     { label: "check-wiring", bin: "node", args: ["tools/check-wiring.ts"] },
     { label: "check-docs-bundle", bin: "node", args: ["tools/check-docs-bundle.ts"] },
     { label: "check-screens", bin: "node", args: ["tools/check-screens.ts"] },
+    { label: "check-obs-contract", bin: "node", args: ["tools/check-obs-contract.ts"] },
     { label: "capabilities in sync", bin: "node", args: ["tools/render-capabilities.ts", "--check"] },
     { label: "changelog in sync", bin: "node", args: ["tools/render-changelog.ts", "--check"] },
   ];

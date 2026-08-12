@@ -74,3 +74,4 @@ doctor reports against your own configuration.
 - **AD-062** — One command answers whether the harness did that, and says so plainly when it did not
 - **AD-063** — One palette for human output, and a checker keeping it out of everything else
 - **AD-064** — A snapshot is assigned, never accumulated, and a table does not list what it cannot count
+- **AD-065** — The obs bus has a contract, and the gate checks both sides of it

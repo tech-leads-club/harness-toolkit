@@ -79,5 +79,6 @@ Handoff section and a link back to this index.
 | [AD-062](/decisions/ad-062.md) | One command answers whether the harness did that, and says so plainly when it did not | active |
 | [AD-063](/decisions/ad-063.md) | One palette for human output, and a checker keeping it out of everything else | active |
 | [AD-064](/decisions/ad-064.md) | A snapshot is assigned, never accumulated, and a table does not list what it cannot count | active |
+| [AD-065](/decisions/ad-065.md) | The obs bus has a contract, and the gate checks both sides of it | active |
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).
