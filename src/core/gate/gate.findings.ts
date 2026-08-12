@@ -160,6 +160,18 @@ const PATH_IN_OUTPUT = new RegExp(
 );
 
 /**
+ * hazard: a test runner colours its output, and an escape ends `[39m` — the escape character itself does not match
+ * the path pattern but `39m` does, so a coloured `src/x.test.ts` came out as `39msrc/x.test.ts`. The autopilot then
+ * told the agent, by name, to go and fix a file that does not exist. Seen in this repository's own gate output.
+ */
+export function stripAnsi(text: string): string {
+  // why: the escape is built from its char code rather than written literally, so the pattern can name it without
+  // putting a control character in the source — which is what the linter is right to refuse.
+  const escape = String.fromCharCode(27);
+  return text.replaceAll(new RegExp(`${escape}\\[[0-9;]*[A-Za-z]`, "g"), "");
+}
+
+/**
  * Source files the gate output itself names, in first-appearance order, deduplicated.
  *
  * why: `projectDir` is taken so an absolute path inside the repository collapses onto the relative spelling of
@@ -171,7 +183,7 @@ export function filesFromOutput(outputTail: string, projectDir: string): string[
   const files: string[] = [];
   const prefix = `${projectDir.replace(/\/+$/, "")}/`;
 
-  for (const match of outputTail.matchAll(PATH_IN_OUTPUT)) {
+  for (const match of stripAnsi(outputTail).matchAll(PATH_IN_OUTPUT)) {
     const raw = match[1];
     if (!raw) {
       continue;

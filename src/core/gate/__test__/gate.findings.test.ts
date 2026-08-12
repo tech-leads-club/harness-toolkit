@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { extractFindingsFromOutput, FINDINGS_MAX } from "../gate.artifact.ts";
-import { classifyLine, filesFromOutput, findingsFromLines } from "../gate.findings.ts";
+import { classifyLine, filesFromOutput, findingsFromLines, stripAnsi } from "../gate.findings.ts";
 
 // why: the exact output that reached an operator as three separate gaps. 28 pass, 1 fail.
 const INCIDENT = `test-dispatch: bun test in bots/platform-agent (1 file(s))
@@ -189,4 +189,31 @@ test("a path outside the project is still reported, as printed", () => {
 test("output that names no source file yields nothing", () => {
   assert.deepEqual(filesFromOutput("1 fail\n28 pass\nRan 29 tests", "/repo"), []);
   assert.deepEqual(filesFromOutput("", "/repo"), []);
+});
+
+/**
+ * hazard: a colour escape ends `[39m`, and `39m` matches the path pattern while the escape character does not — so
+ * a coloured `src/x.test.ts` was extracted as `39msrc/x.test.ts` and the autopilot named a file that does not
+ * exist. Taken from this repository's own gate output.
+ */
+test("a path in coloured output is named without the escape glued to it", () => {
+  const e = String.fromCharCode(27);
+  const output = [
+    `test at ${e}[90m${e}[39msrc/entrypoints/__test__/tool-after.test.ts:123:1`,
+    `${e}[31m✖ a thing failed ${e}[90m(5.5ms)${e}[39m${e}[39m`,
+    `    at TestContext.<anonymous> ${e}[90m(file:///repo/${e}[39msrc/core/gate/gate.service.ts:12:3${e}[90m)${e}[39m`,
+  ].join("\n");
+  assert.deepEqual(filesFromOutput(output, "/repo"), [
+    "src/entrypoints/__test__/tool-after.test.ts",
+    "src/core/gate/gate.service.ts",
+  ]);
+});
+
+test("uncoloured output is unchanged, so the fix costs nothing on a plain runner", () => {
+  const output = "test at src/a.test.ts:1:1\n  at file:///repo/src/b.ts:2:2";
+  assert.deepEqual(filesFromOutput(output, "/repo"), ["src/a.test.ts", "src/b.ts"]);
+});
+
+test("stripAnsi removes only escapes, never ordinary bracketed text", () => {
+  assert.equal(stripAnsi("[test/verification] plain [90m text"), "[test/verification] plain [90m text");
 });

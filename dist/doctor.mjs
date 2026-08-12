@@ -1666,11 +1666,15 @@ function findingsFromLines(lines, exitCode, max) {
 }
 var SOURCE_EXT = "ts|tsx|mts|cts|js|jsx|mjs|cjs|py|go|rb|rs|java|kt|swift|php|sh|sql";
 var PATH_IN_OUTPUT = new RegExp(`(?:file://)?((?:[A-Za-z]:)?[\\w./~@+-]*[\\w-]\\.(?:${SOURCE_EXT}))(?=[:)\\s,'"\`]|$)`, "g");
+function stripAnsi(text) {
+  const escape = String.fromCharCode(27);
+  return text.replaceAll(new RegExp(`${escape}\\[[0-9;]*[A-Za-z]`, "g"), "");
+}
 function filesFromOutput(outputTail, projectDir) {
   const seen = new Set;
   const files = [];
   const prefix = `${projectDir.replace(/\/+$/, "")}/`;
-  for (const match of outputTail.matchAll(PATH_IN_OUTPUT)) {
+  for (const match of stripAnsi(outputTail).matchAll(PATH_IN_OUTPUT)) {
     const raw = match[1];
     if (!raw) {
       continue;
