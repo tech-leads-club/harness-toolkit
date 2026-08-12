@@ -6802,6 +6802,7 @@ QUICK
   tlc harness doctor               health checklist
   tlc harness why [n]             the last n decisions this tool made, with the rule behind each
   tlc harness install             put the runtime in place from the installed npm package
+  tlc harness uninstall            print what would be undone; --yes applies it, --purge includes state
   tlc harness build                compile dist/ for Node
   tlc harness test                 run the full local gate
   tlc harness help <topic>         documentation
@@ -6976,6 +6977,8 @@ detail: tlc harness help prices`);
       return { kind: "entry", entry: "init-project", args: args.slice(1) };
     case "install":
       return { kind: "entry", entry: "install-runtime", args: args.slice(1) };
+    case "uninstall":
+      return { kind: "entry", entry: "uninstall-runtime", args: args.slice(1) };
     case "why":
       return { kind: "entry", entry: "obs-cli", args: ["why", ...args.slice(1)] };
     case "help":

@@ -306,6 +306,21 @@ describe("statusText / help text", () => {
     assert.deepEqual(route(["why", "25"]), { kind: "entry", entry: "obs-cli", args: ["why", "25"] });
   });
 
+  test("uninstall routes to its own entry and carries the flags through untouched", () => {
+    assert.deepEqual(route(["uninstall"]), { kind: "entry", entry: "uninstall-runtime", args: [] });
+    assert.deepEqual(route(["uninstall", "--yes", "--purge"]), {
+      kind: "entry",
+      entry: "uninstall-runtime",
+      args: ["--yes", "--purge"],
+    });
+  });
+
+  // why: the exit has to be as findable as the entrance, and help is where an operator looks.
+  test("helpText names uninstall next to install", () => {
+    const text = helpText();
+    assert.ok(text.includes("tlc harness uninstall"));
+  });
+
   test("helpText names 'tlc harness', never bare 'harness'", () => {
     const text = helpText();
     assert.ok(text.includes("tlc harness"));

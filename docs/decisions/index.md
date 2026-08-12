@@ -80,5 +80,6 @@ Handoff section and a link back to this index.
 | [AD-063](/decisions/ad-063.md) | One palette for human output, and a checker keeping it out of everything else | active |
 | [AD-064](/decisions/ad-064.md) | A snapshot is assigned, never accumulated, and a table does not list what it cannot count | active |
 | [AD-065](/decisions/ad-065.md) | The obs bus has a contract, and the gate checks both sides of it | active |
+| [AD-066](/decisions/ad-066.md) | Uninstall reads the artefact, and the plan is the confirmation | active |
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).

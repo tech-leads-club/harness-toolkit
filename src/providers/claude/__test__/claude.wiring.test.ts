@@ -19,6 +19,8 @@ import {
   claudeSettingsPath,
   claudeWiring,
   mergeClaudeSettings,
+  removeClaudeWiring,
+  unmergeClaudeSettings,
 } from "../claude.wiring.ts";
 
 const RUNTIME = { launcherPath: "/opt/tlc/bin/tlc-exec.mjs" };
@@ -264,4 +266,80 @@ test("canonicalizeGroups only rewrites strings naming the launcher", () => {
   const canonical = canonicalizeGroups(groups, () => "/real/bin/tlc-exec.mjs") as typeof groups;
   assert.equal(JSON.stringify(canonical).includes("/real/bin/tlc-exec.mjs"), true);
   assert.equal(JSON.stringify(canonical).includes("/somebody/else/script.sh"), true);
+});
+
+test("unmerge drops our group and keeps a foreign one registered on the same event", () => {
+  const merged = mergeClaudeSettings(
+    JSON.stringify({
+      hooks: {
+        Stop: [{ hooks: [{ type: "command", command: "bash", args: ["/home/me/notify.sh"] }] }],
+      },
+    }),
+    claudeWiring(RUNTIME).entries,
+  );
+  assert.equal(merged.ok, true);
+  assert.equal(merged.ok && merged.settingsText.includes("tlc-exec.mjs"), true);
+
+  const undone = unmergeClaudeSettings(merged.ok ? merged.settingsText : "");
+  assert.equal(undone.ok, true);
+  assert.equal(undone.ok && undone.changed, true);
+  const settings = JSON.parse(undone.ok ? undone.settingsText : "{}");
+  assert.equal(JSON.stringify(settings).includes("tlc-exec.mjs"), false);
+  assert.deepEqual(settings.hooks.Stop, [
+    { hooks: [{ type: "command", command: "bash", args: ["/home/me/notify.sh"] }] },
+  ]);
+});
+
+test("unmerge preserves every key the harness never wrote", () => {
+  const operator = {
+    defaultMode: "bypassPermissions",
+    permissions: { deny: ["Read(./secrets/**)"] },
+    sandbox: { enabled: true },
+    statusLine: { type: "command", command: "my-statusline" },
+  };
+  const merged = mergeClaudeSettings(JSON.stringify(operator), claudeWiring(RUNTIME).entries);
+  const undone = unmergeClaudeSettings(merged.ok ? merged.settingsText : "");
+  assert.equal(undone.ok, true);
+  assert.deepEqual(JSON.parse(undone.ok ? undone.settingsText : "{}"), operator);
+});
+
+test("unmerge removes the hook event key rather than leaving an empty array", () => {
+  const merged = mergeClaudeSettings(null, claudeWiring(RUNTIME).entries);
+  const undone = unmergeClaudeSettings(merged.ok ? merged.settingsText : "");
+  const settings = JSON.parse(undone.ok ? undone.settingsText : "{}");
+  assert.equal("hooks" in settings, false);
+});
+
+test("unmerge is idempotent — the second pass reports nothing changed", () => {
+  const merged = mergeClaudeSettings(JSON.stringify({ env: { A: "1" } }), claudeWiring(RUNTIME).entries);
+  const first = unmergeClaudeSettings(merged.ok ? merged.settingsText : "");
+  assert.equal(first.ok && first.changed, true);
+  const second = unmergeClaudeSettings(first.ok ? first.settingsText : "");
+  assert.equal(second.ok && second.changed, false);
+});
+
+test("unmerge refuses a settings.json it cannot parse instead of overwriting it", () => {
+  const result = unmergeClaudeSettings("{ this is not json");
+  assert.equal(result.ok, false);
+});
+
+test("removeClaudeWiring rewrites the file on disk and is safe to run twice", () => {
+  const dir = tempDir();
+  const path = join(dir, "settings.json");
+  const merged = mergeClaudeSettings(JSON.stringify({ env: { A: "1" } }), claudeWiring(RUNTIME).entries);
+  writeFileSync(path, merged.ok ? merged.settingsText : "");
+
+  const first = removeClaudeWiring(path);
+  assert.equal(first.ok && first.changed, true);
+  assert.equal(readFileSync(path, "utf8").includes("tlc-exec.mjs"), false);
+  const second = removeClaudeWiring(path);
+  assert.equal(second.ok && second.changed, false);
+  assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), { env: { A: "1" } });
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("removeClaudeWiring on an absent file is not an error", () => {
+  const result = removeClaudeWiring(join(tempDir(), "settings.json"));
+  assert.equal(result.ok, true);
+  assert.equal(result.ok && result.changed, false);
 });

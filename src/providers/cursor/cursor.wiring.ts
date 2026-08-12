@@ -157,3 +157,58 @@ export function formatWiringProblems(problems: readonly WiringProblem[], max = 3
   const rest = problems.length - Math.min(problems.length, max);
   return rest > 0 ? `${shown}; and ${rest} more` : shown;
 }
+
+export type CursorUnwire =
+  | { kind: "absent" }
+  | { kind: "unparsed" }
+  | { kind: "empty"; removed: number }
+  | { kind: "rewritten"; removed: number; text: string };
+
+/**
+ * The inverse of the document `bin/write-user-hooks.mjs` writes.
+ *
+ * invariant: an entry is ours when its command names the launcher — the same test `cursorWiringProblems` applies
+ * one function above. `kind: "empty"` means every entry in the file was ours and the file itself can go; a file
+ * that still holds somebody else's hook is rewritten without ours ([/decisions/ad-066.md](/decisions/ad-066.md)).
+ */
+export function unwireCursorHooks(text: string | null, marker = "tlc-exec.mjs"): CursorUnwire {
+  if (text === null || text.trim() === "") {
+    return { kind: "absent" };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { kind: "unparsed" };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { kind: "unparsed" };
+  }
+  const document = parsed as { hooks?: unknown };
+  const hooks =
+    document.hooks !== null && typeof document.hooks === "object" && !Array.isArray(document.hooks)
+      ? (document.hooks as Record<string, unknown>)
+      : {};
+
+  const remaining: Record<string, unknown[]> = {};
+  let removed = 0;
+  let kept = 0;
+  for (const [hookEvent, value] of Object.entries(hooks)) {
+    const list = Array.isArray(value) ? value : [];
+    const foreign = list.filter((row) => !JSON.stringify(row ?? null).includes(marker));
+    removed += list.length - foreign.length;
+    if (foreign.length > 0) {
+      remaining[hookEvent] = foreign;
+      kept += foreign.length;
+    }
+  }
+
+  if (kept === 0) {
+    return { kind: "empty", removed };
+  }
+  return {
+    kind: "rewritten",
+    removed,
+    text: `${JSON.stringify({ ...document, hooks: remaining }, null, 2)}\n`,
+  };
+}

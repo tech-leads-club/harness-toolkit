@@ -4,7 +4,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { cursorWiring, cursorWiringProblems, formatWiringProblems } from "../cursor.wiring.ts";
+import {
+  cursorWiring,
+  cursorWiringProblems,
+  formatWiringProblems,
+  unwireCursorHooks,
+} from "../cursor.wiring.ts";
 
 const RUNTIME = { launcherPath: "/opt/tlc/bin/tlc-exec.mjs" };
 
@@ -208,4 +213,62 @@ test("the formatted problems are bounded and say how many were left out", () => 
   const text = formatWiringProblems(many);
   assert.match(text, /and 6 more/);
   assert.equal(text.split(";").length, 4);
+});
+
+test("unwire reports the file can go when every entry named our launcher", () => {
+  const document = {
+    version: 1,
+    hooks: {
+      stop: [{ command: "node /opt/tlc/bin/tlc-exec.mjs stop", timeout: 120 }],
+      preToolUse: [{ command: "node /opt/tlc/bin/tlc-exec.mjs tool-before", timeout: 5 }],
+    },
+  };
+  const result = unwireCursorHooks(JSON.stringify(document));
+  assert.equal(result.kind, "empty");
+  assert.equal(result.kind === "empty" && result.removed, 2);
+});
+
+test("unwire keeps a foreign entry and rewrites the file around it", () => {
+  const document = {
+    version: 1,
+    hooks: {
+      stop: [
+        { command: "node /opt/tlc/bin/tlc-exec.mjs stop", timeout: 120 },
+        { command: "bash /home/me/notify.sh", timeout: 5 },
+      ],
+    },
+  };
+  const result = unwireCursorHooks(JSON.stringify(document));
+  assert.equal(result.kind, "rewritten");
+  const rewritten = JSON.parse(result.kind === "rewritten" ? result.text : "{}");
+  assert.equal(result.kind === "rewritten" && result.removed, 1);
+  assert.equal(rewritten.version, 1);
+  assert.deepEqual(rewritten.hooks.stop, [{ command: "bash /home/me/notify.sh", timeout: 5 }]);
+});
+
+test("unwire drops a hook event left with no entries", () => {
+  const document = {
+    version: 1,
+    hooks: {
+      stop: [{ command: "node /opt/tlc/bin/tlc-exec.mjs stop" }],
+      preToolUse: [{ command: "bash /home/me/guard.sh" }],
+    },
+  };
+  const result = unwireCursorHooks(JSON.stringify(document));
+  const rewritten = JSON.parse(result.kind === "rewritten" ? result.text : "{}");
+  assert.equal("stop" in rewritten.hooks, false);
+  assert.equal("preToolUse" in rewritten.hooks, true);
+});
+
+test("unwire says absent for no file and unparsed for a broken one", () => {
+  assert.equal(unwireCursorHooks(null).kind, "absent");
+  assert.equal(unwireCursorHooks("   ").kind, "absent");
+  assert.equal(unwireCursorHooks("{ not json").kind, "unparsed");
+  assert.equal(unwireCursorHooks("[]").kind, "unparsed");
+});
+
+test("unwire is idempotent — a file with no harness entry is reported empty with nothing removed", () => {
+  const result = unwireCursorHooks(JSON.stringify({ version: 1, hooks: {} }));
+  assert.equal(result.kind, "empty");
+  assert.equal(result.kind === "empty" && result.removed, 0);
 });

@@ -114,6 +114,21 @@ tlc harness pause              # disable stop checks while exploring
 tlc harness policy accept --all  # after you edited config mid-session
 ```
 
+## When you want it off entirely
+
+```bash
+tlc harness uninstall          # the plan, and nothing else
+tlc harness uninstall --yes    # apply it
+```
+
+It un-merges the hook groups out of `settings.json` and leaves every other key alone, so this is the
+supported alternative to editing that file by hand. `config.json` and `state/` survive unless you add
+`--purge`.
+
+**An agent cannot do this for you**, and the refusal is not a defect. The runtime home sits outside any
+project and `state/` is a policy surface, so a delegated uninstall meets `outside-project-destruction` or
+`policy-surface-write` ([/decisions/ad-066.md](/decisions/ad-066.md)). Run it from your own terminal.
+
 ## See also
 
 - [/concepts.md](/concepts.md) — every rail from the operator's side

@@ -171,6 +171,69 @@ export function mergeClaudeSettings(
   return { ok: true, settingsText: JSON.stringify(mergedSettings, null, 2), changed };
 }
 
+/**
+ * The exact inverse of `mergeClaudeSettings`: every group `isHarnessGroup` matches leaves, everything else stays
+ * where it was.
+ *
+ * hazard: this file is the operator's, not ours. It carries `permissions`, `sandbox`, `env` and `statusLine`
+ * alongside our eleven hook groups, so deleting it — or rewriting it from a template — destroys work the
+ * installer never wrote. Only groups are dropped, and only ours ([/decisions/ad-066.md](/decisions/ad-066.md)).
+ */
+export function unmergeClaudeSettings(existingText: string | null): MergeResult {
+  if (existingText === null || existingText.trim() === "") {
+    return { ok: true, settingsText: "", changed: false };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(existingText);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: message, block: "" };
+  }
+  if (!isPlainRecord(parsed)) {
+    return { ok: false, error: "settings.json root is not a JSON object", block: "" };
+  }
+
+  const currentHooks = isHooksRecord(parsed.hooks) ? parsed.hooks : {};
+  const remainingHooks: ClaudeSettingsHooks = {};
+  let changed = false;
+
+  for (const [hookEvent, groups] of Object.entries(currentHooks)) {
+    const foreign = groups.filter((group) => !isHarnessGroup(group));
+    if (foreign.length !== groups.length) {
+      changed = true;
+    }
+    // invariant: an event whose only groups were ours loses its key. Leaving `"Stop": []` behind is residue that
+    // reads as configuration, and it is exactly what makes a second run report work still to do.
+    if (foreign.length > 0) {
+      remainingHooks[hookEvent] = foreign;
+    }
+  }
+
+  // why: rebuilt key by key rather than spread-and-override, so `hooks` keeps its position. An operator diffing
+  // their own settings.json after this should see the hook groups leave and nothing else move.
+  const next: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (key !== "hooks") {
+      next[key] = value;
+    } else if (Object.keys(remainingHooks).length > 0) {
+      next.hooks = remainingHooks;
+    }
+  }
+  return { ok: true, settingsText: JSON.stringify(next, null, 2), changed };
+}
+
+export function removeClaudeWiring(settingsPath: string): MergeResult {
+  if (!existsSync(settingsPath)) {
+    return { ok: true, settingsText: "", changed: false };
+  }
+  const result = unmergeClaudeSettings(readFileSync(settingsPath, "utf8"));
+  if (result.ok && result.changed) {
+    writeFileSync(settingsPath, result.settingsText, "utf8");
+  }
+  return result;
+}
+
 export function applyClaudeWiring(settingsPath: string, entries: readonly WiringEntry[]): MergeResult {
   const existingText = existsSync(settingsPath) ? readFileSync(settingsPath, "utf8") : null;
   const result = mergeClaudeSettings(existingText, entries);

@@ -269,6 +269,33 @@ Provider config directories are resolved, not assumed: `CLAUDE_CONFIG_DIR` and `
 honoured when set, so a relocated config is wired correctly. `tlc harness doctor` prints the resolved
 target for each provider.
 
+### Uninstall
+
+```bash
+tlc harness uninstall            # print the plan; change nothing
+tlc harness uninstall --yes      # apply exactly that plan
+tlc harness uninstall --purge --yes   # and delete config.json, state/ and flags/ too
+```
+
+The plan is the confirmation — there is no prompt, so it works the same in CI and in a shell that is
+already broken. What it does, and what it deliberately does not:
+
+| | |
+| --- | --- |
+| `settings.json` | un-merged, never deleted. Every key and every hook that is not ours stays exactly where it is |
+| `hooks.json` | deleted when every entry was ours, rewritten when it holds somebody else's |
+| the `tlc` link and the skill links | removed |
+| the runtime payload at `~/.tlc/harness` | removed — **unless** it is a symlink to a checkout, which is unlinked and never followed |
+| `config.json`, `state/`, `flags/` | **kept**, unless you add `--purge` |
+| the global npm package | reported with the exact command, never run for you |
+| `.tlc/` inside your repositories | reported, never hunted for |
+
+Running it twice is safe: the second run reports nothing to undo and exits 0.
+
+An agent cannot run this for you. `~/.tlc/harness/state` is a policy surface and the runtime home is
+outside any project, so the floor answers a delegated uninstall with `policy-surface-write` or
+`outside-project-destruction`. That is deliberate — the supervised does not switch off the supervisor.
+
 Restart or reload the provider session after install.
 
 **From a git clone** (same installers; then build `dist/`):
