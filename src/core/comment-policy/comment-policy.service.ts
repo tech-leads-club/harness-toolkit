@@ -273,7 +273,8 @@ export function commentViolationMessage(hits: CommentFinding[], mode: CommentMod
         ];
   return [
     `BLOCKED: this turn added ${hits.length} comment(s).`,
-    "TRIED: compared added lines against HEAD; pre-existing comments are never counted.",
+    "TRIED: compared the lines this turn added against the commit it started from; pre-existing",
+    "comments are never counted.",
     "Each entry is one comment, reported at its first line.",
     ...need,
     "Tool directives (biome-ignore, @ts-, noqa, shellcheck, shebang) are exempt.",

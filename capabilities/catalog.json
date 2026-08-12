@@ -53,7 +53,7 @@
       "id": "comments",
       "configPath": "comments.enabled",
       "title": "Comment gate (agent-added comments)",
-      "summary": "Checks the comment lines this turn added against HEAD, by declared reason or none at all.",
+      "summary": "Checks the comment lines this turn added against the commit the turn started from, by declared reason or none at all.",
       "benefit": "Blocks the stop when this turn added comment lines, so narration never lands. Diff-scoped: comments you already committed are never flagged.",
       "tradeOff": "Two modes. declared lets the agent keep a comment by writing why:/hazard:/invariant:; strict accepts none and asks you to write it instead. strict is stricter but interrupts more.",
       "defaultOn": false,

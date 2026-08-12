@@ -38,19 +38,54 @@ The gate is a single command:
 tlc harness test
 ```
 
-Which runs, in order: `biome check`, `tsc --noEmit`, the `src/**/__test__/*.test.ts` suite, the
-`tools/__test__/*.test.ts` suite (a flat glob — new tool tests must live directly under
-`tools/__test__/`), `tools/check-boundaries.ts`, and `tools/check-docs-bundle.ts`.
+Thirteen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
+source of truth, and this table is here to say what each step is for.
+
+| # | Step | Fails on |
+|---|---|---|
+| 1 | `biome check --error-on-warnings` | any lint or format finding, including warn-level ones |
+| 2 | `tsc --noEmit` | a type error |
+| 3 | src suite | `src/**/__test__/*.test.ts` |
+| 4 | tools suite | `tools/__test__/*.test.ts` — a flat glob, so a new tool test must sit directly in `tools/__test__/` |
+| 5 | `check-boundaries` | `core/` importing `providers/`, or a vendor identifier under `src/core` or `src/contracts` |
+| 6 | `check-suppressions` | a lint suppression whose reason is not a reason — step 1 cannot see a rule that was silenced rather than fixed |
+| 7 | `check-wiring` | a declared union member that is read and never written |
+| 8 | `check-docs-bundle` | a broken link or a doc outside the bundle's shape |
+| 9 | `check-screens` | a terminal renderer that paints its own strings instead of going through the shared one |
+| 10 | `check-obs-contract` | a kind a consumer counts and no producer emits, or one landing on a plane the consumer does not read |
+| 11 | `render-capabilities --check` | a generated README region that no longer matches `capabilities/catalog.json` |
+| 12 | `render-changelog --check` | a `CHANGELOG.md` that no longer matches `docs/decisions/` |
+| 13 | `check-dist-fresh` | **CI only** — a `dist/` bundle that does not match `src/`. Run `./bin/tlc-build` and commit the result |
 
 Equivalent by hand, for local debugging:
 
 ```bash
-npx biome check
+npx biome check --error-on-warnings
 npx tsc --noEmit
-node --test "src/**/__test__/*.test.ts"
-node --test "tools/__test__/*.test.ts"
+node --import ./tools/test-env.mjs --test "src/**/__test__/*.test.ts"
+node --import ./tools/test-env.mjs --test "tools/__test__/*.test.ts"
 node tools/check-boundaries.ts
+node tools/check-suppressions.ts
+node tools/check-wiring.ts
 node tools/check-docs-bundle.ts
+node tools/check-screens.ts
+node tools/check-obs-contract.ts
+node tools/render-capabilities.ts --check
+node tools/render-changelog.ts --check
+node tools/check-dist-fresh.ts
+```
+
+`--import ./tools/test-env.mjs` is not optional. Without it a suite reads `CLAUDE_PROJECT_DIR` from
+whatever shell started it, so tests that build a fixture in a temp directory resolve against this
+repository instead — green from a terminal, red from inside a hook.
+
+Run the suites in three environments before pushing, because the runtime home and the project directory
+are both resolved from the environment:
+
+```bash
+tlc harness test
+TLC_HOME="$PWD" tlc harness test
+CLAUDE_PROJECT_DIR="$PWD" TLC_PROJECT_DIR="$PWD" tlc harness test
 ```
 
 ## Conventions

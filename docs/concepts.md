@@ -160,8 +160,10 @@ control; you update the list when a provider adds models you want.
 ## comment policy
 
 `comments.enabled`, with `comments.mode` of `declared` or `strict`. Blocks the stop when the turn added
-comment lines, so narration never lands. Diff-scoped against `HEAD`: comments already committed are never
-flagged. `declared` keeps a comment that states `why:`, `hazard:` or `invariant:`; `strict` accepts none and
+comment lines, so narration never lands. Diff-scoped against the sha the turn started from, not `HEAD`:
+a turn that commits its own work moves `HEAD` past the very lines being judged, which is how the gate
+missed every comment in a committing turn ([/decisions/ad-058.md](/decisions/ad-058.md)). Comments already
+committed before the turn are never flagged. `declared` keeps a comment that states `why:`, `hazard:` or `invariant:`; `strict` accepts none and
 asks the operator to write it. Tool directives (`biome-ignore`, `@ts-`, `noqa`, `shellcheck`, shebang) are
 exempt in both modes.
 
