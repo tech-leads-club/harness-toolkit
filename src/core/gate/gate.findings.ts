@@ -167,8 +167,8 @@ const PATH_IN_OUTPUT = new RegExp(
 export function stripAnsi(text: string): string {
   // why: the escape is built from its char code rather than written literally, so the pattern can name it without
   // putting a control character in the source — which is what the linter is right to refuse.
-  const escape = String.fromCharCode(27);
-  return text.replaceAll(new RegExp(`${escape}\\[[0-9;]*[A-Za-z]`, "g"), "");
+  const esc = String.fromCharCode(27);
+  return text.replaceAll(new RegExp(`${esc}\\[[0-9;]*[A-Za-z]`, "g"), "");
 }
 
 /**
