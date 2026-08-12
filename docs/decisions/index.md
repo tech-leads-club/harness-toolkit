@@ -78,5 +78,6 @@ Handoff section and a link back to this index.
 | [AD-061](/decisions/ad-061.md) | A decision that refuses names its rule, and degrading preserves it | active |
 | [AD-062](/decisions/ad-062.md) | One command answers whether the harness did that, and says so plainly when it did not | active |
 | [AD-063](/decisions/ad-063.md) | One palette for human output, and a checker keeping it out of everything else | active |
+| [AD-064](/decisions/ad-064.md) | A snapshot is assigned, never accumulated, and a table does not list what it cannot count | active |
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).

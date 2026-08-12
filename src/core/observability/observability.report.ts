@@ -239,6 +239,9 @@ ${costLines(rollup).join("\n")}
 // why: the markdown is an artifact — written to a file and pasted into a pull request — so it stays plain. The
 // terminal gets its own shape over the same rollup, because colouring one string for both would put escapes in
 // the file ([/decisions/ad-063.md](/decisions/ad-063.md)).
+/** The tools whose successes are recorded as shell events, so the tools table can never count them. */
+export const SHELL_TOOLS = new Set(["Bash", "run_terminal_cmd", "terminal"]);
+
 export function sessionReportScreen(rollup: SessionRollup): Screen {
   const top = (counts: Record<string, number>, limit = 6): string[] =>
     Object.entries(counts)
@@ -251,7 +254,12 @@ export function sessionReportScreen(rollup: SessionRollup): Screen {
     : `$${rollup.estimated_cost_usd.toFixed(4)}`;
 
   const shell = rollup.shell;
+  // hazard: `rollup.tools` is fed only by `tool.start|end|fail`. A successful shell call is `shell.end` and a
+  // failed one is `tool.fail`, so a shell tool's row can only ever show failures — it read `Bash: 0 ok, 23 fail`
+  // after hundreds of successful calls. The `shell` row above already answers for it, correctly
+  // ([/decisions/ad-064.md](/decisions/ad-064.md)).
   const toolRows: Row[] = Object.entries(rollup.tools)
+    .filter(([tool]) => !SHELL_TOOLS.has(tool))
     .sort((a, b) => b[1].ok + b[1].fail - (a[1].ok + a[1].fail))
     .slice(0, 8)
     .map(([tool, stats]) => ({
@@ -272,7 +280,12 @@ export function sessionReportScreen(rollup: SessionRollup): Screen {
         title: "Cost",
         rows: [
           { label: "estimated", value: costLabel, level: rollup.cost_incomplete ? "warn" : "info" },
-          { label: "tokens in/out", value: `${rollup.input_tokens} / ${rollup.output_tokens}` },
+          {
+            // why: the reading is the transcript tail's total, not the session's. Labelled for what it is, because
+            // "Input tokens" invited the reading that produced 102.7M ([/decisions/ad-064.md](/decisions/ad-064.md)).
+            label: "tokens in/out",
+            value: `${rollup.input_tokens} / ${rollup.output_tokens} (latest reading, recent transcript only)`,
+          },
         ],
       },
       {

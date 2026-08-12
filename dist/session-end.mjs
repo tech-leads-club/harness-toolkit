@@ -3340,11 +3340,12 @@ ${costLines(rollup).join(`
 `)}
 `;
 }
+var SHELL_TOOLS = new Set(["Bash", "run_terminal_cmd", "terminal"]);
 function sessionReportScreen(rollup) {
   const top = (counts, limit = 6) => Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, limit).map(([name, count]) => `${name} ${count}`);
   const costLabel = rollup.cost_incomplete ? `$${rollup.estimated_cost_usd.toFixed(4)} (incomplete — some models lacked catalog rates)` : `$${rollup.estimated_cost_usd.toFixed(4)}`;
   const shell = rollup.shell;
-  const toolRows = Object.entries(rollup.tools).sort((a, b) => b[1].ok + b[1].fail - (a[1].ok + a[1].fail)).slice(0, 8).map(([tool, stats]) => ({
+  const toolRows = Object.entries(rollup.tools).filter(([tool]) => !SHELL_TOOLS.has(tool)).sort((a, b) => b[1].ok + b[1].fail - (a[1].ok + a[1].fail)).slice(0, 8).map(([tool, stats]) => ({
     label: tool,
     value: `${stats.ok} ok, ${stats.fail} fail`,
     level: stats.fail > 0 ? "warn" : "ok"
@@ -3358,7 +3359,10 @@ function sessionReportScreen(rollup) {
         title: "Cost",
         rows: [
           { label: "estimated", value: costLabel, level: rollup.cost_incomplete ? "warn" : "info" },
-          { label: "tokens in/out", value: `${rollup.input_tokens} / ${rollup.output_tokens}` }
+          {
+            label: "tokens in/out",
+            value: `${rollup.input_tokens} / ${rollup.output_tokens} (latest reading, recent transcript only)`
+          }
         ]
       },
       {
@@ -3857,11 +3861,11 @@ function updateRollup(root, config, event) {
   const inTok = event.gen_ai?.input_tokens ?? 0;
   const outTok = event.gen_ai?.output_tokens ?? 0;
   if (inTok || outTok) {
-    rollup.input_tokens += inTok;
-    rollup.output_tokens += outTok;
+    rollup.input_tokens = inTok;
+    rollup.output_tokens = outTok;
     const cost = event.gen_ai?.cost_usd;
     if (typeof cost === "number") {
-      rollup.estimated_cost_usd += cost;
+      rollup.estimated_cost_usd = cost;
     } else if (event.gen_ai?.cost_source === "missing") {
       rollup.cost_incomplete = true;
     }

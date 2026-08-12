@@ -656,6 +656,9 @@ function render(screen, style) {
 `);
 }
 
+// src/core/observability/observability.report.ts
+var SHELL_TOOLS = new Set(["Bash", "run_terminal_cmd", "terminal"]);
+
 // src/core/observability/observability.types.ts
 var DEFAULT_OBS = {
   enabled: true,

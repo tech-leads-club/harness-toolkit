@@ -223,14 +223,22 @@ function updateRollup(root: string, config: ObservabilityConfig, event: ObsEvent
     rollup.mcp[tool] = (rollup.mcp[tool] ?? 0) + 1;
   }
 
+  /**
+   * hazard: this added each reading to a running total, and the reading is not a delta. The transcript reader sums
+   * the tail of the transcript, so every value is a snapshot of a sliding window, and it is attached to every tool
+   * event. Summing 3,488 snapshots reported 102.7M output tokens against 559k input — a number nobody can act on
+   * ([/decisions/ad-064.md](/decisions/ad-064.md)).
+   *
+   * invariant: the latest reading replaces the previous one. A snapshot is assigned, never accumulated.
+   */
   const inTok = event.gen_ai?.input_tokens ?? 0;
   const outTok = event.gen_ai?.output_tokens ?? 0;
   if (inTok || outTok) {
-    rollup.input_tokens += inTok;
-    rollup.output_tokens += outTok;
+    rollup.input_tokens = inTok;
+    rollup.output_tokens = outTok;
     const cost = event.gen_ai?.cost_usd;
     if (typeof cost === "number") {
-      rollup.estimated_cost_usd += cost;
+      rollup.estimated_cost_usd = cost;
     } else if (event.gen_ai?.cost_source === "missing") {
       rollup.cost_incomplete = true;
     }

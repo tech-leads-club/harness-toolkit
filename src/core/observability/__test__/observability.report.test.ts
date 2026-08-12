@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { groupByProvider, railsNeverFired, sessionReportMarkdown } from "../observability.report.ts";
 import { newRollup } from "../observability.store.ts";
@@ -235,4 +238,50 @@ test("a rollup from an older build renders instead of throwing", () => {
   const rollup = newRollup("session-a", "provider-a") as unknown as Record<string, unknown>;
   rollup.gateTime = undefined;
   assert.doesNotThrow(() => sessionReportMarkdown(rollup as never, []));
+});
+
+/**
+ * hazard: the reading attached to each event is the transcript tail's total, not a delta. Accumulating it across
+ * 3,488 events reported 102.7M output tokens against 559k input ([/decisions/ad-064.md](/decisions/ad-064.md)).
+ */
+test("a token reading is assigned, never accumulated", async () => {
+  const { recordObs, DEFAULT_OBS } = await import("../observability.service.ts");
+  const { getRollup } = await import("../observability.store.ts");
+  const root = mkdtempSync(join(tmpdir(), "obs-tokens-"));
+  try {
+    for (const output of [100, 250, 180]) {
+      recordObs(
+        root,
+        { ...DEFAULT_OBS, debugEnabled: true },
+        {
+          provider: "p",
+          kind: "tool.end",
+          sessionKey: "s1",
+          attrs: { tool_name: "Read" },
+          gen_ai: { input_tokens: 10, output_tokens: output, cost_usd: 0.5 },
+        },
+      );
+    }
+    const rollup = getRollup(root, "s1");
+    assert.equal(rollup?.output_tokens, 180, "the latest reading, not 530");
+    assert.equal(rollup?.input_tokens, 10);
+    assert.equal(rollup?.estimated_cost_usd, 0.5, "cost is the latest reading too, not 1.5");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// hazard: a successful shell call is `shell.end` and a failed one is `tool.fail`, so a shell tool in the tools
+// table can only ever show failures. It read `Bash: 0 ok, 23 fail` after hundreds of successful calls.
+test("a shell tool is not listed in the tools table it cannot be counted in", async () => {
+  const { sessionReportScreen, SHELL_TOOLS } = await import("../observability.report.ts");
+  assert.ok(SHELL_TOOLS.has("Bash"));
+  const rollup = {
+    ...newRollup("p", "s1"),
+    tools: { Bash: { ok: 0, fail: 23, ms: 0 }, Read: { ok: 5, fail: 0, ms: 1 } },
+  };
+  const screen = sessionReportScreen(rollup as never);
+  const labels = screen.sections.flatMap((section) => (section.rows ?? []).map((row) => row.label));
+  assert.equal(labels.includes("Bash"), false, "the row could only ever report failures");
+  assert.equal(labels.includes("Read"), true);
 });
