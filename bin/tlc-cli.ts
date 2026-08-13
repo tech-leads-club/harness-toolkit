@@ -1091,6 +1091,9 @@ export function buildTestSteps(): TestStep[] {
     { label: "check-obs-contract", bin: "node", args: ["tools/check-obs-contract.ts"] },
     { label: "capabilities in sync", bin: "node", args: ["tools/render-capabilities.ts", "--check"] },
     { label: "changelog in sync", bin: "node", args: ["tools/render-changelog.ts", "--check"] },
+    // why: the OKF bundle's log is a reserved file that cannot be retired, and hand-maintaining it drifted to 19
+    // of 66 records before anyone noticed ([/decisions/ad-067.md](/decisions/ad-067.md)).
+    { label: "log in sync", bin: "node", args: ["tools/render-log.ts", "--check"] },
   ];
 }
 

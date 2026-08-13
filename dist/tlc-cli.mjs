@@ -4957,7 +4957,13 @@ function readDecision(repoRoot, file) {
   }
   const id = file.replace(/\.md$/, "").toUpperCase();
   const migration = frontmatterField(text, "migration");
-  return migration === undefined ? { id, title } : { id, title, migration };
+  const timestamp = frontmatterField(text, "timestamp");
+  return {
+    id,
+    title,
+    ...migration === undefined ? {} : { migration },
+    ...timestamp === undefined ? {} : { timestamp }
+  };
 }
 function readDecisions(repoRoot, files) {
   return files.filter((file) => /^ad-\d+\.md$/.test(file)).map((file) => readDecision(repoRoot, file)).filter((decision) => decision !== null).sort((a, b) => a.id.localeCompare(b.id));
@@ -7009,7 +7015,8 @@ function buildTestSteps() {
     { label: "check-screens", bin: "node", args: ["tools/check-screens.ts"] },
     { label: "check-obs-contract", bin: "node", args: ["tools/check-obs-contract.ts"] },
     { label: "capabilities in sync", bin: "node", args: ["tools/render-capabilities.ts", "--check"] },
-    { label: "changelog in sync", bin: "node", args: ["tools/render-changelog.ts", "--check"] }
+    { label: "changelog in sync", bin: "node", args: ["tools/render-changelog.ts", "--check"] },
+    { label: "log in sync", bin: "node", args: ["tools/render-log.ts", "--check"] }
   ];
 }
 function runTestSteps(steps, cwd, spawner = (bin, spawnArgs, spawnCwd) => spawnSync(bin, spawnArgs, { cwd: spawnCwd, stdio: "inherit" })) {

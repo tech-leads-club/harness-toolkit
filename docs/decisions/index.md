@@ -1,7 +1,7 @@
 ---
 type: Aggregate
 title: "Decisions index"
-description: "Index of every architectural decision (AD-001…AD-024) made while building the multi-provider harness."
+description: "Index of every architectural decision made while building the multi-provider harness, by number. See /log.md for the same records by date."
 tags: [decisions, index]
 timestamp: "2026-07-29"
 ---
@@ -81,5 +81,6 @@ Handoff section and a link back to this index.
 | [AD-064](/decisions/ad-064.md) | A snapshot is assigned, never accumulated, and a table does not list what it cannot count | active |
 | [AD-065](/decisions/ad-065.md) | The obs bus has a contract, and the gate checks both sides of it | active |
 | [AD-066](/decisions/ad-066.md) | Uninstall reads the artefact, and the plan is the confirmation | active |
+| [AD-067](/decisions/ad-067.md) | A reserved file that cannot be retired is rendered, and the gate holds it there | active |
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).

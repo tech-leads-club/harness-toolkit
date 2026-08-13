@@ -4969,7 +4969,13 @@ function readDecision(repoRoot, file) {
   }
   const id = file.replace(/\.md$/, "").toUpperCase();
   const migration = frontmatterField(text, "migration");
-  return migration === undefined ? { id, title } : { id, title, migration };
+  const timestamp = frontmatterField(text, "timestamp");
+  return {
+    id,
+    title,
+    ...migration === undefined ? {} : { migration },
+    ...timestamp === undefined ? {} : { timestamp }
+  };
 }
 function readDecisions(repoRoot, files) {
   return files.filter((file) => /^ad-\d+\.md$/.test(file)).map((file) => readDecision(repoRoot, file)).filter((decision) => decision !== null).sort((a, b) => a.id.localeCompare(b.id));

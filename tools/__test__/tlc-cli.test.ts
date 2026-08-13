@@ -432,6 +432,7 @@ describe("harness test — step plan and runner", () => {
         "check-obs-contract",
         "capabilities in sync",
         "changelog in sync",
+        "log in sync",
       ],
     );
     /**

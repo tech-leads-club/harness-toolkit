@@ -13,7 +13,8 @@ carries YAML frontmatter with a `type` from the closed vocabulary `Concept | Run
 | Capability | Aggregate`, plus `title`, `description`, `tags`, and `timestamp`. Cross-links are absolute
 and bundle-relative (e.g. `/decisions/ad-010.md`), never relative.
 
-See [/log.md](/log.md) for the chronological record of this bundle's own construction.
+See [/log.md](/log.md) for every decision in date order, and [/decisions/index.md](/decisions/index.md) for
+the same records by number. Both are rendered from `docs/decisions/`, so neither can drift from it.
 
 ## Concepts
 

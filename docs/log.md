@@ -1,76 +1,114 @@
 ---
+type: Aggregate
 title: "Documentation log"
-description: "Chronological, ISO 8601 record of notable events in the multi-provider harness port, grouped by date."
-tags: [log, history]
-timestamp: "2026-07-30"
+description: "Chronological, ISO 8601 record of every architectural decision, grouped by the date it was taken. Generated from docs/decisions/."
+tags: [log, history, okf]
+timestamp: "2026-08-12"
 ---
 
 # Log
 
-## 2026-07-27
+Generated from `docs/decisions/` — do not edit by hand. Run `node tools/render-log.ts`.
 
-- `AD-001` recorded: optional sticky parent-Fast deny for Task/subagent spawns
-  ([/decisions/ad-001.md](/decisions/ad-001.md)).
+A reserved file of the [OKF v0.1](/decisions/ad-013.md) bundle: entries grouped under ISO 8601 headings,
+newest first. For what landed in which npm release, see `CHANGELOG.md` at the repository root.
 
-## 2026-07-29
+## 2026-08-12
 
-- Provider-neutral rename decided and executed: `tlc` CLI, `~/.tlc/harness/` runtime home,
-  `.tlc/harness/config.json` project policy, repo is `github.com/felipfr/tlc-agent-harness`
-  ([/decisions/ad-002.md](/decisions/ad-002.md), [/decisions/ad-003.md](/decisions/ad-003.md)).
-- Ports-and-adapters architecture with a `src/contracts/` shared-vocabulary module, a `ProviderPort` per
-  provider, and a declarative `ProviderCapabilities` descriptor for degradation
-  ([/decisions/ad-004.md](/decisions/ad-004.md), [/decisions/ad-010.md](/decisions/ad-010.md)).
-- Local test runner (`tlc harness test`) established as the per-task gate; the `ubuntu|macos|windows` CI
-  matrix built but kept dormant (`workflow_dispatch` only) until 2026-08-01
-  ([/decisions/ad-005.md](/decisions/ad-005.md)).
-- Windows declared designed-for but unvalidated ([/decisions/ad-006.md](/decisions/ad-006.md)).
-- `tools/check-boundaries.ts` vendor-identifier scan extended to cover `src/core/**/__test__/`
-  ([/decisions/ad-007.md](/decisions/ad-007.md)).
-- Biome and TypeScript joined the gate; `@types/node` pinned to `^24`
-  ([/decisions/ad-008.md](/decisions/ad-008.md)).
-- Event-kind union settled at 18 members and `askSupportedOn` changed from a boolean pair to a list of
-  kinds; `EffortLevel` has five levels
-  ([/decisions/ad-009.md](/decisions/ad-009.md)).
-- Vendor-specific data (model catalogs, cost pool names, lessons rendering) relocated from `core/` to each
-  provider ([/decisions/ad-011.md](/decisions/ad-011.md)).
-- Bun-first hook runtime measured and adopted, with Node + `dist/` kept as the guaranteed fallback
-  ([/decisions/ad-012.md](/decisions/ad-012.md)).
-- Documentation bundle format adopted: OKF v0.1, this bundle
-  ([/decisions/ad-013.md](/decisions/ad-013.md)).
-- Claude Code adapter built; hook payload field paths pinned against the documented hooks reference
-  ([/decisions/ad-014.md](/decisions/ad-014.md)).
-- Wiring handler names standardized to the `src/entrypoints/<name>.ts` filenames
-  ([/decisions/ad-015.md](/decisions/ad-015.md)).
-- Entrypoints wired end to end; seven cross-cutting corrections found by connecting every layer at once,
-  including the `subagentType`/`spawnSubagentType` field split and the restored `shell.end` audit signal
-  ([/decisions/ad-016.md](/decisions/ad-016.md)).
-- `docs/`, `README.md`, `CONTRIBUTING.md`, `package.json`, the harness-init skill, and
-  `.github/workflows/ci.yml` rewritten for `tlc harness …` / `.tlc/harness/` and both providers; this OKF
-  bundle assembled; `tools/check-docs-bundle.ts` added to `tlc harness test`.
+- **AD-060** — The gate records the environment it ran under, and names it only once the cheap explanations are spent ([/decisions/ad-060.md](/decisions/ad-060.md))
+- **AD-061** — A decision that refuses names its rule, and degrading preserves it ([/decisions/ad-061.md](/decisions/ad-061.md))
+- **AD-062** — One command answers whether the harness did that, and says so plainly when it did not ([/decisions/ad-062.md](/decisions/ad-062.md))
+- **AD-063** — One palette for human output, and a checker keeping it out of everything else ([/decisions/ad-063.md](/decisions/ad-063.md))
+- **AD-064** — A snapshot is assigned, never accumulated, and a table does not list what it cannot count ([/decisions/ad-064.md](/decisions/ad-064.md))
+- **AD-065** — The obs bus has a contract, and the gate checks both sides of it ([/decisions/ad-065.md](/decisions/ad-065.md))
+- **AD-066** — Uninstall reads the artefact, and the plan is the confirmation ([/decisions/ad-066.md](/decisions/ad-066.md))
+- **AD-067** — A reserved file that cannot be retired is rendered, and the gate holds it there ([/decisions/ad-067.md](/decisions/ad-067.md))
+
+## 2026-08-10
+
+- **AD-058** — Gates diff against the turn's base, and language knowledge is one table ([/decisions/ad-058.md](/decisions/ad-058.md))
+- **AD-059** — A rail never writes a field it reads, and a counter reads the plane its events land on ([/decisions/ad-059.md](/decisions/ad-059.md))
+
+## 2026-08-07
+
+- **AD-054** — npm is the distribution, and a merged release PR is the only thing that publishes ([/decisions/ad-054.md](/decisions/ad-054.md))
+- **AD-055** — The changelog is rendered from the decision records, and git says which release each landed in ([/decisions/ad-055.md](/decisions/ad-055.md))
+- **AD-056** — The package delivers the runtime, and the runtime path stays where hooks already point ([/decisions/ad-056.md](/decisions/ad-056.md))
+- **AD-057** — The release PR is a mechanism, not a gate, and the bot merges it ([/decisions/ad-057.md](/decisions/ad-057.md))
+
+## 2026-08-06
+
+- **AD-053** — The harness ships no model allowlist, and a list that names nothing enforces nothing ([/decisions/ad-053.md](/decisions/ad-053.md))
+
+## 2026-08-05
+
+- **AD-045** — A gate verdict is reused when the content hash of its inputs did not change ([/decisions/ad-045.md](/decisions/ad-045.md))
+- **AD-046** — The runtime path is an artifact, and update never touches what it does not own ([/decisions/ad-046.md](/decisions/ad-046.md))
+- **AD-047** — An instruction is not an affordance, and a refusal names the route that works ([/decisions/ad-047.md](/decisions/ad-047.md))
+- **AD-048** — A broken updater cannot deliver its own fix, so the installer is the recovery route ([/decisions/ad-048.md](/decisions/ad-048.md))
+- **AD-049** — An empty synced file says which of four reasons made it empty ([/decisions/ad-049.md](/decisions/ad-049.md))
+- **AD-050** — Lesson transport is a provider capability, not an operator preference ([/decisions/ad-050.md](/decisions/ad-050.md))
+- **AD-051** — A warning fails the gate, and a suppression states what breaks without it ([/decisions/ad-051.md](/decisions/ad-051.md))
+- **AD-052** — The repository moves to the org and the runtime paths do not ([/decisions/ad-052.md](/decisions/ad-052.md))
+
+## 2026-08-04
+
+- **AD-024** — The gate tells the truth about its own environment, its own lock, and the cause of a failure ([/decisions/ad-024.md](/decisions/ad-024.md))
+- **AD-025** — Posture governs surfacing only, and each posture has exactly one name ([/decisions/ad-025.md](/decisions/ad-025.md))
+- **AD-026** — An interruption is worth what it costs: narrower asks, a deadline on questions, and a rate the operator can see ([/decisions/ad-026.md](/decisions/ad-026.md))
+- **AD-027** — Evidence is ordered against the code, every rail's firing is recorded, and a checker can run with its rule off ([/decisions/ad-027.md](/decisions/ad-027.md))
+- **AD-028** — A resolved failure is kept, a session attests to itself, and provider neutrality becomes a proof ([/decisions/ad-028.md](/decisions/ad-028.md))
+- **AD-029** — A capability the init skill cannot correctly initialise is not shipped ([/decisions/ad-029.md](/decisions/ad-029.md))
+- **AD-030** — Clearing a policy divergence is one operator command behind four independent locks, and a refusal never points an agent at a door the floor holds shut ([/decisions/ad-030.md](/decisions/ad-030.md))
+- **AD-031** — The decisions are the changelog, a breaking change carries its own instruction, and looking never changes anything ([/decisions/ad-031.md](/decisions/ad-031.md))
+- **AD-032** — A hook is healthy when it can run, not when a marker string is present ([/decisions/ad-032.md](/decisions/ad-032.md))
+- **AD-033** — The gate says what it costs, appendFiles stops promising what it cannot deliver, and a dead capability leaves ([/decisions/ad-033.md](/decisions/ad-033.md))
+- **AD-034** — A warning that fires on a healthy install is not a warning, and the author reads the operator's output before anyone else does ([/decisions/ad-034.md](/decisions/ad-034.md))
+- **AD-035** — A lesson learned by reasoning can be written down, and the harness never learns where lessons come from ([/decisions/ad-035.md](/decisions/ad-035.md))
+- **AD-036** — A lesson names what makes it true, and stops being injected when that is gone ([/decisions/ad-036.md](/decisions/ad-036.md))
+- **AD-037** — A lesson can be true for a period, and an unparseable bound withholds it ([/decisions/ad-037.md](/decisions/ad-037.md))
+- **AD-038** — Promotion counts distinct sessions, because one stuck session is one observation ([/decisions/ad-038.md](/decisions/ad-038.md))
+- **AD-039** — A lesson is graded by the gate it was injected for, and unproven is not a passing reading ([/decisions/ad-039.md](/decisions/ad-039.md))
+- **AD-040** — Three lesson tiers, and nothing crosses between products by itself ([/decisions/ad-040.md](/decisions/ad-040.md))
+- **AD-041** — A member something reads and nothing writes fails the gate ([/decisions/ad-041.md](/decisions/ad-041.md))
+- **AD-042** — The suite gets an empty runtime home, and one renderer renders a lesson ([/decisions/ad-042.md](/decisions/ad-042.md))
+- **AD-043** — A standing rule is pinned, not ranked, and the budget says what it dropped ([/decisions/ad-043.md](/decisions/ad-043.md))
+- **AD-044** — Only an injection a gate could grade can be unproven ([/decisions/ad-044.md](/decisions/ad-044.md))
+
+## 2026-08-03
+
+- **AD-023** — One finding per failure, and lesson relevance is recurrence rather than exposure ([/decisions/ad-023.md](/decisions/ad-023.md))
+
+## 2026-07-31
+
+- **AD-022** — The policy surface is a floor rule, detection sits behind interception, and the operator/agent line is structural ([/decisions/ad-022.md](/decisions/ad-022.md))
 
 ## 2026-07-30
 
-- Published at `github.com/felipfr/tlc-agent-harness`.
-- Floor tier added: five rules that read no config
-  ([/decisions/ad-016.md](/decisions/ad-016.md)).
-- `classifyShell` moved onto the shared shell tokenizer.
-- Comment gate judges comments as blocks; doc comments are judged by informativeness against the
-  identifier they document; `#` applies only to languages that use it.
-- CI matrix enabled on `push` and `pull_request` across `ubuntu|macos|windows`
-  ([/decisions/ad-005.md](/decisions/ad-005.md)).
-- `bin/tlc-build` no longer uses `mapfile`, for bash 3.2 support. `.gitattributes` pins LF on checkout.
-- Shell tokenizer preserves Windows path separators.
-- Windows scope stated as CI coverage plus the two areas outside it
-  ([/decisions/ad-006.md](/decisions/ad-006.md)).
-- Optional docs staleness gate: runs the repository's own tool through the grind path, `warn` by default.
-  Path mapping was measured reporting on 82–100% of commits and removed
-  ([/decisions/ad-017.md](/decisions/ad-017.md)).
-- Capability catalog became the only source for the wizard menu and the architecture rails table, generated
-  and verified by `tools/render-capabilities.ts --check`.
-- A warn-level lint diagnostic fails the gate (`biome check --error-on-warnings`), and `tools/check-suppressions.ts`
-  fails it on a suppression whose reason is not a reason. Group-level `error` severity was measured at 3763
-  findings — it enables each group's non-recommended rules, including the two that forbid the core facade — and
-  rejected ([/decisions/ad-051.md](/decisions/ad-051.md)).
-- Moved to `github.com/tech-leads-club/harness-toolkit` and renamed `harness-toolkit`. The CLI, `~/.tlc/harness`
-  and `.tlc/harness/config.json` are unchanged, so no existing install re-initialises — TLC is Tech Leads Club,
-  which makes the prefix more accurate under the org, not less ([/decisions/ad-052.md](/decisions/ad-052.md)).
+- **AD-017** — The docs gate delegates to the project's tool, and the catalog is the only source of capability metadata ([/decisions/ad-017.md](/decisions/ad-017.md))
+- **AD-018** — Three rails adopted from an external review, each off by default and declared rather than inferred ([/decisions/ad-018.md](/decisions/ad-018.md))
+- **AD-019** — A resource is identified by what it resolves to, and a declared capability must be read where it matters ([/decisions/ad-019.md](/decisions/ad-019.md))
+- **AD-020** — One resolution for the install path, one source for posture, and a config that only advertises what it reads ([/decisions/ad-020.md](/decisions/ad-020.md))
+- **AD-021** — A gate command that never resolved is a config fault, and a recipe runner does not receive file arguments ([/decisions/ad-021.md](/decisions/ad-021.md))
+
+## 2026-07-29
+
+- **AD-002** — Provider-neutral naming and layout ([/decisions/ad-002.md](/decisions/ad-002.md))
+- **AD-003** — No backward compatibility ([/decisions/ad-003.md](/decisions/ad-003.md))
+- **AD-004** — Ports and adapters with an anti-corruption layer per provider ([/decisions/ad-004.md](/decisions/ad-004.md))
+- **AD-005** — Local test runner is the gate; CI matrix runs on every push ([/decisions/ad-005.md](/decisions/ad-005.md))
+- **AD-006** — Windows ships in scope, with CI covering the suite and the build ([/decisions/ad-006.md](/decisions/ad-006.md))
+- **AD-007** — Vendor check applies to core tests; absence checks do not ([/decisions/ad-007.md](/decisions/ad-007.md))
+- **AD-008** — Biome + TypeScript in the gate; @types/node pinned to the declared floor ([/decisions/ad-008.md](/decisions/ad-008.md))
+- **AD-009** — Event kinds are provider-agnostic; capabilities are data, not flags ([/decisions/ad-009.md](/decisions/ad-009.md))
+- **AD-010** — Shared vocabulary moves to src/contracts/ ([/decisions/ad-010.md](/decisions/ad-010.md))
+- **AD-011** — Vendor-specific data belongs to the provider, not to core ([/decisions/ad-011.md](/decisions/ad-011.md))
+- **AD-012** — Prefer Bun at runtime, keep dist/ for the Node fallback, ship no binary ([/decisions/ad-012.md](/decisions/ad-012.md))
+- **AD-013** — Documentation follows the Open Knowledge Format (OKF v0.1) ([/decisions/ad-013.md](/decisions/ad-013.md))
+- **AD-014** — Claude Code hook payload field paths, pinned ([/decisions/ad-014.md](/decisions/ad-014.md))
+- **AD-015** — Wiring handler names are the entrypoint filenames ([/decisions/ad-015.md](/decisions/ad-015.md))
+- **AD-016** — Field semantics, state writers, and the core export surface ([/decisions/ad-016.md](/decisions/ad-016.md))
+
+## 2026-07-27
+
+- **AD-001** — Optional parent-Fast sticky deny for Task spawns ([/decisions/ad-001.md](/decisions/ad-001.md))

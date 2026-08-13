@@ -38,7 +38,7 @@ The gate is a single command:
 tlc harness test
 ```
 
-Thirteen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
+Fourteen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
 source of truth, and this table is here to say what each step is for.
 
 | # | Step | Fails on |
@@ -55,7 +55,8 @@ source of truth, and this table is here to say what each step is for.
 | 10 | `check-obs-contract` | a kind a consumer counts and no producer emits, or one landing on a plane the consumer does not read |
 | 11 | `render-capabilities --check` | a generated README region that no longer matches `capabilities/catalog.json` |
 | 12 | `render-changelog --check` | a `CHANGELOG.md` that no longer matches `docs/decisions/` |
-| 13 | `check-dist-fresh` | **CI only** — a `dist/` bundle that does not match `src/`. Run `./bin/tlc-build` and commit the result |
+| 13 | `render-log --check` | a `docs/log.md` that no longer matches `docs/decisions/` |
+| 14 | `check-dist-fresh` | **CI only** — a `dist/` bundle that does not match `src/`. Run `./bin/tlc-build` and commit the result |
 
 Equivalent by hand, for local debugging:
 
@@ -72,6 +73,7 @@ node tools/check-screens.ts
 node tools/check-obs-contract.ts
 node tools/render-capabilities.ts --check
 node tools/render-changelog.ts --check
+node tools/render-log.ts --check
 node tools/check-dist-fresh.ts
 ```
 

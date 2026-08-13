@@ -16,6 +16,8 @@ export type DecisionSummary = {
   title: string;
   /** Present only when the decision requires the operator to change something. */
   migration?: string;
+  /** why: the OKF bundle's `log.md` groups by ISO date, and the record already carries the date it was taken. */
+  timestamp?: string;
 };
 
 function frontmatterField(text: string, field: string): string | undefined {
@@ -53,7 +55,13 @@ export function readDecision(repoRoot: string, file: string): DecisionSummary | 
   }
   const id = file.replace(/\.md$/, "").toUpperCase();
   const migration = frontmatterField(text, "migration");
-  return migration === undefined ? { id, title } : { id, title, migration };
+  const timestamp = frontmatterField(text, "timestamp");
+  return {
+    id,
+    title,
+    ...(migration === undefined ? {} : { migration }),
+    ...(timestamp === undefined ? {} : { timestamp }),
+  };
 }
 
 export function readDecisions(repoRoot: string, files: string[]): DecisionSummary[] {

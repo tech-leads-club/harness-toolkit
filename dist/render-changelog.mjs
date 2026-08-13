@@ -38,7 +38,13 @@ function readDecision(repoRoot, file) {
   }
   const id = file.replace(/\.md$/, "").toUpperCase();
   const migration = frontmatterField(text, "migration");
-  return migration === undefined ? { id, title } : { id, title, migration };
+  const timestamp = frontmatterField(text, "timestamp");
+  return {
+    id,
+    title,
+    ...migration === undefined ? {} : { migration },
+    ...timestamp === undefined ? {} : { timestamp }
+  };
 }
 function allDecisionFiles(repoRoot) {
   const dir = decisionsDir(repoRoot);
