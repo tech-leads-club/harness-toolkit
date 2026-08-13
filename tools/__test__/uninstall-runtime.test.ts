@@ -10,17 +10,19 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix, win32 } from "node:path";
 import { test } from "node:test";
 import { claudeWiring, mergeClaudeSettings } from "../../src/providers/claude/claude.wiring.ts";
 import { OPERATOR_OWNED, RUNTIME_PAYLOAD } from "../install-runtime.ts";
 import {
   applyUninstall,
   canonicalise,
+  isInsideRoot,
   pendingItems,
   planUninstall,
   type UninstallTargets,
   uninstallReportText,
+  uninstallTargets,
 } from "../uninstall-runtime.ts";
 
 const LAUNCHER = "bin/tlc-exec.mjs";
@@ -103,7 +105,7 @@ test("AC4 a symlinked runtime home is unlinked, and the checkout it pointed at k
   assert.equal(unlinked.includes(targets.home), true);
   // hazard: a payload entry inside a linked home reaching the plan is the data-loss bug this guards.
   assert.equal(
-    plan.items.some((item) => item.target.startsWith(`${targets.home}/`) && item.action === "remove"),
+    plan.items.some((item) => item.action === "remove" && isInsideRoot(item.target, targets.home)),
     false,
   );
 
@@ -289,4 +291,82 @@ test("a dangling link is still ours when an ancestor of the home is itself a sym
     skillLinks: [],
   });
   assert.equal(dangling.items.find((item) => item.target === binLink)?.action, "unlink");
+});
+
+/**
+ * hazard: this is the Windows CI failure. Ownership was decided with `target.startsWith(`${root}/`)`, so on a
+ * platform that separates with `\` every path landed outside every root and the harness's own links read as
+ * somebody else's. Injecting the path API is what lets the win32 rules be asserted from any machine.
+ */
+test("ownership is decided with the platform's own separator, on both platforms", () => {
+  for (const [name, api, root, inside, outside] of [
+    ["posix", posix, "/home/me/.tlc/harness", "/home/me/.tlc/harness/bin/tlc", "/usr/local/bin/tlc"],
+    [
+      "win32",
+      win32,
+      "C:\\Users\\me\\.tlc\\harness",
+      "C:\\Users\\me\\.tlc\\harness\\bin\\tlc",
+      "C:\\tools\\tlc",
+    ],
+  ] as const) {
+    assert.equal(isInsideRoot(inside, root, api), true, `${name}: a path under the home is ours`);
+    assert.equal(isInsideRoot(outside, root, api), false, `${name}: a path elsewhere is not`);
+    assert.equal(isInsideRoot(root, root, api), true, `${name}: the home itself is ours`);
+  }
+});
+
+test("a sibling whose name merely starts with the home is not inside it", () => {
+  assert.equal(isInsideRoot("/home/me/.tlc/harness-old/bin", "/home/me/.tlc/harness", posix), false);
+  assert.equal(isInsideRoot("C:\\me\\harness-old\\bin", "C:\\me\\harness", win32), false);
+});
+
+test("win32 folds drive-letter case the way the platform does", () => {
+  assert.equal(isInsideRoot("c:\\Users\\me\\harness\\bin", "C:\\Users\\me\\harness", win32), true);
+});
+
+/**
+ * hazard: install.ps1 writes a different layout from install.sh — USERPROFILE, a copied `tlc.cmd`, and one skill
+ * junction under `~/.tlc/skills`. Reading the POSIX layout on Windows finds none of it and reports a clean
+ * machine, which is the worst possible answer from an uninstaller.
+ */
+test("the Windows layout is the Windows layout, not the POSIX one", () => {
+  const win = uninstallTargets(
+    { USERPROFILE: "C:\\Users\\me", HOME: "/should/not/be/read", TLC_HOME: "C:\\Users\\me\\.tlc\\harness" },
+    "win32",
+  );
+  // invariant: components, not separators. `join` is win32's only when the process is on Windows, so asserting a
+  // rendered path here would test the machine running the suite rather than the branch under test.
+  assert.equal(win.binLink.endsWith("tlc.cmd"), true);
+  assert.equal(win.binLink.startsWith("C:\\Users\\me"), true, "USERPROFILE, never HOME");
+  assert.equal(win.skillLinks.length, 1);
+  assert.equal(win.skillLinks[0]?.includes(".tlc"), true, "one junction under ~/.tlc, not the provider dirs");
+  assert.equal(win.skillLinks[0]?.endsWith("harness-init"), true);
+
+  const posixTargets = uninstallTargets({ HOME: "/home/me", TLC_HOME: "/home/me/.tlc/harness" }, "linux");
+  assert.equal(posixTargets.binLink.endsWith("tlc"), true);
+  assert.equal(posixTargets.binLink.endsWith("tlc.cmd"), false);
+  assert.equal(posixTargets.skillLinks.length, 2);
+});
+
+test("a launcher installed as a copy is removed; an unrelated file of the same name is not", () => {
+  const root = tempRoot();
+  const ours = join(root, "tlc.cmd");
+  const theirs = join(root, "tlc-someone-else");
+  writeFileSync(ours, '@echo off\nnode "%~dp0tlc-exec.mjs" tlc-cli %*\n');
+  writeFileSync(theirs, '#!/bin/sh\nexec /opt/other/tlc "$@"\n');
+
+  const base = {
+    home: join(root, "runtime"),
+    claudeSettings: join(root, "absent.json"),
+    cursorHooks: join(root, "absent-hooks.json"),
+    skillLinks: [],
+  };
+  assert.equal(
+    planUninstall({ ...base, binLink: ours }).items.find((i) => i.target === ours)?.action,
+    "remove",
+  );
+  assert.equal(
+    planUninstall({ ...base, binLink: theirs }).items.find((i) => i.target === theirs)?.action,
+    "keep",
+  );
 });

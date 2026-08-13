@@ -9,10 +9,12 @@ import {
   readlinkSync,
   realpathSync as realpathSync2,
   rmSync,
+  statSync,
   unlinkSync,
   writeFileSync as writeFileSync2
 } from "node:fs";
-import { basename, dirname, isAbsolute, join as join2, resolve } from "node:path";
+import { homedir as homedir2 } from "node:os";
+import { basename, dirname, isAbsolute, join as join2, relative, resolve } from "node:path";
 
 // src/platform/paths.ts
 import { homedir } from "node:os";
@@ -969,15 +971,16 @@ var OPERATOR_OWNED = ["config.json", "state", "flags"];
 if (false) {}
 
 // tools/uninstall-runtime.ts
-function uninstallTargets(env = process.env) {
-  const home = runtimeHome(env);
-  const binDir = env.TLC_BIN_DIR?.trim() || join2(env.HOME ?? "", ".local", "bin");
+function uninstallTargets(env = process.env, platform = process.platform) {
+  const windows = platform === "win32";
+  const userHome = (windows ? env.USERPROFILE : env.HOME)?.trim() || homedir2();
+  const binDir = env.TLC_BIN_DIR?.trim() || join2(userHome, ".local", "bin");
   return {
-    home,
-    binLink: join2(binDir, "tlc"),
+    home: runtimeHome(env),
+    binLink: join2(binDir, windows ? "tlc.cmd" : "tlc"),
     claudeSettings: join2(claudeConfigDir(), "settings.json"),
     cursorHooks: join2(cursorConfigDir(), "hooks.json"),
-    skillLinks: [
+    skillLinks: windows ? [join2(userHome, ".tlc", "skills", "harness-init")] : [
       join2(claudeConfigDir(), "skills", "harness-init"),
       join2(cursorConfigDir(), "skills", "harness-init")
     ]
@@ -1018,20 +1021,37 @@ function resolveLink(path) {
     }
   }
 }
+function isInsideRoot(target, root, pathApi = { relative, isAbsolute }) {
+  if (target === root) {
+    return true;
+  }
+  const step = pathApi.relative(root, target);
+  return step !== "" && !step.startsWith("..") && !pathApi.isAbsolute(step);
+}
 function pointsInto(link, home) {
-  const target = resolveLink(link);
-  const root = canonicalise(home);
-  return target === root || target.startsWith(`${root}/`);
+  return isInsideRoot(resolveLink(link), canonicalise(home));
+}
+var LAUNCHER_MARKER2 = "tlc-exec.mjs";
+function carriesLauncherMarker(path) {
+  try {
+    return statSync(path).size < 4096 && readFileSync2(path, "utf8").includes(LAUNCHER_MARKER2);
+  } catch {
+    return false;
+  }
 }
 function planLink(items, path, home, label, ownership) {
   if (!existsSync2(path) && !isSymlink(path)) {
     return;
   }
   if (!isSymlink(path)) {
+    if (carriesLauncherMarker(path)) {
+      items.push({ action: "remove", target: path, detail: `${label}, installed as a copy` });
+      return;
+    }
     items.push({
       action: "keep",
       target: path,
-      detail: `${label} is a real file, not a link the installer made`
+      detail: `${label} is a real file the installer did not write`
     });
     return;
   }
@@ -1263,6 +1283,7 @@ export {
   planUninstall,
   pendingItems,
   main,
+  isInsideRoot,
   canonicalise,
   applyUninstall
 };

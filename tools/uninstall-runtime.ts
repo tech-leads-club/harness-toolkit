@@ -5,10 +5,12 @@ import {
   readlinkSync,
   realpathSync,
   rmSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { NPM_MARKER, NPM_PACKAGE } from "../bin/tlc-cli.ts";
 import { claudeConfigDir, cursorConfigDir, runtimeHome } from "../src/platform/paths.ts";
 import { type Row, render, type Screen } from "../src/platform/screen.ts";
@@ -41,18 +43,30 @@ export type UninstallTargets = {
   skillLinks: string[];
 };
 
-export function uninstallTargets(env: NodeJS.ProcessEnv = process.env): UninstallTargets {
-  const home = runtimeHome(env);
-  const binDir = env.TLC_BIN_DIR?.trim() || join(env.HOME ?? "", ".local", "bin");
+/**
+ * hazard: `install.ps1` does not write the same artefacts as `install.sh`. It resolves the home from
+ * `USERPROFILE`, **copies** `tlc.cmd` into the bin directory instead of linking it, and puts one skill junction
+ * at `~/.tlc/skills/harness-init` rather than one inside each provider's directory. Reading the POSIX layout on
+ * Windows finds none of them and reports a clean machine ([/decisions/ad-066.md](/decisions/ad-066.md)).
+ */
+export function uninstallTargets(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): UninstallTargets {
+  const windows = platform === "win32";
+  const userHome = (windows ? env.USERPROFILE : env.HOME)?.trim() || homedir();
+  const binDir = env.TLC_BIN_DIR?.trim() || join(userHome, ".local", "bin");
   return {
-    home,
-    binLink: join(binDir, "tlc"),
+    home: runtimeHome(env),
+    binLink: join(binDir, windows ? "tlc.cmd" : "tlc"),
     claudeSettings: join(claudeConfigDir(), "settings.json"),
     cursorHooks: join(cursorConfigDir(), "hooks.json"),
-    skillLinks: [
-      join(claudeConfigDir(), "skills", "harness-init"),
-      join(cursorConfigDir(), "skills", "harness-init"),
-    ],
+    skillLinks: windows
+      ? [join(userHome, ".tlc", "skills", "harness-init")]
+      : [
+          join(claudeConfigDir(), "skills", "harness-init"),
+          join(cursorConfigDir(), "skills", "harness-init"),
+        ],
   };
 }
 
@@ -103,13 +117,29 @@ function resolveLink(path: string): string {
   }
 }
 
+/**
+ * hazard: this was `target.startsWith(`${root}/`)`, and Windows separates with `\`. Every path landed outside
+ * every root, so on Windows CI the harness's own links read as somebody else's. `relative` is separator-aware and
+ * case-folds the drive the way the platform does; the `pathApi` parameter is what lets the win32 rules be tested
+ * from any machine ([/decisions/ad-066.md](/decisions/ad-066.md)).
+ */
+export function isInsideRoot(
+  target: string,
+  root: string,
+  pathApi: Pick<typeof import("node:path"), "relative" | "isAbsolute"> = { relative, isAbsolute },
+): boolean {
+  if (target === root) {
+    return true;
+  }
+  const step = pathApi.relative(root, target);
+  return step !== "" && !step.startsWith("..") && !pathApi.isAbsolute(step);
+}
+
 // invariant: a link is ours only when it lands inside the runtime home. A `tlc` on PATH belonging to something
 // else keeps its name, and this command is not the place to argue about it. Both sides go through the same
 // resolution, because comparing a resolved path with an unresolved one is how this broke.
 function pointsInto(link: string, home: string): boolean {
-  const target = resolveLink(link);
-  const root = canonicalise(home);
-  return target === root || target.startsWith(`${root}/`);
+  return isInsideRoot(resolveLink(link), canonicalise(home));
 }
 
 /**
@@ -124,6 +154,16 @@ function pointsInto(link: string, home: string): boolean {
  */
 type LinkOwnership = "target" | "location";
 
+const LAUNCHER_MARKER = "tlc-exec.mjs";
+
+function carriesLauncherMarker(path: string): boolean {
+  try {
+    return statSync(path).size < 4096 && readFileSync(path, "utf8").includes(LAUNCHER_MARKER);
+  } catch {
+    return false;
+  }
+}
+
 function planLink(
   items: PlanItem[],
   path: string,
@@ -135,10 +175,17 @@ function planLink(
     return;
   }
   if (!isSymlink(path)) {
+    // why: on Windows the launcher is a copy, not a link, so "not a link" is not the same as "not ours". The
+    // copy carries the launcher name in its one command line, which is the same marker every other artefact
+    // identifies itself by.
+    if (carriesLauncherMarker(path)) {
+      items.push({ action: "remove", target: path, detail: `${label}, installed as a copy` });
+      return;
+    }
     items.push({
       action: "keep",
       target: path,
-      detail: `${label} is a real file, not a link the installer made`,
+      detail: `${label} is a real file the installer did not write`,
     });
     return;
   }
