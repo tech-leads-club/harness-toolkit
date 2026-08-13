@@ -16,6 +16,7 @@ import { claudeWiring, mergeClaudeSettings } from "../../src/providers/claude/cl
 import { OPERATOR_OWNED, RUNTIME_PAYLOAD } from "../install-runtime.ts";
 import {
   applyUninstall,
+  canonicalise,
   pendingItems,
   planUninstall,
   type UninstallTargets,
@@ -250,4 +251,42 @@ test("a skill link pointing at a runtime that no longer exists is still removed"
 
   applyUninstall(plan, targets);
   assert.equal(existsSync(stale) || lstatSync(stale, { throwIfNoEntry: false }) !== undefined, false);
+});
+
+/**
+ * hazard: this is the macOS CI failure, reproduced on any platform. The OS temp directory there sits under
+ * `/var`, a symlink to `/private/var`, so a dangling link resolved to its literal text was compared against a
+ * home resolved through realpath — two spellings of the same place, never equal.
+ */
+test("a dangling link is still ours when an ancestor of the home is itself a symlink", () => {
+  const root = tempRoot();
+  const real = join(root, "real");
+  const alias = join(root, "alias");
+  mkdirSync(join(real, "runtime", "bin"), { recursive: true });
+  writeFileSync(join(real, "runtime", "bin", "tlc"), "#!/usr/bin/env sh\n");
+  symlinkSync(real, alias);
+
+  const home = join(alias, "runtime");
+  const binLink = join(root, "tlc");
+  symlinkSync(join(home, "bin", "tlc"), binLink);
+  assert.equal(canonicalise(home) === home, false, "the home really is reached through a symlink");
+
+  const live = planUninstall({
+    home,
+    binLink,
+    claudeSettings: join(root, "absent.json"),
+    cursorHooks: join(root, "absent-hooks.json"),
+    skillLinks: [],
+  });
+  assert.equal(live.items.find((item) => item.target === binLink)?.action, "unlink");
+
+  rmSync(join(real, "runtime", "bin"), { recursive: true });
+  const dangling = planUninstall({
+    home,
+    binLink,
+    claudeSettings: join(root, "absent.json"),
+    cursorHooks: join(root, "absent-hooks.json"),
+    skillLinks: [],
+  });
+  assert.equal(dangling.items.find((item) => item.target === binLink)?.action, "unlink");
 });

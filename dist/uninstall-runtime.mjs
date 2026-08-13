@@ -12,7 +12,7 @@ import {
   unlinkSync,
   writeFileSync as writeFileSync2
 } from "node:fs";
-import { dirname, isAbsolute, join as join2, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join as join2, resolve } from "node:path";
 
 // src/platform/paths.ts
 import { homedir } from "node:os";
@@ -990,28 +990,37 @@ function isSymlink(path) {
     return false;
   }
 }
+function canonicalise(path) {
+  let head = resolve(path);
+  const tail = [];
+  for (;; ) {
+    try {
+      return join2(realpathSync2(head), ...tail);
+    } catch {
+      const parent = dirname(head);
+      if (parent === head) {
+        return resolve(path);
+      }
+      tail.unshift(basename(head));
+      head = parent;
+    }
+  }
+}
 function resolveLink(path) {
   try {
     return realpathSync2(path);
   } catch {
     try {
       const target = readlinkSync(path);
-      return isAbsolute(target) ? target : resolve(dirname(path), target);
+      return canonicalise(isAbsolute(target) ? target : resolve(dirname(path), target));
     } catch {
-      return path;
+      return canonicalise(path);
     }
-  }
-}
-function canonical(path) {
-  try {
-    return realpathSync2(path);
-  } catch {
-    return resolve(path);
   }
 }
 function pointsInto(link, home) {
   const target = resolveLink(link);
-  const root = canonical(home);
+  const root = canonicalise(home);
   return target === root || target.startsWith(`${root}/`);
 }
 function planLink(items, path, home, label, ownership) {
@@ -1254,5 +1263,6 @@ export {
   planUninstall,
   pendingItems,
   main,
+  canonicalise,
   applyUninstall
 };

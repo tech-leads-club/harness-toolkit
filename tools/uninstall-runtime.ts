@@ -8,7 +8,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { NPM_MARKER, NPM_PACKAGE } from "../bin/tlc-cli.ts";
 import { claudeConfigDir, cursorConfigDir, runtimeHome } from "../src/platform/paths.ts";
 import { type Row, render, type Screen } from "../src/platform/screen.ts";
@@ -65,36 +65,50 @@ function isSymlink(path: string): boolean {
 }
 
 /**
- * hazard: `realpathSync` throws on a dangling link, and a link into a runtime home that was already deleted is
- * exactly the state a second uninstall run finds. Falling back to resolving the link text keeps such a link
- * recognisable as ours instead of stranding it forever.
+ * The real path of `path`, resolving as much of it as exists on disk and re-appending the rest.
+ *
+ * hazard: `realpathSync` throws on a path whose tail is absent, and a link into a runtime home already removed is
+ * exactly the state a partial run leaves. Returning the literal text in that case compared a resolved path against
+ * an unresolved one — and on macOS the OS temp directory sits under `/var`, itself a symlink to `/private/var`, so
+ * the two forms never matched and a dangling link of ours read as somebody else's. Green on Linux, red on macOS
+ * CI ([/decisions/ad-066.md](/decisions/ad-066.md)).
  */
+export function canonicalise(path: string): string {
+  let head = resolve(path);
+  const tail: string[] = [];
+  for (;;) {
+    try {
+      return join(realpathSync(head), ...tail);
+    } catch {
+      const parent = dirname(head);
+      if (parent === head) {
+        return resolve(path);
+      }
+      tail.unshift(basename(head));
+      head = parent;
+    }
+  }
+}
+
 function resolveLink(path: string): string {
   try {
     return realpathSync(path);
   } catch {
     try {
       const target = readlinkSync(path);
-      return isAbsolute(target) ? target : resolve(dirname(path), target);
+      return canonicalise(isAbsolute(target) ? target : resolve(dirname(path), target));
     } catch {
-      return path;
+      return canonicalise(path);
     }
   }
 }
 
-function canonical(path: string): string {
-  try {
-    return realpathSync(path);
-  } catch {
-    return resolve(path);
-  }
-}
-
 // invariant: a link is ours only when it lands inside the runtime home. A `tlc` on PATH belonging to something
-// else keeps its name, and this command is not the place to argue about it.
+// else keeps its name, and this command is not the place to argue about it. Both sides go through the same
+// resolution, because comparing a resolved path with an unresolved one is how this broke.
 function pointsInto(link: string, home: string): boolean {
   const target = resolveLink(link);
-  const root = canonical(home);
+  const root = canonicalise(home);
   return target === root || target.startsWith(`${root}/`);
 }
 
