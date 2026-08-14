@@ -79,3 +79,4 @@ doctor reports against your own configuration.
 - **AD-067** — A reserved file that cannot be retired is rendered, and the gate holds it there
 - **AD-068** — A directory decides what ships, and dist is derived from disk in both directions
 - **AD-069** — A decision record declares its shape, and cites by link so a move cannot break it
+- **AD-070** — A comment has to read for somebody who was not in the session

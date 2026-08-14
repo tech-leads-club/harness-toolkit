@@ -51,7 +51,9 @@ export function operatorBootstrapLines(policy: Policy, stateDir: string): string
     lines.push(
       policy.comments.mode === "strict"
         ? "Comments: do not add any. If one is warranted, say so in your reply and let the owner write it."
-        : "Comments: an added comment must declare why:, hazard: or invariant:. Narrating what the code does is blocked.",
+        : policy.comments.mode === "resolvable"
+          ? "Comments: an added comment must declare why:, hazard: or invariant:, and must read for someone who was not in this session. Do not narrate the change (used to, previously, this was), cite a plan, decision number or section only this session saw, speak from the change (this PR, a later commit), or argue your own correctness. State the present behaviour, or the counterfactual: without X, Y happens."
+          : "Comments: an added comment must declare why:, hazard: or invariant:. Narrating what the code does is blocked.",
     );
   }
   if (policy.mcpPrime.length > 0) {

@@ -4,6 +4,7 @@ import type { AddedLine } from "../../platform/git.ts";
 import { listAddedLines } from "../../platform/git.ts";
 import type { CommentMode } from "../policy/policy.types.ts";
 import type { CommentFinding } from "./comment-policy.types.ts";
+import { firstLeak, leakReason } from "./comment-resolvability.ts";
 import { syntaxFor } from "./comment-syntax.store.ts";
 import type { CommentSyntax } from "./comment-syntax.types.ts";
 
@@ -189,9 +190,14 @@ function judge(block: AddedLine[], mode: CommentMode, nextCodeLine?: NextCodeLin
       if (mode === "strict") {
         return { violates: true, reason: "comment added this turn" };
       }
-      return isInformativeDoc(body, identifier)
+      if (!isInformativeDoc(body, identifier)) {
+        return { violates: true, reason: `doc comment only restates ${identifier}` };
+      }
+      // why: a doc comment is prose a reader meets first, so it is the surface where a dead citation costs most.
+      const docLeak = mode === "resolvable" ? firstLeak(body) : null;
+      return docLeak === null
         ? { violates: false, reason: "" }
-        : { violates: true, reason: `doc comment only restates ${identifier}` };
+        : { violates: true, reason: leakReason(docLeak) };
     }
   }
 
@@ -203,6 +209,15 @@ function judge(block: AddedLine[], mode: CommentMode, nextCodeLine?: NextCodeLin
   }
   if (block.length > MAX_DECLARED_LINES) {
     return { violates: true, reason: `declared comment runs past ${MAX_DECLARED_LINES} lines` };
+  }
+  // invariant: resolvability is asked last, and only of a comment that already earned its place. A comment with
+  // no declared reason is refused for that, and adding a second refusal to the same block would report one
+  // problem as two ([/decisions/ad-070.md](/decisions/ad-070.md)).
+  if (mode === "resolvable") {
+    const leak = firstLeak(block.map((line) => line.text).join(" "));
+    if (leak !== null) {
+      return { violates: true, reason: leakReason(leak) };
+    }
   }
   return { violates: false, reason: "" };
 }
@@ -261,16 +276,24 @@ export async function scanAddedComments(
 
 export function commentViolationMessage(hits: CommentFinding[], mode: CommentMode = "declared"): string {
   const need =
-    mode === "strict"
+    mode === "resolvable"
       ? [
-          "NEED: delete every line below. This project does not accept agent-added comments.",
-          "If one is genuinely warranted, say so in your reply and let the operator write it.",
+          // why: the fix for an unresolvable comment is not deletion. The passage usually carries a true fact
+          // wrapped in the session's vantage — restating it at HEAD keeps the fact and drops the transcript.
+          "NEED: restate each line below so a reader at HEAD can check it without the transcript of",
+          "this session — state the present behaviour, or state the counterfactual (`without X, Y`).",
+          "Delete it when nothing survives that restatement.",
         ]
-      : [
-          `NEED: delete each line below, or restate it as ${COMMENT_MARKERS.join(" / ")} when it`,
-          "records a non-obvious why, a hazard, or an external constraint. Narrating what the code",
-          "does is not a reason.",
-        ];
+      : mode === "strict"
+        ? [
+            "NEED: delete every line below. This project does not accept agent-added comments.",
+            "If one is genuinely warranted, say so in your reply and let the operator write it.",
+          ]
+        : [
+            `NEED: delete each line below, or restate it as ${COMMENT_MARKERS.join(" / ")} when it`,
+            "records a non-obvious why, a hazard, or an external constraint. Narrating what the code",
+            "does is not a reason.",
+          ];
   return [
     `BLOCKED: this turn added ${hits.length} comment(s).`,
     "TRIED: compared the lines this turn added against the commit it started from; pre-existing",

@@ -1,4 +1,9 @@
-export type CommentMode = "declared" | "strict";
+/**
+ * `declared` requires a reason marker, `strict` accepts no added comment at all, and `resolvable` is `declared`
+ * plus the question neither can ask: does the comment mean anything to a reader who was not in the session that
+ * wrote it ([/decisions/ad-070.md](/decisions/ad-070.md))?
+ */
+export type CommentMode = "declared" | "strict" | "resolvable";
 
 import type { EffortLevel } from "../../contracts/effort.ts";
 import type { AppendFilesMode } from "../gate/gate.types.ts";

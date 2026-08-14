@@ -475,6 +475,91 @@ async function listAddedLines(projectDir, relativePaths, base = "HEAD") {
   return out;
 }
 
+// src/core/comment-policy/comment-resolvability.ts
+var LEAK_RULES = [
+  {
+    kind: "change-narration",
+    pattern: /\b(?:used to|previously)\b/i,
+    says: "narrates the change instead of the state"
+  },
+  {
+    kind: "change-narration",
+    pattern: /\bthis (?:was|used to)\b/i,
+    says: "narrates the change instead of the state"
+  },
+  {
+    kind: "change-narration",
+    pattern: /\bthe old (?:code|version|implementation|approach|way|behaviou?r)\b/i,
+    says: "refers to code that is no longer here"
+  },
+  {
+    kind: "change-narration",
+    pattern: /\bbefore (?:this|the) (?:change|commit|fix|patch|refactor)\b/i,
+    says: "refers to a state the repository no longer holds"
+  },
+  {
+    kind: "dead-citation",
+    pattern: /\((?:decision|item|step|phase|task|audit|option)\s*#?\d+\)/i,
+    says: "cites something only the authoring session could see"
+  },
+  {
+    kind: "dead-citation",
+    pattern: /§\s*\d/,
+    says: "cites a section of a document that is not in the repository"
+  },
+  {
+    kind: "dead-citation",
+    pattern: /\bas (?:decided|agreed|discussed|mentioned|described) (?:above|earlier|previously|before)\b/i,
+    says: "points at a conversation the reader cannot see"
+  },
+  {
+    kind: "dead-citation",
+    pattern: /\b(?:per|from|in) the plan\b|\bthe plan above\b/i,
+    says: "points at a plan that is not in the repository"
+  },
+  {
+    kind: "review-vantage",
+    pattern: /\bthis (?:PR|MR|commit|patch|diff|changeset)\b/i,
+    says: "speaks from the change rather than from the repository"
+  },
+  {
+    kind: "review-vantage",
+    pattern: /\ba (?:later|follow-?up|subsequent) (?:PR|MR|commit)\b/i,
+    says: "speaks from the change rather than from the repository"
+  },
+  {
+    kind: "reviewer-addressed",
+    pattern: /\bthis is (?:safe|correct|fine|ok|okay)\b/i,
+    says: "argues its own correctness to a reviewer instead of stating the invariant"
+  },
+  {
+    kind: "reviewer-addressed",
+    pattern: /\brejected in review\b|\bthe reviewer\b/i,
+    says: "records who said what, which the repository cannot confirm"
+  },
+  {
+    kind: "flow-narration",
+    pattern: /\bfirst (?:we|it|this)\b[\s\S]{0,80}\bthen (?:we|it|this)\b/i,
+    says: "restates the control flow the code already shows"
+  }
+];
+function findLeaks(blockText) {
+  const leaks = [];
+  for (const rule of LEAK_RULES) {
+    const found = rule.pattern.exec(blockText);
+    if (found !== null) {
+      leaks.push({ kind: rule.kind, says: rule.says, match: found[0] });
+    }
+  }
+  return leaks;
+}
+function firstLeak(blockText) {
+  return findLeaks(blockText)[0] ?? null;
+}
+function leakReason(leak) {
+  return `unresolvable comment — ${leak.says} (\`${leak.match}\`)`;
+}
+
 // src/core/comment-policy/comment-syntax.catalog.ts
 var COMMENT_SYNTAX = [
   {
@@ -942,7 +1027,11 @@ function judge(block, mode, nextCodeLine) {
       if (mode === "strict") {
         return { violates: true, reason: "comment added this turn" };
       }
-      return isInformativeDoc(body, identifier) ? { violates: false, reason: "" } : { violates: true, reason: `doc comment only restates ${identifier}` };
+      if (!isInformativeDoc(body, identifier)) {
+        return { violates: true, reason: `doc comment only restates ${identifier}` };
+      }
+      const docLeak = mode === "resolvable" ? firstLeak(body) : null;
+      return docLeak === null ? { violates: false, reason: "" } : { violates: true, reason: leakReason(docLeak) };
     }
   }
   if (mode === "strict") {
@@ -953,6 +1042,12 @@ function judge(block, mode, nextCodeLine) {
   }
   if (block.length > MAX_DECLARED_LINES) {
     return { violates: true, reason: `declared comment runs past ${MAX_DECLARED_LINES} lines` };
+  }
+  if (mode === "resolvable") {
+    const leak = firstLeak(block.map((line) => line.text).join(" "));
+    if (leak !== null) {
+      return { violates: true, reason: leakReason(leak) };
+    }
   }
   return { violates: false, reason: "" };
 }
@@ -996,7 +1091,11 @@ async function scanAddedComments(projectDir, relativePaths, mode = "declared", b
   return findAddedComments(added, mode, diskLineReader(projectDir));
 }
 function commentViolationMessage(hits, mode = "declared") {
-  const need = mode === "strict" ? [
+  const need = mode === "resolvable" ? [
+    "NEED: restate each line below so a reader at HEAD can check it without the transcript of",
+    "this session — state the present behaviour, or state the counterfactual (`without X, Y`).",
+    "Delete it when nothing survives that restatement."
+  ] : mode === "strict" ? [
     "NEED: delete every line below. This project does not accept agent-added comments.",
     "If one is genuinely warranted, say so in your reply and let the operator write it."
   ] : [
@@ -4726,7 +4825,7 @@ function operatorBootstrapLines(policy, stateDir) {
     lines.push("Ship protocol: the ship gate reacts only to an explicit line `HARNESS_SHIP_CLAIM: <summary>` — free-English done or shipped is ignored. After that claim, cite recent PASS evidence under the configured evidenceDir before stopping.");
   }
   if (policy.comments.enabled) {
-    lines.push(policy.comments.mode === "strict" ? "Comments: do not add any. If one is warranted, say so in your reply and let the owner write it." : "Comments: an added comment must declare why:, hazard: or invariant:. Narrating what the code does is blocked.");
+    lines.push(policy.comments.mode === "strict" ? "Comments: do not add any. If one is warranted, say so in your reply and let the owner write it." : policy.comments.mode === "resolvable" ? "Comments: an added comment must declare why:, hazard: or invariant:, and must read for someone who was not in this session. Do not narrate the change (used to, previously, this was), cite a plan, decision number or section only this session saw, speak from the change (this PR, a later commit), or argue your own correctness. State the present behaviour, or the counterfactual: without X, Y happens." : "Comments: an added comment must declare why:, hazard: or invariant:. Narrating what the code does is blocked.");
   }
   if (policy.mcpPrime.length > 0) {
     lines.push("", "MCP prime (before host grep or glob across the workspace):");
