@@ -84,30 +84,36 @@ is a value the list may contain. If they accept the capability but have no list 
 
 Do **not** enable anything the user did not accept. Do **not** invent stack commands.
 
-### Step 2b: Comment gate — three choices, ask explicitly
+### Step 2b: Comment gate — four choices, ask explicitly
 
 Agents narrate. Prose in an instruction file does not stop it, so this is the deterministic gate.
-It compares added lines against `HEAD`, so comments already committed are never flagged.
+It compares added lines against the commit the turn started from, so comments already committed are
+never flagged — and a turn that commits its own work cannot move the base past its own lines.
 
-Present all three and let the user pick:
+Present all four and let the user pick:
 
 ```
-off       — no comment gate. Anything the agent writes lands.
-declared  — an added comment must declare a reason: why: / hazard: / invariant:
-            Narration is blocked; a real hazard can be recorded without interrupting you.
-            Cost: a marker prefix no other codebase uses.
-strict    — no agent-added comments at all. If one is warranted the agent says so in
-            its reply and you write it. Cost: interrupts more; zero invented convention.
+off         — no comment gate. Anything the agent writes lands.
+declared    — an added comment must declare a reason: why: / hazard: / invariant:
+              Narration is blocked; a real hazard can be recorded without interrupting you.
+              Cost: a marker prefix no other codebase uses.
+resolvable  — declared, plus the question a marker cannot answer: can a reader who was not
+              in this session check the comment? Blocks change narration ("this used to"),
+              citations only the session saw ("(decision 3)", "per the plan"), PR vantage
+              ("this PR"), and comments arguing their own correctness.
+              Cost: a phrase-level rule, so it refuses some sentences that were fine.
+strict      — no agent-added comments at all. If one is warranted the agent says so in
+              its reply and you write it. Cost: interrupts more; zero invented convention.
 ```
 
 Write `comments.enabled: false` for **off**, or `comments.enabled: true` with
-`comments.mode: "declared" | "strict"`. Default is off, like every other capability.
+`comments.mode: "declared" | "resolvable" | "strict"`. Default is off, like every other capability.
 
-In both modes a `/** */` comment attached to a declaration is judged differently: it does not need a
+In every mode a `/** */` comment attached to a declaration is judged differently: it does not need a
 marker, but it must say something its identifier does not already say. A floating `/** */` inside a
 function body is not attached to anything, so it counts as an ordinary comment.
 
-Tool directives (`biome-ignore`, `@ts-`, `noqa`, `shellcheck`, shebang) are exempt in both modes.
+Tool directives (`biome-ignore`, `@ts-`, `noqa`, `shellcheck`, shebang) are exempt in every mode.
 
 ### Step 2c: Idle-turn gate (capability 17 — offer it, default off)
 

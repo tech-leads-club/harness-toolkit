@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: "Concepts"
-description: "The operator-facing concepts behind the harness: operator posture, grind, pause/resume, shipGate, subagent allowlist, comment policy, catastrophic shell, shell stall, the intelligence rails, observability planes, and cost estimates."
+description: "The operator-facing concepts behind the harness: operator posture, grind, pause/resume, shipGate, subagent allowlist, comment policy, duplication, catastrophic shell, shell stall, the intelligence rails, observability planes, and cost estimates."
 tags: [concepts, policy, posture, grind, shipgate, observability]
 timestamp: "2026-07-29"
 ---
@@ -163,7 +163,11 @@ control; you update the list when a provider adds models you want.
 comment lines, so narration never lands. Diff-scoped against the sha the turn started from, not `HEAD`:
 a turn that commits its own work moves `HEAD` past the very lines being judged, which is how the gate
 missed every comment in a committing turn ([/decisions/ad-058.md](/decisions/ad-058.md)). Comments already
-committed before the turn are never flagged. `declared` keeps a comment that states `why:`, `hazard:` or `invariant:`; `strict` accepts none and
+committed before the turn are never flagged. `declared` keeps a comment that states `why:`, `hazard:` or `invariant:`; `resolvable` is `declared` plus the
+question a marker cannot answer — can a reader at HEAD, with no transcript of the session, resolve every
+reference and check every claim? It refuses change narration, citations only the session could see, pull-request
+vantage, comments arguing their own correctness, and control-flow narration, and asks for a restatement rather
+than a deletion ([/decisions/ad-070.md](/decisions/ad-070.md)); `strict` accepts none and
 asks the operator to write it. Tool directives (`biome-ignore`, `@ts-`, `noqa`, `shellcheck`, shebang) are
 exempt in both modes.
 

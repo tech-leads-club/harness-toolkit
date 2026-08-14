@@ -190,3 +190,35 @@ test("no shipped config advertises the removed observability section", () => {
     assert.equal("observability" in parsed, false, `${file} still carries the dead section`);
   }
 });
+
+/**
+ * hazard: the wizard narrates three capabilities in prose and points at the generated table for the other
+ * nineteen, which is the right split — and it means the narrated three can drift while every generated surface
+ * stays correct. Both happened to the comment gate: it still described the `HEAD` diff base a decision had
+ * already replaced, and it offered two modes after a third shipped. Nothing checked the hand-written half.
+ */
+test("a capability the init skill narrates names every mode the catalog offers", () => {
+  const catalog = JSON.parse(readFileSync(join(repoRoot, "capabilities", "catalog.json"), "utf8")) as {
+    capabilities: { id: string; configPath: string; asks?: string[] }[];
+  };
+  const skill = readFileSync(join(repoRoot, "skills", "harness-init", "SKILL.md"), "utf8");
+
+  const missing: string[] = [];
+  for (const capability of catalog.capabilities) {
+    if (!skill.includes(capability.configPath)) {
+      continue;
+    }
+    for (const ask of capability.asks ?? []) {
+      const offered = ask.split(":")[1];
+      if (offered === undefined || !offered.includes("|")) {
+        continue;
+      }
+      for (const option of offered.split("|").map((word) => word.trim().replace(/[`"]/g, ""))) {
+        if (option !== "" && !skill.includes(option)) {
+          missing.push(`${capability.id}: ${option}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(missing, [], "modes offered by the catalog and absent from the init skill");
+});

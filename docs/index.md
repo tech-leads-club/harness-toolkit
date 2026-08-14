@@ -21,7 +21,7 @@ the same records by number. Both are rendered from `docs/decisions/`, so neither
 | Doc | Description |
 | --- | --- |
 | [/architecture.md](/architecture.md) | Ports-and-adapters shape of the harness: contracts, core, providers, entrypoints, and how the tlc CLI and runtime home fit together. |
-| [/concepts.md](/concepts.md) | The operator-facing concepts behind the harness: grind, pause/resume, shipGate, subagent allowlist, comment policy, catastrophic shell, shell stall, the intelligence rails, observability planes, and cost estimates. |
+| [/concepts.md](/concepts.md) | The operator-facing concepts behind the harness: grind, pause/resume, shipGate, subagent allowlist, comment policy, duplication, catastrophic shell, shell stall, the intelligence rails, observability planes, and cost estimates. |
 | [/lessons.md](/lessons.md) | Durable, ranked lessons that keep the agent from repeating gate failures — three tiers, staleness against a named reference, a validity window, effectiveness measured after injection, lifecycle, config, ranking, and the per-provider rendered view. |
 
 ## Runbooks
