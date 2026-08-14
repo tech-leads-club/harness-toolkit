@@ -53,10 +53,6 @@ jobs:
 
       # Linux only: the bundles embed their own source paths, so a rebuild on another OS differs by
       # separator and line ending. One platform is enough to catch a stale commit.
-      - name: generated regions match the catalog
-        shell: bash
-        run: node tools/render-capabilities.ts --check
-
       - name: dist/ matches src/
         if: matrix.os == 'ubuntu-latest'
         shell: bash

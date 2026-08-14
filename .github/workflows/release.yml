@@ -87,7 +87,7 @@ jobs:
         shell: bash
         run: |
           version="$(node -p "require('./package.json').version")"
-          node tools/render-changelog.ts --release "v${version}"
+          node tools/dev/render-changelog.ts --release "v${version}"
 
       - name: Commit it to the release PR if it moved
         shell: bash
