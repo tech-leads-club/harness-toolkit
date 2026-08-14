@@ -19,6 +19,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-069** — A decision record declares its shape, and cites by link so a move cannot break it ([/decisions/ad-069.md](/decisions/ad-069.md))
 - **AD-070** — A comment has to read for somebody who was not in the session ([/decisions/ad-070.md](/decisions/ad-070.md))
 - **AD-071** — The turn's added lines are checked against the code the project already has ([/decisions/ad-071.md](/decisions/ad-071.md))
+- **AD-072** — A record can leave the corpus, and removing is a change worth recording ([/decisions/ad-072.md](/decisions/ad-072.md))
 
 ## 2026-08-12
 

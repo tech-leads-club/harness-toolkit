@@ -18,6 +18,8 @@ export type DecisionSummary = {
   migration?: string;
   /** why: the OKF bundle's `log.md` groups by ISO date, and the record already carries the date it was taken. */
   timestamp?: string;
+  /** why: bundle-relative, so a link to an archived record points where the record actually is. */
+  path: string;
 };
 
 function frontmatterField(text: string, field: string): string | undefined {
@@ -53,12 +55,14 @@ export function readDecision(repoRoot: string, file: string): DecisionSummary | 
   if (title === undefined) {
     return null;
   }
-  const id = file.replace(/\.md$/, "").toUpperCase();
+  // invariant: the id is the file's own name, so an archived record keeps the id it shipped under.
+  const id = (file.split(/[\\/]/).pop() ?? file).replace(/\.md$/, "").toUpperCase();
   const migration = frontmatterField(text, "migration");
   const timestamp = frontmatterField(text, "timestamp");
   return {
     id,
     title,
+    path: `/decisions/${file.split(/[\\/]/).join("/")}`,
     ...(migration === undefined ? {} : { migration }),
     ...(timestamp === undefined ? {} : { timestamp }),
   };
@@ -66,22 +70,38 @@ export function readDecision(repoRoot: string, file: string): DecisionSummary | 
 
 export function readDecisions(repoRoot: string, files: string[]): DecisionSummary[] {
   return files
-    .filter((file) => /^ad-\d+\.md$/.test(file))
+    .filter((file) => /(?:^|[\\/])ad-\d+\.md$/.test(file))
     .map((file) => readDecision(repoRoot, file))
     .filter((decision): decision is DecisionSummary => decision !== null)
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
+/**
+ * why: an archived record still shipped, so it keeps its row in the changelog and in the dated log. Only the
+ * decisions index distinguishes active from archived, because only the index claims to describe what currently
+ * binds ([/decisions/ad-072.md](/decisions/ad-072.md)).
+ */
+export const ARCHIVED_DIR = "archived";
+
 export function allDecisionFiles(repoRoot: string): string[] {
   const dir = decisionsDir(repoRoot);
-  if (!existsSync(dir)) {
-    return [];
+  const found: string[] = [];
+  for (const sub of ["", ARCHIVED_DIR]) {
+    const full = sub === "" ? dir : join(dir, sub);
+    if (!existsSync(full)) {
+      continue;
+    }
+    try {
+      for (const file of readdirSync(full)) {
+        if (/^ad-\d+\.md$/.test(file)) {
+          found.push(sub === "" ? file : join(sub, file));
+        }
+      }
+    } catch {
+      // why: an unreadable directory is an empty one. A linked checkout may not carry docs at all.
+    }
   }
-  try {
-    return readdirSync(dir).filter((file) => /^ad-\d+\.md$/.test(file));
-  } catch {
-    return [];
-  }
+  return found;
 }
 
 export function needsAction(decisions: readonly DecisionSummary[]): DecisionSummary[] {

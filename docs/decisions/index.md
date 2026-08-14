@@ -86,5 +86,15 @@ Handoff section and a link back to this index.
 | [AD-069](/decisions/ad-069.md) | A decision record declares its shape, and cites by link so a move cannot break it | active |
 | [AD-070](/decisions/ad-070.md) | A comment has to read for somebody who was not in the session | active |
 | [AD-071](/decisions/ad-071.md) | The turn's added lines are checked against the code the project already has | active |
+| [AD-072](/decisions/ad-072.md) | A record can leave the corpus, and removing is a change worth recording | active |
+
+## Archived
+
+A record moves here when its decision is complete and its body would no longer guide a future change. It keeps
+its row in `CHANGELOG.md` and in [/log.md](/log.md), because it shipped; this index is the only view that
+separates the two, because it is the only one that claims to say what currently binds. Value decides, never
+volume — see the archive rule in `CONTRIBUTING.md`.
+
+None yet.
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).

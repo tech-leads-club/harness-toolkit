@@ -105,8 +105,8 @@ test("only ad-NNN files count, so an index or a note is never announced as a dec
 // not arrive. The heading wording changed under AD-034; the ordering invariant did not.
 test("the digest puts what needs action first, with its instruction", () => {
   const digest = formatDecisionDigest([
-    { id: "AD-001", title: "AD-001 — Quiet one" },
-    { id: "AD-002", title: "AD-002 — Loud one", migration: "Run the thing." },
+    { id: "AD-001", title: "AD-001 — Quiet one", path: "/decisions/ad-001.md" },
+    { id: "AD-002", title: "AD-002 — Loud one", path: "/decisions/ad-002.md", migration: "Run the thing." },
   ]);
   assert.match(digest, /cannot detect for you \(1\)/);
   assert.ok(
@@ -121,14 +121,18 @@ test("a digest with nothing in it is empty, so an update with no decisions print
 });
 
 test("a digest where nothing needs action omits the action heading entirely", () => {
-  const digest = formatDecisionDigest([{ id: "AD-001", title: "AD-001 — Quiet" }]);
+  const digest = formatDecisionDigest([
+    { id: "AD-001", title: "AD-001 — Quiet", path: "/decisions/ad-001.md" },
+  ]);
   assert.doesNotMatch(digest, /cannot detect/);
   assert.match(digest, /1 decision\(s\) landed/);
 });
 
 // why: the title already carries its own id, and printing both read as a stutter in the first draft.
 test("the digest does not repeat the decision id", () => {
-  const digest = formatDecisionDigest([{ id: "AD-025", title: "AD-025 — Something" }]);
+  const digest = formatDecisionDigest([
+    { id: "AD-025", title: "AD-025 — Something", path: "/decisions/ad-025.md" },
+  ]);
   assert.equal(digest.split("AD-025").length - 1, 1);
 });
 
@@ -191,6 +195,7 @@ test("the note is the headline and the decision id trails it", () => {
   const digest = formatDecisionDigest([
     {
       id: "AD-002",
+      path: "/decisions/ad-002.md",
       title: "AD-002 — Some internal reasoning nobody asked about",
       migration: "Do the thing.",
     },
@@ -201,24 +206,26 @@ test("the note is the headline and the decision id trails it", () => {
 });
 
 test("the heading says what a note now means, and appears only when there is one", () => {
-  const withNote = formatDecisionDigest([{ id: "AD-002", title: "AD-002 — X", migration: "Do it." }]);
+  const withNote = formatDecisionDigest([
+    { id: "AD-002", title: "AD-002 — X", path: "/decisions/ad-002.md", migration: "Do it." },
+  ]);
   assert.match(withNote, /doctor cannot detect for you/);
 
-  const without = formatDecisionDigest([{ id: "AD-002", title: "AD-002 — X" }]);
+  const without = formatDecisionDigest([{ id: "AD-002", title: "AD-002 — X", path: "/decisions/ad-002.md" }]);
   assert.doesNotMatch(without, /cannot detect/);
   assert.doesNotMatch(without, /NEEDS YOUR ACTION/i);
 });
 
 // why: the header points at doctor rather than repeating it, because update runs doctor immediately after.
 test("the digest points at the doctor run instead of asking for it", () => {
-  const digest = formatDecisionDigest([{ id: "AD-002", title: "AD-002 — X" }]);
+  const digest = formatDecisionDigest([{ id: "AD-002", title: "AD-002 — X", path: "/decisions/ad-002.md" }]);
   assert.match(digest, /doctor runs below/);
 });
 
 test("decisions needing nothing collapse to a line of ids, not a list of titles", () => {
   const digest = formatDecisionDigest([
-    { id: "AD-002", title: "AD-002 — First" },
-    { id: "AD-003", title: "AD-003 — Second" },
+    { id: "AD-002", title: "AD-002 — First", path: "/decisions/ad-002.md" },
+    { id: "AD-003", title: "AD-003 — Second", path: "/decisions/ad-003.md" },
   ]);
   assert.match(digest, /Also landed: AD-002, AD-003/);
   assert.equal(digest.includes("First"), false);

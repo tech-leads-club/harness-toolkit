@@ -5177,29 +5177,38 @@ function readDecision(repoRoot, file) {
   if (title === undefined) {
     return null;
   }
-  const id = file.replace(/\.md$/, "").toUpperCase();
+  const id = (file.split(/[\\/]/).pop() ?? file).replace(/\.md$/, "").toUpperCase();
   const migration = frontmatterField(text, "migration");
   const timestamp = frontmatterField(text, "timestamp");
   return {
     id,
     title,
+    path: `/decisions/${file.split(/[\\/]/).join("/")}`,
     ...migration === undefined ? {} : { migration },
     ...timestamp === undefined ? {} : { timestamp }
   };
 }
 function readDecisions(repoRoot, files) {
-  return files.filter((file) => /^ad-\d+\.md$/.test(file)).map((file) => readDecision(repoRoot, file)).filter((decision) => decision !== null).sort((a, b) => a.id.localeCompare(b.id));
+  return files.filter((file) => /(?:^|[\\/])ad-\d+\.md$/.test(file)).map((file) => readDecision(repoRoot, file)).filter((decision) => decision !== null).sort((a, b) => a.id.localeCompare(b.id));
 }
+var ARCHIVED_DIR = "archived";
 function allDecisionFiles(repoRoot) {
   const dir = decisionsDir(repoRoot);
-  if (!existsSync16(dir)) {
-    return [];
+  const found = [];
+  for (const sub of ["", ARCHIVED_DIR]) {
+    const full = sub === "" ? dir : join17(dir, sub);
+    if (!existsSync16(full)) {
+      continue;
+    }
+    try {
+      for (const file of readdirSync5(full)) {
+        if (/^ad-\d+\.md$/.test(file)) {
+          found.push(sub === "" ? file : join17(sub, file));
+        }
+      }
+    } catch {}
   }
-  try {
-    return readdirSync5(dir).filter((file) => /^ad-\d+\.md$/.test(file));
-  } catch {
-    return [];
-  }
+  return found;
 }
 function needsAction(decisions) {
   return decisions.filter((decision) => decision.migration !== undefined);

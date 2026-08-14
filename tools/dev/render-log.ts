@@ -63,9 +63,8 @@ export function renderLog(decisions: readonly DatedDecision[]): string {
     // why: ascending within a day, because AD-064 was taken before AD-065 and reading them the other way round
     // inverts the reasoning. The days themselves stay newest-first.
     for (const entry of [...entries].sort((a, b) => a.id.localeCompare(b.id))) {
-      const file = `${entry.id.toLowerCase()}.md`;
       lines.push(
-        `- **${entry.id}** — ${withoutLeadingId(entry.id, entry.title)} ([/decisions/${file}](/decisions/${file}))`,
+        `- **${entry.id}** — ${withoutLeadingId(entry.id, entry.title)} ([${entry.path}](${entry.path}))`,
       );
     }
     lines.push("");

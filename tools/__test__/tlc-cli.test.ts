@@ -898,7 +898,9 @@ describe("version and update --check", () => {
     const text = pendingText({
       ok: true,
       commits: 4,
-      decisions: [{ id: "AD-031", title: "AD-031 — A thing", migration: "Do X." }],
+      decisions: [
+        { id: "AD-031", title: "AD-031 — A thing", path: "/decisions/ad-031.md", migration: "Do X." },
+      ],
     });
     assert.match(text, /4 commit\(s\) would be pulled/);
     assert.match(text, /Nothing has changed yet/);

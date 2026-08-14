@@ -76,3 +76,25 @@ test("rendering the real repository covers every decision record", async () => {
   const repoRoot = join(import.meta.dirname, "..", "..");
   assert.equal(datedDecisions(repoRoot).length, allDecisionFiles(repoRoot).length);
 });
+
+/**
+ * why: an archived record still shipped, so it keeps its row in the dated log and in the changelog. Only the
+ * decisions index distinguishes active from archived, because only the index claims to describe what binds now.
+ */
+test("an archived record keeps its row, and its link points at where it actually is", () => {
+  const root = fixture([{ id: "ad-001", date: "2026-07-27" }]);
+  mkdirSync(join(root, "docs", "decisions", "archived"), { recursive: true });
+  writeFileSync(
+    join(root, "docs", "decisions", "archived", "ad-002.md"),
+    '---\ntype: Decision\ntitle: "AD-002 — A retired rule"\ntimestamp: "2026-07-28"\n---\n\nbody\n',
+  );
+
+  const dated = datedDecisions(root);
+  assert.deepEqual(
+    dated.map((entry) => entry.id),
+    ["AD-002", "AD-001"],
+  );
+  const body = renderLog(dated);
+  assert.equal(body.includes("[/decisions/archived/ad-002.md](/decisions/archived/ad-002.md)"), true, body);
+  assert.equal(body.includes("[/decisions/ad-001.md](/decisions/ad-001.md)"), true);
+});

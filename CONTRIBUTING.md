@@ -92,6 +92,42 @@ TLC_HOME="$PWD" tlc harness test
 CLAUDE_PROJECT_DIR="$PWD" TLC_PROJECT_DIR="$PWD" tlc harness test
 ```
 
+## Decision records
+
+`docs/decisions/` holds one record per decision. Four headings are required — `## Decision`, a heading beginning
+`## Why`, `## Trade-offs`, `## Not decided here` — and `tools/dev/check-decisions.ts` checks them. AD-001 through
+AD-020 predate the shape and sit behind a ratchet that may only fall; migrating one means lowering
+`LEGACY_SHAPE_BUDGET` in the same change.
+
+Cite a record by link, never by number: `[/decisions/ad-046.md](/decisions/ad-046.md)`. A link survives a file
+move and the bundle check resolves it.
+
+### When a record leaves
+
+Move it to `docs/decisions/archived/` and set `- **status**: archived`. It keeps its row in `CHANGELOG.md` and
+`docs/log.md`, because it shipped; only `docs/decisions/index.md` distinguishes the two, because only the index
+claims to say what currently binds.
+
+**Value decides, never volume.** Keep a record active while its alternatives, its ownership boundary, its
+negative guarantee, its security rule, or its condition for reintroduction would still change what somebody
+does. Archive one whose decision is complete and whose body would not guide a future change — a closed defect, a
+narrow adapter, superseded implementation detail. Length and age are how you find candidates, never how you judge
+them, and there is no target count.
+
+### Removing is a change like any other
+
+A record whose subject is *removing* something is worth writing, and the corpus had none for a long time while
+gaining sixty-seven that added. When you are deciding whether something can go:
+
+- A symbol, event, config field or export with no production consumer is a candidate.
+- **A test that pins behaviour nothing load-bearing depends on is evidence *for* removal, not against it.** The
+  suite is not the specification; the specification is what a consumer needs.
+- **A decision record is not authority for current behaviour either.** If the code and a record disagree, one of
+  them is wrong and finding out which is the work.
+- `tools/dev/check-wiring.ts` and `tools/dev/check-obs-contract.ts` already report what nothing reads. Those
+  lists are where to look first, and they are reports rather than failures precisely because the judgement is
+  yours.
+
 ## Conventions
 
 - Prefer clear names over narrating comments.
