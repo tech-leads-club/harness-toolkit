@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
@@ -9,6 +17,7 @@ import {
   installDest,
   installReportText,
   installRuntime,
+  isShipped,
   OPERATOR_OWNED,
   originRoot,
   RUNTIME_PAYLOAD,
@@ -173,4 +182,48 @@ test("a nested launcher does not turn its own TLC_HOME into an operator choice",
 
   const explicit = join("explicit", "dest");
   assert.equal(installDest({ TLC_INSTALL_DEST: explicit, TLC_HOME_FROM_ENV: "1" }), resolve(explicit));
+});
+
+/**
+ * hazard: the exclusion used to be a hand-maintained array in `bin/tlc-build`. It named four checkers while ten
+ * qualified, so six that validate only this repository were bundled and copied into every install for weeks. The
+ * directory is the declaration now, and these are the two product routes that must honour it.
+ */
+test("no product route carries the repo-only checks", () => {
+  const repoRoot = join(import.meta.dirname, "..", "..");
+  const dest = mkdtempSync(join(tmpdir(), "tlc-ship-"));
+
+  installRuntime(repoRoot, dest);
+  assert.equal(existsSync(join(dest, "tools", "dev")), false, "tlc harness install");
+  assert.equal(existsSync(join(dest, "tools", "__test__")), false, "tests are not payload either");
+  assert.equal(existsSync(join(dest, "tools", "doctor.ts")), true, "the product tools still arrive");
+
+  const published = (JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as { files: string[] })
+    .files;
+  assert.equal(published.includes("!tools/dev"), true, "npm package");
+
+  rmSync(dest, { recursive: true, force: true });
+});
+
+test("isShipped answers for a path inside an excluded directory, not just the directory", () => {
+  assert.equal(isShipped(join("tools", "dev")), false);
+  assert.equal(isShipped(join("tools", "dev", "check-wiring.ts")), false);
+  assert.equal(isShipped(join("tools", "dev", "nested", "deep.ts")), false);
+  // invariant: a sibling whose name merely starts with the excluded one still ships.
+  assert.equal(isShipped(join("tools", "developer-notes.ts")), true);
+  assert.equal(isShipped(join("tools", "doctor.ts")), true);
+});
+
+test("every bundle in dist has a source outside tools/dev", () => {
+  const repoRoot = join(import.meta.dirname, "..", "..");
+  for (const bundle of readdirSync(join(repoRoot, "dist")).filter((f) => f.endsWith(".mjs"))) {
+    const name = bundle.replace(/\.mjs$/, "");
+    if (name === "tlc-cli") {
+      continue;
+    }
+    const shipped =
+      existsSync(join(repoRoot, "src", "entrypoints", `${name}.ts`)) ||
+      existsSync(join(repoRoot, "tools", `${name}.ts`));
+    assert.equal(shipped, true, `${bundle} has no shipped source`);
+  }
 });

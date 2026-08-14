@@ -82,5 +82,6 @@ Handoff section and a link back to this index.
 | [AD-065](/decisions/ad-065.md) | The obs bus has a contract, and the gate checks both sides of it | active |
 | [AD-066](/decisions/ad-066.md) | Uninstall reads the artefact, and the plan is the confirmation | active |
 | [AD-067](/decisions/ad-067.md) | A reserved file that cannot be retired is rendered, and the gate holds it there | active |
+| [AD-068](/decisions/ad-068.md) | A directory decides what ships, and dist is derived from disk in both directions | active |
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).

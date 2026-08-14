@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { CONSUMERS, check, planeOf, report } from "../check-obs-contract.ts";
+import { CONSUMERS, check, planeOf, report } from "../dev/check-obs-contract.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 

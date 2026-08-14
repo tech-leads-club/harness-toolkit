@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_CONFIG, runBoundaryChecks, type Violation } from "../check-boundaries.ts";
+import { DEFAULT_CONFIG, runBoundaryChecks, type Violation } from "../dev/check-boundaries.ts";
 
-const CHECKER_PATH = fileURLToPath(new URL("../check-boundaries.ts", import.meta.url));
+const CHECKER_PATH = fileURLToPath(new URL("../dev/check-boundaries.ts", import.meta.url));
 
 function fixtureRoot(): string {
   return mkdtempSync(join(tmpdir(), "check-boundaries-"));

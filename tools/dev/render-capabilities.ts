@@ -1,10 +1,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CapabilityCatalog, CatalogCapability } from "../src/core/capability/capability.types.ts";
-import { FLOOR_RULE_IDS, FLOOR_RULES } from "../src/core/floor/floor.catalog.ts";
+import type { CapabilityCatalog, CatalogCapability } from "../../src/core/capability/capability.types.ts";
+import { FLOOR_RULE_IDS, FLOOR_RULES } from "../../src/core/floor/floor.catalog.ts";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export type RenderTarget = { file: string; marker: string; render: (catalog: CapabilityCatalog) => string };
 

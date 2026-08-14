@@ -3,7 +3,7 @@ var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
 // tools/install-runtime.ts
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join as join2, resolve } from "node:path";
+import { join as join2, relative, resolve, sep } from "node:path";
 
 // src/platform/paths.ts
 import { homedir } from "node:os";
@@ -854,6 +854,14 @@ var RUNTIME_PAYLOAD = [
   "package.json"
 ];
 var OPERATOR_OWNED = ["config.json", "state", "flags"];
+var NOT_SHIPPED = [join2("tools", "dev"), join2("tools", "__test__")];
+function isShipped(relativePath) {
+  const normalised = relativePath.split(sep).join("/");
+  return !NOT_SHIPPED.some((excluded) => {
+    const prefix = excluded.split(sep).join("/");
+    return normalised === prefix || normalised.startsWith(`${prefix}/`);
+  });
+}
 function originRoot(env = process.env) {
   const declared = env.TLC_ORIGIN?.trim();
   if (declared && declared.length > 0) {
@@ -877,7 +885,10 @@ function installRuntime(source, dest) {
     }
     const to = join2(dest, entry);
     rmSync(to, { recursive: true, force: true });
-    cpSync(from, to, { recursive: true });
+    cpSync(from, to, {
+      recursive: true,
+      filter: (src) => isShipped(relative(source, src))
+    });
     entries.push(entry);
   }
   writeFileSync(join2(dest, NPM_MARKER), `Installed by \`tlc harness install\` from ${source}.
@@ -931,10 +942,12 @@ if (__require.main == __require.module) {
 }
 export {
   originRoot,
+  isShipped,
   installScreen,
   installRuntime,
   installReportText,
   installDest,
   RUNTIME_PAYLOAD,
-  OPERATOR_OWNED
+  OPERATOR_OWNED,
+  NOT_SHIPPED
 };

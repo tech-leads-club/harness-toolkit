@@ -5,10 +5,10 @@ import {
   allDecisionFiles,
   type DecisionSummary,
   readDecisions,
-} from "../src/core/release/release.decisions.ts";
+} from "../../src/core/release/release.decisions.ts";
 import { withoutLeadingId } from "./render-changelog.ts";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export const LOG_FILE = join("docs", "log.md");
 

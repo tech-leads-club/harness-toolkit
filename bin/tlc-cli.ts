@@ -1081,19 +1081,19 @@ export function buildTestSteps(): TestStep[] {
     { label: "tsc --noEmit", bin: "npx", args: ["tsc", "--noEmit"] },
     { label: "src suite", bin: "node", args: [...TEST_ENV_IMPORT, "--test", "src/**/__test__/*.test.ts"] },
     { label: "tools suite", bin: "node", args: [...TEST_ENV_IMPORT, "--test", "tools/__test__/*.test.ts"] },
-    { label: "check-boundaries", bin: "node", args: ["tools/check-boundaries.ts"] },
+    { label: "check-boundaries", bin: "node", args: ["tools/dev/check-boundaries.ts"] },
     // why: `--error-on-warnings` above cannot see a rule that was suppressed rather than fixed, and biome accepts
     // any text after the colon. This is what makes the reason a reason ([/decisions/ad-051.md](/decisions/ad-051.md)).
-    { label: "check-suppressions", bin: "node", args: ["tools/check-suppressions.ts"] },
-    { label: "check-wiring", bin: "node", args: ["tools/check-wiring.ts"] },
-    { label: "check-docs-bundle", bin: "node", args: ["tools/check-docs-bundle.ts"] },
-    { label: "check-screens", bin: "node", args: ["tools/check-screens.ts"] },
-    { label: "check-obs-contract", bin: "node", args: ["tools/check-obs-contract.ts"] },
-    { label: "capabilities in sync", bin: "node", args: ["tools/render-capabilities.ts", "--check"] },
-    { label: "changelog in sync", bin: "node", args: ["tools/render-changelog.ts", "--check"] },
+    { label: "check-suppressions", bin: "node", args: ["tools/dev/check-suppressions.ts"] },
+    { label: "check-wiring", bin: "node", args: ["tools/dev/check-wiring.ts"] },
+    { label: "check-docs-bundle", bin: "node", args: ["tools/dev/check-docs-bundle.ts"] },
+    { label: "check-screens", bin: "node", args: ["tools/dev/check-screens.ts"] },
+    { label: "check-obs-contract", bin: "node", args: ["tools/dev/check-obs-contract.ts"] },
+    { label: "capabilities in sync", bin: "node", args: ["tools/dev/render-capabilities.ts", "--check"] },
+    { label: "changelog in sync", bin: "node", args: ["tools/dev/render-changelog.ts", "--check"] },
     // why: the OKF bundle's log is a reserved file that cannot be retired, and hand-maintaining it drifted to 19
     // of 66 records before anyone noticed ([/decisions/ad-067.md](/decisions/ad-067.md)).
-    { label: "log in sync", bin: "node", args: ["tools/render-log.ts", "--check"] },
+    { label: "log in sync", bin: "node", args: ["tools/dev/render-log.ts", "--check"] },
   ];
 }
 

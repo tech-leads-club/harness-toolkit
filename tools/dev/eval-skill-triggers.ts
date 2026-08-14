@@ -1,48 +1,54 @@
-import { createRequire } from "node:module";
-var __require = /* @__PURE__ */ createRequire(import.meta.url);
-
-// tools/eval-skill-triggers.ts
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { emitJson, takeJsonFlag } from "../../src/platform/cli-output.ts";
 
-// src/platform/cli-output.ts
-var JSON_FLAG = "--json";
-function takeJsonFlag(args) {
-  const rest = [];
-  let json = false;
-  for (const arg of args) {
-    if (arg === JSON_FLAG) {
-      json = true;
-      continue;
-    }
-    rest.push(arg);
-  }
-  return { json, rest };
-}
-function emitJson(value, write = writeStdout) {
-  write(`${JSON.stringify(value)}
-`);
-}
-function writeStdout(text) {
-  process.stdout.write(text);
+export type TriggerCase = {
+  query: string;
+  should_trigger: boolean;
+  phrase?: string;
+  note?: string;
+};
+
+export type RoutingAnswer = { query: string; triggered: boolean | null };
+
+export type EvalFailure = {
+  query: string;
+  expected: boolean;
+  actual: boolean | null;
+  note?: string;
+};
+
+export type EvalOutcome = {
+  total: number;
+  passed: number;
+  failed: number;
+  unanswered: number;
+  passRate: number;
+  failures: EvalFailure[];
+};
+
+export const DEFAULT_MODEL = "claude-sonnet-5";
+export const DEFAULT_THRESHOLD = 0.9;
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const skillDir = join(repoRoot, "skills", "harness-init");
+
+export function loadCases(dir = skillDir): TriggerCase[] {
+  return JSON.parse(readFileSync(join(dir, "evals", "trigger_evals.json"), "utf8")) as TriggerCase[];
 }
 
-// tools/eval-skill-triggers.ts
-var DEFAULT_MODEL = "claude-sonnet-5";
-var DEFAULT_THRESHOLD = 0.9;
-var repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-var skillDir = join(repoRoot, "skills", "harness-init");
-function loadCases(dir = skillDir) {
-  return JSON.parse(readFileSync(join(dir, "evals", "trigger_evals.json"), "utf8"));
-}
-function skillFrontmatter(dir = skillDir) {
+export function skillFrontmatter(dir = skillDir): { name: string; description: string } {
   const front = readFileSync(join(dir, "SKILL.md"), "utf8").split("---")[1] ?? "";
   const name = /name:\s*(\S+)/.exec(front)?.[1] ?? "";
-  const description = /description:\s*([\s\S]*?)(?:\nlicense:|\nmetadata:|$)/.exec(front)?.[1]?.replace(/\s+/g, " ").trim();
+  const description = /description:\s*([\s\S]*?)(?:\nlicense:|\nmetadata:|$)/
+    .exec(front)?.[1]
+    ?.replace(/\s+/g, " ")
+    .trim();
   return { name, description: description ?? "" };
 }
-function buildRoutingPrompt(skill, query) {
+
+export function buildRoutingPrompt(skill: { name: string; description: string }, query: string): string {
   return [
     "You route user requests to skills. One skill is available:",
     "",
@@ -53,11 +59,11 @@ function buildRoutingPrompt(skill, query) {
     `"${query}"`,
     "",
     `Would you load the ${skill.name} skill to handle this request?`,
-    "Answer with exactly one word: YES or NO."
-  ].join(`
-`);
+    "Answer with exactly one word: YES or NO.",
+  ].join("\n");
 }
-function parseVerdict(text) {
+
+export function parseVerdict(text: string): boolean | null {
   const normalized = text.trim().toUpperCase();
   if (normalized.startsWith("YES")) {
     return true;
@@ -67,9 +73,10 @@ function parseVerdict(text) {
   }
   return null;
 }
-function scoreAnswers(cases, answers) {
+
+export function scoreAnswers(cases: readonly TriggerCase[], answers: readonly RoutingAnswer[]): EvalOutcome {
   const byQuery = new Map(answers.map((answer) => [answer.query, answer.triggered]));
-  const failures = [];
+  const failures: EvalFailure[] = [];
   let passed = 0;
   let unanswered = 0;
   for (const testCase of cases) {
@@ -80,7 +87,7 @@ function scoreAnswers(cases, answers) {
         query: testCase.query,
         expected: testCase.should_trigger,
         actual,
-        note: testCase.note
+        note: testCase.note,
       });
       continue;
     }
@@ -96,43 +103,48 @@ function scoreAnswers(cases, answers) {
     failed: cases.length - passed,
     unanswered,
     passRate: cases.length === 0 ? 1 : passed / cases.length,
-    failures
+    failures,
   };
 }
-function apiKeyFrom(env) {
+
+export function apiKeyFrom(env: Record<string, string | undefined>): string | null {
   const key = env.ANTHROPIC_API_KEY?.trim();
   return key && key.length > 0 ? key : null;
 }
-function modelFrom(argv) {
+
+export function modelFrom(argv: readonly string[]): string {
   const index = argv.indexOf("--model");
-  return index >= 0 ? argv[index + 1] ?? DEFAULT_MODEL : DEFAULT_MODEL;
+  return index >= 0 ? (argv[index + 1] ?? DEFAULT_MODEL) : DEFAULT_MODEL;
 }
-async function askModel(prompt, model, apiKey) {
+
+async function askModel(prompt: string, model: string, apiKey: string): Promise<string> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01"
+      "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
       model,
       max_tokens: 8,
-      messages: [{ role: "user", content: prompt }]
+      messages: [{ role: "user", content: prompt }],
     }),
-    signal: AbortSignal.timeout(30000)
+    signal: AbortSignal.timeout(30_000),
   });
   if (!response.ok) {
     throw new Error(`anthropic api ${response.status}: ${await response.text()}`);
   }
-  const body = await response.json();
+  const body = (await response.json()) as { content?: { text?: string }[] };
   return body.content?.[0]?.text ?? "";
 }
-async function main(argv) {
+
+async function main(argv: string[]): Promise<void> {
   const { json, rest } = takeJsonFlag(argv);
   const apiKey = apiKeyFrom(process.env);
   if (!apiKey) {
-    const reason = "ANTHROPIC_API_KEY is not set — skipping the routing eval (the cases themselves are gated by the test suite)";
+    const reason =
+      "ANTHROPIC_API_KEY is not set — skipping the routing eval (the cases themselves are gated by the test suite)";
     if (json) {
       emitJson({ skipped: true, reason });
     } else {
@@ -140,14 +152,16 @@ async function main(argv) {
     }
     process.exit(0);
   }
+
   const model = modelFrom(rest);
   const skill = skillFrontmatter();
   const cases = loadCases();
-  const answers = [];
+  const answers: RoutingAnswer[] = [];
   for (const testCase of cases) {
     const text = await askModel(buildRoutingPrompt(skill, testCase.query), model, apiKey);
     answers.push({ query: testCase.query, triggered: parseVerdict(text) });
   }
+
   const outcome = scoreAnswers(cases, answers);
   if (json) {
     emitJson({ model, threshold: DEFAULT_THRESHOLD, ...outcome });
@@ -159,17 +173,7 @@ async function main(argv) {
   }
   process.exit(outcome.passRate >= DEFAULT_THRESHOLD ? 0 : 1);
 }
-if (__require.main == __require.module) {
+
+if (import.meta.main) {
   await main(process.argv.slice(2));
 }
-export {
-  skillFrontmatter,
-  scoreAnswers,
-  parseVerdict,
-  modelFrom,
-  loadCases,
-  buildRoutingPrompt,
-  apiKeyFrom,
-  DEFAULT_THRESHOLD,
-  DEFAULT_MODEL
-};

@@ -3,7 +3,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { DEFAULT_CONFIG, parseFrontmatter, runBundleChecks, type Violation } from "../check-docs-bundle.ts";
+import {
+  DEFAULT_CONFIG,
+  parseFrontmatter,
+  runBundleChecks,
+  type Violation,
+} from "../dev/check-docs-bundle.ts";
 
 function fixtureRoot(): string {
   return mkdtempSync(join(tmpdir(), "check-docs-bundle-"));

@@ -51,7 +51,7 @@ test("the README names every floor rule", () => {
 });
 
 test("the generator owns only its region, and detects a change inside it", async () => {
-  const { renderAll, replaceRegion, TARGETS } = await import("../render-capabilities.ts");
+  const { renderAll, replaceRegion, TARGETS } = await import("../dev/render-capabilities.ts");
   const results = renderAll();
   // why: one result per file, not per target — the README carries two regions and rendering them separately
   // made the second write revert the first.
@@ -69,7 +69,7 @@ test("the generator owns only its region, and detects a change inside it", async
 });
 
 test("a missing region marker is an error, not a silent no-op", async () => {
-  const { replaceRegion } = await import("../render-capabilities.ts");
+  const { replaceRegion } = await import("../dev/render-capabilities.ts");
   assert.throws(() => replaceRegion("no markers here", "rails", "x"), /missing region marker/);
 });
 

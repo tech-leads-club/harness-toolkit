@@ -5,7 +5,7 @@
  * of editing code that was not broken ([/decisions/ad-060.md](/decisions/ad-060.md)).
  *
  * invariant: this list lives in `platform/` because `core/` may not spell a vendor identifier
- * (`tools/check-boundaries.ts`). Core asks which ones are set and never names one.
+ * (`tools/dev/check-boundaries.ts`). Core asks which ones are set and never names one.
  *
  * invariant: `TLC_HOME` is deliberately absent. It names which runtime, not which project, and CI sets it on
  * purpose.

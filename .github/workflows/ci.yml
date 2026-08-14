@@ -60,6 +60,6 @@ jobs:
       - name: dist/ matches src/
         if: matrix.os == 'ubuntu-latest'
         shell: bash
-        run: node tools/check-dist-fresh.ts
+        run: node tools/dev/check-dist-fresh.ts
         env:
           TLC_HOME: ${{ github.workspace }}

@@ -1,16 +1,16 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ROLLUP_KINDS } from "../src/core/observability/observability.service.ts";
+import { ROLLUP_KINDS } from "../../src/core/observability/observability.service.ts";
 import {
   EVENT_KIND_TO_OBS_KIND,
   type ObsKind,
   resolveObsLevel,
-} from "../src/core/observability/observability.types.ts";
-import { WHY_KINDS } from "../src/core/observability/observability.why.ts";
-import { ACTIVITY_PLANES, TOOL_KINDS } from "../src/core/turn/turn.activity.ts";
+} from "../../src/core/observability/observability.types.ts";
+import { WHY_KINDS } from "../../src/core/observability/observability.why.ts";
+import { ACTIVITY_PLANES, TOOL_KINDS } from "../../src/core/turn/turn.activity.ts";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export type Violation = { rule: string; detail: string };
 
@@ -148,7 +148,7 @@ export function report(outcome: { violations: Violation[]; orphans: string[] }):
 }
 
 if (import.meta.main) {
-  const { SIGNAL_KINDS } = await import("../src/core/observability/observability.types.ts");
+  const { SIGNAL_KINDS } = await import("../../src/core/observability/observability.types.ts");
   const declared = [...new Set([...Object.values(EVENT_KIND_TO_OBS_KIND), ...SIGNAL_KINDS])];
   const outcome = check(repoRoot, CONSUMERS, declared);
   const printed = report(outcome);

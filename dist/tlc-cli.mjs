@@ -7008,15 +7008,15 @@ function buildTestSteps() {
     { label: "tsc --noEmit", bin: "npx", args: ["tsc", "--noEmit"] },
     { label: "src suite", bin: "node", args: [...TEST_ENV_IMPORT, "--test", "src/**/__test__/*.test.ts"] },
     { label: "tools suite", bin: "node", args: [...TEST_ENV_IMPORT, "--test", "tools/__test__/*.test.ts"] },
-    { label: "check-boundaries", bin: "node", args: ["tools/check-boundaries.ts"] },
-    { label: "check-suppressions", bin: "node", args: ["tools/check-suppressions.ts"] },
-    { label: "check-wiring", bin: "node", args: ["tools/check-wiring.ts"] },
-    { label: "check-docs-bundle", bin: "node", args: ["tools/check-docs-bundle.ts"] },
-    { label: "check-screens", bin: "node", args: ["tools/check-screens.ts"] },
-    { label: "check-obs-contract", bin: "node", args: ["tools/check-obs-contract.ts"] },
-    { label: "capabilities in sync", bin: "node", args: ["tools/render-capabilities.ts", "--check"] },
-    { label: "changelog in sync", bin: "node", args: ["tools/render-changelog.ts", "--check"] },
-    { label: "log in sync", bin: "node", args: ["tools/render-log.ts", "--check"] }
+    { label: "check-boundaries", bin: "node", args: ["tools/dev/check-boundaries.ts"] },
+    { label: "check-suppressions", bin: "node", args: ["tools/dev/check-suppressions.ts"] },
+    { label: "check-wiring", bin: "node", args: ["tools/dev/check-wiring.ts"] },
+    { label: "check-docs-bundle", bin: "node", args: ["tools/dev/check-docs-bundle.ts"] },
+    { label: "check-screens", bin: "node", args: ["tools/dev/check-screens.ts"] },
+    { label: "check-obs-contract", bin: "node", args: ["tools/dev/check-obs-contract.ts"] },
+    { label: "capabilities in sync", bin: "node", args: ["tools/dev/render-capabilities.ts", "--check"] },
+    { label: "changelog in sync", bin: "node", args: ["tools/dev/render-changelog.ts", "--check"] },
+    { label: "log in sync", bin: "node", args: ["tools/dev/render-log.ts", "--check"] }
   ];
 }
 function runTestSteps(steps, cwd, spawner = (bin, spawnArgs, spawnCwd) => spawnSync(bin, spawnArgs, { cwd: spawnCwd, stdio: "inherit" })) {

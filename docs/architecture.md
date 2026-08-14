@@ -76,7 +76,7 @@ graph TD
 ```
 
 `core/` never imports `providers/`; `providers/` never imports `core/`; `contracts/` imports neither and is
-imported by both. `tools/check-boundaries.ts` enforces this mechanically, plus a scan that forbids vendor
+imported by both. `tools/dev/check-boundaries.ts` enforces this mechanically, plus a scan that forbids vendor
 identifiers (`cursor`, `claude`, `codex`, `composer`, `anthropic`) anywhere under `src/core/` or
 `src/contracts/`. See [/decisions/ad-004.md](/decisions/ad-004.md) and
 [/decisions/ad-010.md](/decisions/ad-010.md).

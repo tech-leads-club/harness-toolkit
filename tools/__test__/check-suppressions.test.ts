@@ -6,7 +6,7 @@ import {
   isInComment,
   judge,
   parseSuppression,
-} from "../check-suppressions.ts";
+} from "../dev/check-suppressions.ts";
 
 function at(text: string) {
   return parseSuppression("f.ts", 1, text);

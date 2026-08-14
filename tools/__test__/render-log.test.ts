@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { datedDecisions, groupByDate, renderLog } from "../render-log.ts";
+import { datedDecisions, groupByDate, renderLog } from "../dev/render-log.ts";
 
 function fixture(records: { id: string; date?: string; title?: string }[]): string {
   const root = mkdtempSync(join(tmpdir(), "tlc-render-log-"));

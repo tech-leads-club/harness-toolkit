@@ -1,5 +1,5 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { NPM_MARKER, NPM_PACKAGE } from "../bin/tlc-cli.ts";
 import { conventionalRuntimeHome, runtimeHome, runtimeHomeWasChosen } from "../src/platform/paths.ts";
 import { type Row, render, type Screen } from "../src/platform/screen.ts";
@@ -31,6 +31,25 @@ export const RUNTIME_PAYLOAD = [
 
 /** Never copied and never removed. The reason the split exists. */
 export const OPERATOR_OWNED = ["config.json", "state", "flags"] as const;
+
+/**
+ * Inside a payload entry and still not shipped.
+ *
+ * why: `tools/dev` holds the checks that validate *this* repository — its module boundaries, its screen contract,
+ * its decision records. A user's install has none of that to validate, and with Bun present the launcher resolves
+ * an entry straight from source, so copying them would put runnable repo-only commands on their machine. The
+ * clone route is different on purpose: a checkout is the repository, and a contributor needs them
+ * ([/decisions/ad-068.md](/decisions/ad-068.md)).
+ */
+export const NOT_SHIPPED = [join("tools", "dev"), join("tools", "__test__")] as const;
+
+export function isShipped(relativePath: string): boolean {
+  const normalised = relativePath.split(sep).join("/");
+  return !NOT_SHIPPED.some((excluded) => {
+    const prefix = excluded.split(sep).join("/");
+    return normalised === prefix || normalised.startsWith(`${prefix}/`);
+  });
+}
 
 export type InstallReport = {
   kind: "copied" | "in-place";
@@ -69,7 +88,10 @@ export function installRuntime(source: string, dest: string): InstallReport {
     }
     const to = join(dest, entry);
     rmSync(to, { recursive: true, force: true });
-    cpSync(from, to, { recursive: true });
+    cpSync(from, to, {
+      recursive: true,
+      filter: (src) => isShipped(relative(source, src)),
+    });
     entries.push(entry);
   }
   // why: a directory with no `.git` used to classify as `unmanaged`, which doctor reports as a failure and update

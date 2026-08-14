@@ -14,7 +14,7 @@ import {
   writeFileSync as writeFileSync2
 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { basename, dirname, isAbsolute, join as join2, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join as join3, relative as relative2, resolve as resolve2 } from "node:path";
 
 // src/platform/paths.ts
 import { homedir } from "node:os";
@@ -953,6 +953,7 @@ function unwireCursorHooks(text, marker = "tlc-exec.mjs") {
 }
 
 // tools/install-runtime.ts
+import { join as join2, relative, resolve, sep } from "node:path";
 var RUNTIME_PAYLOAD = [
   "bin",
   "capabilities",
@@ -968,21 +969,22 @@ var RUNTIME_PAYLOAD = [
   "package.json"
 ];
 var OPERATOR_OWNED = ["config.json", "state", "flags"];
+var NOT_SHIPPED = [join2("tools", "dev"), join2("tools", "__test__")];
 if (false) {}
 
 // tools/uninstall-runtime.ts
 function uninstallTargets(env = process.env, platform = process.platform) {
   const windows = platform === "win32";
   const userHome = (windows ? env.USERPROFILE : env.HOME)?.trim() || homedir2();
-  const binDir = env.TLC_BIN_DIR?.trim() || join2(userHome, ".local", "bin");
+  const binDir = env.TLC_BIN_DIR?.trim() || join3(userHome, ".local", "bin");
   return {
     home: runtimeHome(env),
-    binLink: join2(binDir, windows ? "tlc.cmd" : "tlc"),
-    claudeSettings: join2(claudeConfigDir(), "settings.json"),
-    cursorHooks: join2(cursorConfigDir(), "hooks.json"),
-    skillLinks: windows ? [join2(userHome, ".tlc", "skills", "harness-init")] : [
-      join2(claudeConfigDir(), "skills", "harness-init"),
-      join2(cursorConfigDir(), "skills", "harness-init")
+    binLink: join3(binDir, windows ? "tlc.cmd" : "tlc"),
+    claudeSettings: join3(claudeConfigDir(), "settings.json"),
+    cursorHooks: join3(cursorConfigDir(), "hooks.json"),
+    skillLinks: windows ? [join3(userHome, ".tlc", "skills", "harness-init")] : [
+      join3(claudeConfigDir(), "skills", "harness-init"),
+      join3(cursorConfigDir(), "skills", "harness-init")
     ]
   };
 }
@@ -994,15 +996,15 @@ function isSymlink(path) {
   }
 }
 function canonicalise(path) {
-  let head = resolve(path);
+  let head = resolve2(path);
   const tail = [];
   for (;; ) {
     try {
-      return join2(realpathSync2(head), ...tail);
+      return join3(realpathSync2(head), ...tail);
     } catch {
       const parent = dirname(head);
       if (parent === head) {
-        return resolve(path);
+        return resolve2(path);
       }
       tail.unshift(basename(head));
       head = parent;
@@ -1015,13 +1017,13 @@ function resolveLink(path) {
   } catch {
     try {
       const target = readlinkSync(path);
-      return canonicalise(isAbsolute(target) ? target : resolve(dirname(path), target));
+      return canonicalise(isAbsolute(target) ? target : resolve2(dirname(path), target));
     } catch {
       return canonicalise(path);
     }
   }
 }
-function isInsideRoot(target, root, pathApi = { relative, isAbsolute }) {
+function isInsideRoot(target, root, pathApi = { relative: relative2, isAbsolute }) {
   if (target === root) {
     return true;
   }
@@ -1124,17 +1126,17 @@ function planRuntime(items, home, purge) {
     return false;
   }
   for (const entry of RUNTIME_PAYLOAD) {
-    const path = join2(home, entry);
+    const path = join3(home, entry);
     if (existsSync2(path)) {
       items.push({ action: "remove", target: path, detail: "runtime payload" });
     }
   }
-  const marker = join2(home, NPM_MARKER);
+  const marker = join3(home, NPM_MARKER);
   if (existsSync2(marker)) {
     items.push({ action: "remove", target: marker, detail: "install marker" });
   }
   for (const entry of OPERATOR_OWNED) {
-    const path = join2(home, entry);
+    const path = join3(home, entry);
     if (!existsSync2(path)) {
       continue;
     }
@@ -1143,7 +1145,7 @@ function planRuntime(items, home, purge) {
   return false;
 }
 function planManual(items, home) {
-  if (existsSync2(join2(home, NPM_MARKER))) {
+  if (existsSync2(join3(home, NPM_MARKER))) {
     items.push({
       action: "manual",
       target: `npm uninstall -g ${NPM_PACKAGE}`,

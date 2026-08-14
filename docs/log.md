@@ -13,6 +13,10 @@ Generated from `docs/decisions/` — do not edit by hand. Run `node tools/render
 A reserved file of the [OKF v0.1](/decisions/ad-013.md) bundle: entries grouped under ISO 8601 headings,
 newest first. For what landed in which npm release, see `CHANGELOG.md` at the repository root.
 
+## 2026-08-13
+
+- **AD-068** — A directory decides what ships, and dist is derived from disk in both directions ([/decisions/ad-068.md](/decisions/ad-068.md))
+
 ## 2026-08-12
 
 - **AD-060** — The gate records the environment it ran under, and names it only once the cheap explanations are spent ([/decisions/ad-060.md](/decisions/ad-060.md))

@@ -65,16 +65,16 @@ npx biome check --error-on-warnings
 npx tsc --noEmit
 node --import ./tools/test-env.mjs --test "src/**/__test__/*.test.ts"
 node --import ./tools/test-env.mjs --test "tools/__test__/*.test.ts"
-node tools/check-boundaries.ts
-node tools/check-suppressions.ts
-node tools/check-wiring.ts
-node tools/check-docs-bundle.ts
-node tools/check-screens.ts
-node tools/check-obs-contract.ts
-node tools/render-capabilities.ts --check
-node tools/render-changelog.ts --check
-node tools/render-log.ts --check
-node tools/check-dist-fresh.ts
+node tools/dev/check-boundaries.ts
+node tools/dev/check-suppressions.ts
+node tools/dev/check-wiring.ts
+node tools/dev/check-docs-bundle.ts
+node tools/dev/check-screens.ts
+node tools/dev/check-obs-contract.ts
+node tools/dev/render-capabilities.ts --check
+node tools/dev/render-changelog.ts --check
+node tools/dev/render-log.ts --check
+node tools/dev/check-dist-fresh.ts
 ```
 
 `--import ./tools/test-env.mjs` is not optional. Without it a suite reads `CLAUDE_PROJECT_DIR` from

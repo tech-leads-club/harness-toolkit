@@ -22,6 +22,7 @@
     "tools/",
     "!src/**/__test__",
     "!tools/__test__",
+    "!tools/dev",
     "CHANGELOG.md",
     "config.example.json",
     "model-aliases.json",

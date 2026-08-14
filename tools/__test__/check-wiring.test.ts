@@ -7,7 +7,7 @@ import {
   formatFindings,
   parseInventories,
   trackedSourceFiles,
-} from "../check-wiring.ts";
+} from "../dev/check-wiring.ts";
 
 function roleOf(line: string, member: string): string {
   const at = line.indexOf(`"${member}"`);

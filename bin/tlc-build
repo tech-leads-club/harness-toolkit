@@ -19,18 +19,10 @@ collect() {
   done
 }
 
-# Development-only checks. They validate THIS repo's own architecture and docs, so they
-# must not ship: a user's clone has no src/core or src/contracts to validate.
-# tlc harness test runs them from source.
-DEV_ONLY=(check-boundaries check-docs-bundle check-dist-fresh render-capabilities)
-
-is_dev_only() {
-  local name="$1"
-  for dev in "${DEV_ONLY[@]}"; do
-    [ "$name" = "$dev" ] && return 0
-  done
-  return 1
-}
+# tools/dev/ holds the checks that validate THIS repository's own architecture, docs and conventions. They must
+# not ship — a user's clone has no src/core to validate and no docs/decisions of ours to render — and the
+# directory is the whole declaration: `collect` reads one level, so nothing under tools/dev is ever a bundle.
+# The list this replaced named four while ten qualified, and the six that were added later shipped for weeks.
 
 # macOS ships bash 3.2, which has no mapfile — read into arrays the portable way instead.
 ENTRYPOINTS=()
@@ -40,8 +32,7 @@ done < <(collect "$TLC_HOME/src/entrypoints")
 
 TOOLS=()
 while IFS= read -r name; do
-  [ -n "$name" ] || continue
-  is_dev_only "$name" || TOOLS+=("$name")
+  [ -n "$name" ] && TOOLS+=("$name")
 done < <(collect "$TLC_HOME/tools")
 
 build_one() {
@@ -71,5 +62,19 @@ done
 build_one "$TLC_HOME/bin/tlc-cli.ts" "$DIST/tlc-cli.mjs"
 
 chmod +x "$TLC_HOME/bin/tlc" "$TLC_HOME/bin/tlc-exec" "$TLC_HOME/bin/tlc-build"
+
+# A bundle whose source moved or was deleted is not rebuilt, so it is also never diffed — it simply stays in
+# dist/ and ships. Deriving what to remove from the same disk that decides what to build closes that.
+for bundle in "$DIST"/*.mjs; do
+  [ -e "$bundle" ] || continue
+  name="$(basename "$bundle" .mjs)"
+  if [ "$name" = "tlc-cli" ] ||
+     [ -f "$TLC_HOME/src/entrypoints/${name}.ts" ] ||
+     [ -f "$TLC_HOME/tools/${name}.ts" ]; then
+    continue
+  fi
+  echo "tlc-build: pruning $name.mjs — no source"
+  rm -f "$bundle"
+done
 
 echo "tlc-build: ok ($(ls -1 "$DIST"/*.mjs | wc -l) bundles)"

@@ -149,7 +149,7 @@ describe("obs prune honours project retention", () => {
 
 describe("the routing eval runner", () => {
   test("exits 0 and says why when no API key is present", () => {
-    const result = spawnSync(process.execPath, [join(repoRoot, "tools", "eval-skill-triggers.ts")], {
+    const result = spawnSync(process.execPath, [join(repoRoot, "tools", "dev", "eval-skill-triggers.ts")], {
       encoding: "utf8",
       env: { ...process.env, ANTHROPIC_API_KEY: "" },
     });
@@ -160,7 +160,7 @@ describe("the routing eval runner", () => {
   test("the same skip is machine-readable under --json", () => {
     const result = spawnSync(
       process.execPath,
-      [join(repoRoot, "tools", "eval-skill-triggers.ts"), "--json"],
+      [join(repoRoot, "tools", "dev", "eval-skill-triggers.ts"), "--json"],
       { encoding: "utf8", env: { ...process.env, ANTHROPIC_API_KEY: "" } },
     );
     assert.equal(result.status, 0);

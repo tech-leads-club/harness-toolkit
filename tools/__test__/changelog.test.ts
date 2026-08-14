@@ -13,7 +13,7 @@ import {
   releaseTags,
   renderChangelog,
   withoutLeadingId,
-} from "../render-changelog.ts";
+} from "../dev/render-changelog.ts";
 
 function git(root: string, args: string[]): void {
   execFileSync("git", args, {

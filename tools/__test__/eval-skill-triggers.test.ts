@@ -10,7 +10,7 @@ import {
   scoreAnswers,
   skillFrontmatter,
   type TriggerCase,
-} from "../eval-skill-triggers.ts";
+} from "../dev/eval-skill-triggers.ts";
 
 describe("skillFrontmatter", () => {
   test("reads the shipped skill's name and description", () => {

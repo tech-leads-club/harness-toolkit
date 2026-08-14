@@ -2,9 +2,9 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { allDecisionFiles, readDecision } from "../src/core/release/release.decisions.ts";
+import { allDecisionFiles, readDecision } from "../../src/core/release/release.decisions.ts";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export const CHANGELOG_FILE = "CHANGELOG.md";
 
