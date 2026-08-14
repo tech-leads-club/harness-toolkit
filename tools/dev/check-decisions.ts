@@ -1,10 +1,14 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export type Violation = { rule: string; file: string; detail: string };
+
+function toPosix(path: string): string {
+  return path.split(sep).join("/");
+}
 
 /**
  * The shape every decision record carries.
@@ -55,7 +59,10 @@ export function decisionFiles(root: string): DecisionFile[] {
       if (!/^ad-\d+\.md$/.test(entry) || statSync(path).isDirectory()) {
         continue;
       }
-      out.push({ file: relative(root, path), body: readFileSync(path, "utf8") });
+      // hazard: `relative` answers in the platform's separator, and every rule below compares against a `/`
+      // spelling — the archived-folder cross-check silently never fired on Windows. Paths become data here, so
+      // they are normalised here ([/decisions/ad-066.md](/decisions/ad-066.md)).
+      out.push({ file: toPosix(relative(root, path)), body: readFileSync(path, "utf8") });
     }
   }
   return out.sort((a, b) => a.file.localeCompare(b.file));
@@ -161,7 +168,7 @@ export function bareCitations(root: string): Violation[] {
   const violations: Violation[] = [];
   for (const dir of CITATION_DIRS) {
     for (const file of listFiles(join(root, dir), [".ts", ".md", ".mts", ".mjs"])) {
-      const relativePath = relative(root, file);
+      const relativePath = toPosix(relative(root, file));
       for (const match of readFileSync(file, "utf8").matchAll(BARE_CITATION)) {
         const id = match[1] as string;
         violations.push({

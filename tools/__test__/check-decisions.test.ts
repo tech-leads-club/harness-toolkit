@@ -155,3 +155,18 @@ test("the repository passes as it stands", () => {
   const printed = report(outcome, bareCitations(repoRoot));
   assert.equal(printed.ok, true, printed.text);
 });
+
+/**
+ * hazard: `relative` answers in the platform's separator and every rule compares against a `/` spelling, so the
+ * archived-folder cross-check silently never fired on Windows. Asserting the spelling here is what makes the
+ * normalisation a contract rather than a coincidence of the machine running the suite.
+ */
+test("every path the reader returns is spelled with forward slashes", () => {
+  for (const entry of decisionFiles(repoRoot)) {
+    assert.equal(entry.file.includes("\\"), false, entry.file);
+    assert.equal(entry.file.startsWith("docs/decisions/"), true, entry.file);
+  }
+  for (const violation of bareCitations(repoRoot)) {
+    assert.equal(violation.file.includes("\\"), false, violation.file);
+  }
+});
