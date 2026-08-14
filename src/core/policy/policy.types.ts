@@ -80,6 +80,11 @@ export type Policy = {
     onViolation: "followup" | "off";
     mode: CommentMode;
   };
+  duplication: {
+    enabled: boolean;
+    /** why: the window is the only knob, because it is the only one calibration moved. Six is where matches stopped being punctuation. */
+    minRun: number;
+  };
   obs: {
     globalSpool: boolean;
     includePayloads: boolean;

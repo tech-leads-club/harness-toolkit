@@ -167,6 +167,25 @@ committed before the turn are never flagged. `declared` keeps a comment that sta
 asks the operator to write it. Tool directives (`biome-ignore`, `@ts-`, `noqa`, `shellcheck`, shebang) are
 exempt in both modes.
 
+## duplication
+
+`duplication.enabled`, off by default, with `duplication.minRun` (default 6). Blocks the stop when this turn
+added a run of that many lines or more that already exists somewhere else in the project, naming both sites.
+Diff-scoped against the sha the turn started from, like the comment gate: a run that was already duplicated
+before the turn is not this turn's to answer for.
+
+Three things are excluded, each because measuring said so. **Comments**, so two identical licence headers are
+not a duplicated implementation. **Dependency declarations** — `import`, `require`, `use`, `#include` and their
+siblings — because they are identical in every file that needs the same thing. **Pure data**: a run has to carry
+operations, a call, an assignment, a branch or a return, in the majority of its lines, so a repeated object
+literal, type body or export list does not count. Repeated shape is what those are for.
+
+The comparison ignores indentation and a trailing comma, and nothing else. Renaming an identifier makes it a
+different run on purpose — a rule that matched through renames would report every similarly shaped function.
+
+It reads every tracked file on stop, bounded at 2000 files and 8 MB, and says when a bound was reached: a scan
+that silently covered half a project reads as a clean answer.
+
 ## docs staleness gate
 
 `docs.command`, optional and off by default. It is the repository's own staleness tool — `drift check`,

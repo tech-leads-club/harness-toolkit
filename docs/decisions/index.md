@@ -85,5 +85,6 @@ Handoff section and a link back to this index.
 | [AD-068](/decisions/ad-068.md) | A directory decides what ships, and dist is derived from disk in both directions | active |
 | [AD-069](/decisions/ad-069.md) | A decision record declares its shape, and cites by link so a move cannot break it | active |
 | [AD-070](/decisions/ad-070.md) | A comment has to read for somebody who was not in the session | active |
+| [AD-071](/decisions/ad-071.md) | The turn's added lines are checked against the code the project already has | active |
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).

@@ -183,6 +183,358 @@ function applyCursorWiring(wiring, { force = false } = {}) {
 }
 if (false) {}
 
+// src/core/comment-policy/comment-syntax.catalog.ts
+var COMMENT_SYNTAX = [
+  {
+    id: "typescript",
+    extensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "python",
+    extensions: [".py", ".pyi", ".pyw"],
+    line: ["#"],
+    block: [
+      ['"""', '"""'],
+      ["'''", "'''"]
+    ],
+    middle: []
+  },
+  {
+    id: "ruby",
+    extensions: [".rb", ".rake", ".gemspec"],
+    line: ["#"],
+    block: [["=begin", "=end"]],
+    middle: []
+  },
+  {
+    id: "shell",
+    extensions: [".sh", ".bash", ".zsh", ".ksh", ".fish"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "go",
+    extensions: [".go"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "rust",
+    extensions: [".rs"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "java",
+    extensions: [".java"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "kotlin",
+    extensions: [".kt", ".kts"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "swift",
+    extensions: [".swift"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "c",
+    extensions: [".c", ".h"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "cpp",
+    extensions: [".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "csharp",
+    extensions: [".cs"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "php",
+    extensions: [".php"],
+    line: ["//", "#"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "scala",
+    extensions: [".scala", ".sc"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "dart",
+    extensions: [".dart"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "elixir",
+    extensions: [".ex", ".exs"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "erlang",
+    extensions: [".erl", ".hrl"],
+    line: ["%"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "haskell",
+    extensions: [".hs"],
+    line: ["--"],
+    block: [["{-", "-}"]],
+    middle: []
+  },
+  {
+    id: "lua",
+    extensions: [".lua"],
+    line: ["--"],
+    block: [["--[[", "]]"]],
+    middle: []
+  },
+  {
+    id: "sql",
+    extensions: [".sql"],
+    line: ["--"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "css",
+    extensions: [".css", ".scss", ".sass", ".less"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "yaml",
+    extensions: [".yaml", ".yml"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "toml",
+    extensions: [".toml"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "ini",
+    extensions: [".ini", ".cfg", ".conf", ".properties"],
+    line: [";", "#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "dockerfile",
+    extensions: [".dockerfile", "dockerfile"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "makefile",
+    extensions: [".mk", "makefile"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "terraform",
+    extensions: [".tf", ".tfvars"],
+    line: ["#", "//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "powershell",
+    extensions: [".ps1", ".psm1", ".psd1"],
+    line: ["#"],
+    block: [["<#", "#>"]],
+    middle: []
+  },
+  {
+    id: "perl",
+    extensions: [".pl", ".pm"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "r",
+    extensions: [".r"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "julia",
+    extensions: [".jl"],
+    line: ["#"],
+    block: [["#=", "=#"]],
+    middle: []
+  },
+  {
+    id: "vue",
+    extensions: [".vue", ".svelte"],
+    line: ["//"],
+    block: [
+      ["/*", "*/"],
+      ["<!--", "-->"]
+    ],
+    middle: ["*"]
+  },
+  {
+    id: "html",
+    extensions: [".html", ".htm", ".xml", ".xhtml"],
+    line: [],
+    block: [["<!--", "-->"]],
+    middle: []
+  },
+  {
+    id: "graphql",
+    extensions: [".graphql", ".gql"],
+    line: ["#"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "protobuf",
+    extensions: [".proto"],
+    line: ["//"],
+    block: [["/*", "*/"]],
+    middle: ["*"]
+  },
+  {
+    id: "zig",
+    extensions: [".zig"],
+    line: ["//"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "clojure",
+    extensions: [".clj", ".cljs", ".cljc", ".edn"],
+    line: [";"],
+    block: [],
+    middle: []
+  },
+  {
+    id: "ocaml",
+    extensions: [".ml", ".mli"],
+    line: [],
+    block: [["(*", "*)"]],
+    middle: ["*"]
+  },
+  {
+    id: "fsharp",
+    extensions: [".fs", ".fsi", ".fsx"],
+    line: ["//"],
+    block: [["(*", "*)"]],
+    middle: ["*"]
+  },
+  {
+    id: "vim",
+    extensions: [".vim"],
+    line: ['"'],
+    block: [],
+    middle: []
+  },
+  {
+    id: "tex",
+    extensions: [".tex", ".sty", ".cls"],
+    line: ["%"],
+    block: [],
+    middle: []
+  }
+];
+
+// src/core/comment-policy/comment-syntax.store.ts
+function buildIndex(entries) {
+  const byKey = new Map;
+  for (const entry of entries) {
+    const syntax = { line: entry.line, block: entry.block, middle: entry.middle };
+    for (const extension of entry.extensions) {
+      byKey.set(extension.toLowerCase(), syntax);
+    }
+  }
+  return byKey;
+}
+var INDEX = buildIndex(COMMENT_SYNTAX);
+var KNOWN_EXTENSION_COUNT = INDEX.size;
+
+// src/core/comment-policy/comment-policy.service.ts
+var STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "by",
+  "for",
+  "from",
+  "get",
+  "gets",
+  "has",
+  "in",
+  "into",
+  "is",
+  "it",
+  "its",
+  "of",
+  "on",
+  "or",
+  "return",
+  "returns",
+  "set",
+  "sets",
+  "that",
+  "the",
+  "then",
+  "this",
+  "to",
+  "true",
+  "when",
+  "which",
+  "with"
+]);
+
+// src/core/duplication/duplication.service.ts
+var MIN_RUN = 6;
+
 // src/core/observability/observability.types.ts
 var DEFAULT_OBS = {
   enabled: true,
@@ -284,6 +636,10 @@ var DEFAULTS = {
     enabled: false,
     onViolation: "followup",
     mode: "declared"
+  },
+  duplication: {
+    enabled: false,
+    minRun: MIN_RUN
   },
   obs: {
     globalSpool: false,

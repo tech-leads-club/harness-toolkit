@@ -98,6 +98,36 @@ export function effectiveMinEffort(
   return configured ?? provider.policyDefaults().minEffort;
 }
 
+/**
+ * Everything `evaluateSubagentSpawn` needs about a spawn, assembled once.
+ *
+ * hazard: `subagent-start` and `tool-before` each built this object, seven identical lines apart from the
+ * indentation, so a new field in `policy.subagents` had to be remembered in two places — the shape where a
+ * consumer stops growing with its producer ([/decisions/ad-065.md](/decisions/ad-065.md)). The duplication rail
+ * found it on its first honest run ([/decisions/ad-071.md](/decisions/ad-071.md)).
+ */
+export function subagentSpawnInput(
+  event: HarnessEvent,
+  policy: Policy,
+  provider: ProviderPort,
+  model: string,
+): Parameters<typeof coreFacade.subagentPolicy.evaluateSubagentSpawn>[0] {
+  return {
+    provider: provider.name,
+    sessionKey: event.sessionKey,
+    projectDir: event.projectDir,
+    model,
+    effort: event.effort,
+    allowedModels: effectiveAllowedModels(policy.subagents.allowedModels, provider),
+    blockedPatterns: effectiveBlockedPatterns(policy.subagents.blockedPatterns, provider),
+    minEffort: effectiveMinEffort(policy.subagents.minEffort, provider),
+    requireModel: policy.subagents.requireModel,
+    enforceAllowlist: policy.subagents.enforceAllowlist,
+    blockParentFast: policy.subagents.blockParentFast,
+    blockMode: policy.subagents.blockMode,
+  };
+}
+
 export function readModelFromToolInput(toolInput: Record<string, unknown> | undefined): string {
   if (!toolInput) {
     return "";

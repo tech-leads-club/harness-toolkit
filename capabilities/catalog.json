@@ -1,5 +1,5 @@
 {
-  "catalogVersion": 10,
+  "catalogVersion": 11,
   "capabilities": [
     {
       "id": "grind",
@@ -77,6 +77,24 @@
       "inspect": "tlc harness obs report — the comments gate appears among the gate outcomes",
       "asks": [
         "mode: declared | resolvable | strict"
+      ]
+    },
+    {
+      "id": "duplication",
+      "configPath": "duplication.enabled",
+      "title": "Duplication gate (agent-added copies)",
+      "summary": "Checks whether the runs of code this turn added already exist somewhere else in the project.",
+      "benefit": "Blocks the stop when the turn wrote six or more lines the project already has, naming both sites. Diff-scoped: what was already duplicated is not counted.",
+      "tradeOff": "Reads every tracked file on stop, bounded at 2000 files and 8 MB, and says when a bound was reached. Comments, dependency declarations and pure data — object literals, type bodies, export lists — are excluded, so it reports duplicated logic and misses duplicated shape.",
+      "defaultOn": false,
+      "sinceCatalogVersion": 11,
+      "fires": [
+        "stop"
+      ],
+      "verdict": "block-stop",
+      "inspect": "tlc harness obs report — the duplication gate appears among the gate outcomes",
+      "asks": [
+        "minRun: lines a run must reach before two copies count (default 6)"
       ]
     },
     {

@@ -1,8 +1,15 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Decision, HarnessEvent } from "../contracts/index.ts";
 import { coreFacade, type LastGateArtifact, type PendingLessonCredit, type Policy } from "../core/index.ts";
-import { filterCodeTargets, filterTestTargets, listChangedRepoFiles, runCommand } from "../platform/git.ts";
+import {
+  filterCodeTargets,
+  filterTestTargets,
+  listAddedLines,
+  listChangedRepoFiles,
+  listTrackedFiles,
+  runCommand,
+} from "../platform/git.ts";
 import { flagsDir } from "../platform/paths.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
@@ -532,6 +539,38 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
         kind: "continue",
         text: coreFacade.commentPolicy.commentViolationMessage(hits, policy.comments.mode),
       };
+    }
+  }
+
+  /**
+   * why: the same diff scope the comment gate uses, asking a different question — did this turn write something
+   * the project already has? Two copies of a run drift apart, and the second copy is where the drift starts
+   * ([/decisions/ad-071.md](/decisions/ad-071.md)).
+   */
+  if (policy.duplication.enabled && codeTargets.length > 0) {
+    const added = await listAddedLines(root, codeTargets, turnBase);
+    const tracked = await listTrackedFiles(root);
+    const scan = coreFacade.duplication.scanProject(
+      tracked,
+      (relativePath) => {
+        try {
+          return readFileSync(join(root, relativePath), "utf8");
+        } catch {
+          return null;
+        }
+      },
+      policy.duplication.minRun,
+    );
+    const hits = coreFacade.duplication.findDuplications(added, scan.index, policy.duplication.minRun);
+    if (hits.length > 0) {
+      await coreFacade.handoff.patchHandoff(root, provider, {
+        slice: {
+          last_gate_result: "fail",
+          blockers: `This turn added ${hits.length} run(s) the project already has.`,
+          next_action: coreFacade.turn.suggestionFor("verification", "duplication"),
+        },
+      });
+      return { kind: "continue", text: coreFacade.duplication.duplicationMessage(hits) };
     }
   }
 

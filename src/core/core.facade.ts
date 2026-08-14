@@ -28,6 +28,12 @@ import {
   scanAddedComments,
 } from "./comment-policy/comment-policy.service.ts";
 import { KNOWN_EXTENSION_COUNT, unknownExtensions } from "./comment-policy/comment-syntax.store.ts";
+import {
+  duplicationMessage,
+  findDuplications,
+  MIN_RUN,
+  scanProject,
+} from "./duplication/duplication.service.ts";
 import { evaluateFloor } from "./floor/floor.service.ts";
 import { computeGateFingerprint, readLastGate, writeLastGate } from "./gate/gate.artifact.ts";
 import {
@@ -341,6 +347,12 @@ export const coreFacade = {
     evaluateSubagentSpawn,
     upsertParentModelState,
     readParentModelState,
+  },
+  duplication: {
+    scanProject,
+    findDuplications,
+    duplicationMessage,
+    MIN_RUN,
   },
   commentPolicy: {
     scanAddedComments,

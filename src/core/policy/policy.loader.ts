@@ -27,6 +27,7 @@ function deepMerge(base: Policy, patch: PartialPolicy): Policy {
     docs: { ...base.docs, ...patch.docs },
     observe: { ...base.observe, ...patch.observe },
     comments: { ...base.comments, ...patch.comments },
+    duplication: { ...base.duplication, ...patch.duplication },
     obs: { ...base.obs, ...patch.obs },
     untrustedContent: { ...base.untrustedContent, ...patch.untrustedContent },
     planGate: { ...base.planGate, ...patch.planGate },

@@ -1142,6 +1142,121 @@ function commentViolationMessage(hits, mode = "declared") {
 `);
 }
 
+// src/core/duplication/duplication.service.ts
+var MIN_RUN = 6;
+var MIN_LINE_CHARS = 8;
+function normaliseLine(text) {
+  const collapsed = text.trim().replace(/\s+/g, " ").replace(/,$/, "");
+  return collapsed.length < MIN_LINE_CHARS ? null : collapsed;
+}
+var DEPENDENCY_LINE = /^\s*(?:import|from|export|require|#include|use|using|package|namespace|open)\b/;
+function isCodeLine(text, file) {
+  if (DEPENDENCY_LINE.test(text)) {
+    return false;
+  }
+  const syntax = syntaxFor(file);
+  return syntax === null ? true : !matchesSyntax(text, syntax);
+}
+var OPERATIONAL = /[(=]|\b(?:if|for|while|switch|return|throw|await|new|catch)\b/;
+var MIN_OPERATIONAL_RATIO = 0.5;
+function operationalEnough(window) {
+  const operations = window.filter((entry) => OPERATIONAL.test(entry.key)).length;
+  return operations >= Math.ceil(window.length * MIN_OPERATIONAL_RATIO);
+}
+var SITES_PER_RUN = 2;
+function runKey(window) {
+  return window.join(`
+`);
+}
+function indexRuns(lines, minRun = MIN_RUN) {
+  const index = new Map;
+  const usable = lines.map((entry) => ({
+    ...entry,
+    key: isCodeLine(entry.text, entry.file) ? normaliseLine(entry.text) : null
+  })).map((entry) => entry.key === null ? null : { file: entry.file, line: entry.line, key: entry.key });
+  for (let start = 0;start + minRun <= usable.length; start += 1) {
+    const window = usable.slice(start, start + minRun);
+    if (window.some((entry) => entry === null)) {
+      continue;
+    }
+    const solid = window;
+    const head = solid[0];
+    if (solid.some((entry, offset) => entry.file !== head.file || entry.line !== head.line + offset)) {
+      continue;
+    }
+    if (!operationalEnough(solid)) {
+      continue;
+    }
+    const key = runKey(solid.map((entry) => entry.key));
+    const sites = index.get(key) ?? [];
+    if (sites.length < SITES_PER_RUN) {
+      index.set(key, [...sites, { file: head.file, line: head.line }]);
+    }
+  }
+  return index;
+}
+function findDuplications(added, project, minRun = MIN_RUN) {
+  const found = [];
+  const reported = new Set;
+  for (const [key, sites] of indexRuns(added, minRun)) {
+    const where = sites[0];
+    const prior = (project.get(key) ?? []).find((site) => site.file !== where.file || site.line !== where.line);
+    if (prior === undefined) {
+      continue;
+    }
+    const seen = `${where.file}:${where.line}`;
+    if (reported.has(seen)) {
+      continue;
+    }
+    reported.add(seen);
+    found.push({
+      file: where.file,
+      line: where.line,
+      matchFile: prior.file,
+      matchLine: prior.line,
+      runLength: minRun
+    });
+  }
+  return found.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+}
+function duplicationMessage(hits) {
+  return [
+    `BLOCKED: this turn added ${hits.length} run(s) of ${MIN_RUN}+ lines that already exist in this project.`,
+    "TRIED: compared the lines this turn added against the rest of the repository, ignoring",
+    "comments, blank lines and whitespace. A run already duplicated before this turn is not counted.",
+    "NEED: call the existing code, or extract what both need. If the duplication is deliberate —",
+    "the two will diverge, or the shared form would couple them — say which, in one line, and continue.",
+    "",
+    ...hits.slice(0, 10).map((hit) => `${hit.file}:${hit.line}  already at  ${hit.matchFile}:${hit.matchLine}`)
+  ].join(`
+`);
+}
+var MAX_SCAN_FILES = 2000;
+var MAX_SCAN_BYTES = 8000000;
+function scanProject(files, readFile, minRun = MIN_RUN) {
+  const lines = [];
+  let bytes = 0;
+  let filesRead = 0;
+  let truncated = false;
+  for (const file of files) {
+    if (filesRead >= MAX_SCAN_FILES || bytes >= MAX_SCAN_BYTES) {
+      truncated = true;
+      break;
+    }
+    const text = readFile(file);
+    if (text === null) {
+      continue;
+    }
+    bytes += text.length;
+    filesRead += 1;
+    for (const [index, line] of text.split(`
+`).entries()) {
+      lines.push({ file, line: index + 1, text: line });
+    }
+  }
+  return { index: indexRuns(lines, minRun), filesRead, truncated };
+}
+
 // src/core/floor/floor.paths.ts
 import { homedir as homedir2, tmpdir } from "node:os";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
@@ -4292,6 +4407,10 @@ var DEFAULTS = {
     onViolation: "followup",
     mode: "declared"
   },
+  duplication: {
+    enabled: false,
+    minRun: MIN_RUN
+  },
   obs: {
     globalSpool: false,
     includePayloads: DEFAULT_OBS.includePayloads,
@@ -4387,6 +4506,7 @@ function deepMerge(base, patch) {
     docs: { ...base.docs, ...patch.docs },
     observe: { ...base.observe, ...patch.observe },
     comments: { ...base.comments, ...patch.comments },
+    duplication: { ...base.duplication, ...patch.duplication },
     obs: { ...base.obs, ...patch.obs },
     untrustedContent: { ...base.untrustedContent, ...patch.untrustedContent },
     planGate: { ...base.planGate, ...patch.planGate },
@@ -4852,6 +4972,9 @@ function operatorBootstrapLines(policy, stateDir) {
   }
   if (policy.comments.enabled) {
     lines.push(policy.comments.mode === "strict" ? "Comments: do not add any. If one is warranted, say so in your reply and let the owner write it." : policy.comments.mode === "resolvable" ? "Comments: an added comment must declare why:, hazard: or invariant:, and must read for someone who was not in this session. Do not narrate the change (used to, previously, this was), cite a plan, decision number or section only this session saw, speak from the change (this PR, a later commit), or argue your own correctness. State the present behaviour, or the counterfactual: without X, Y happens." : "Comments: an added comment must declare why:, hazard: or invariant:. Narrating what the code does is blocked.");
+  }
+  if (policy.duplication.enabled) {
+    lines.push("Duplication: before writing a block, check whether the project already has it — the gate blocks a stop when this turn added six or more lines that exist elsewhere. Call the existing code or extract what both need. If two copies are deliberate, say which in one line.");
   }
   if (policy.mcpPrime.length > 0) {
     lines.push("", "MCP prime (before host grep or glob across the workspace):");
@@ -6269,6 +6392,12 @@ var coreFacade = {
     evaluateSubagentSpawn,
     upsertParentModelState,
     readParentModelState
+  },
+  duplication: {
+    scanProject,
+    findDuplications,
+    duplicationMessage,
+    MIN_RUN
   },
   commentPolicy: {
     scanAddedComments,

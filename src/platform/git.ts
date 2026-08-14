@@ -171,3 +171,17 @@ export async function runCommand(
     durationMs: Date.now() - started,
   };
 }
+
+/**
+ * Every tracked file, so a duplication scan reads what the project owns and nothing it ignores.
+ *
+ * why: `git ls-files` already honours `.gitignore`, so `node_modules` and build output cost nothing to exclude
+ * and no second ignore list has to be kept in step ([/decisions/ad-071.md](/decisions/ad-071.md)).
+ */
+export async function listTrackedFiles(projectDir: string): Promise<string[]> {
+  const result = await runCommand(projectDir, ["git", "ls-files", "-z"]);
+  if (result.exitCode !== 0) {
+    return [];
+  }
+  return result.output.split("\0").filter((path) => path !== "");
+}

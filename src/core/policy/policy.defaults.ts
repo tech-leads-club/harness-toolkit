@@ -1,3 +1,4 @@
+import { MIN_RUN } from "../duplication/duplication.service.ts";
 import { DEFAULT_OBS } from "../observability/observability.types.ts";
 import type { Policy } from "./policy.types.ts";
 
@@ -56,6 +57,10 @@ export const DEFAULTS: Policy = {
     enabled: false,
     onViolation: "followup",
     mode: "declared",
+  },
+  duplication: {
+    enabled: false,
+    minRun: MIN_RUN,
   },
   obs: {
     globalSpool: false,

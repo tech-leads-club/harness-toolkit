@@ -80,3 +80,4 @@ doctor reports against your own configuration.
 - **AD-068** — A directory decides what ships, and dist is derived from disk in both directions
 - **AD-069** — A decision record declares its shape, and cites by link so a move cannot break it
 - **AD-070** — A comment has to read for somebody who was not in the session
+- **AD-071** — The turn's added lines are checked against the code the project already has

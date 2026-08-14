@@ -56,6 +56,11 @@ export function operatorBootstrapLines(policy: Policy, stateDir: string): string
           : "Comments: an added comment must declare why:, hazard: or invariant:. Narrating what the code does is blocked.",
     );
   }
+  if (policy.duplication.enabled) {
+    lines.push(
+      "Duplication: before writing a block, check whether the project already has it — the gate blocks a stop when this turn added six or more lines that exist elsewhere. Call the existing code or extract what both need. If two copies are deliberate, say which in one line.",
+    );
+  }
   if (policy.mcpPrime.length > 0) {
     lines.push("", "MCP prime (before host grep or glob across the workspace):");
     for (const [index, step] of policy.mcpPrime.entries()) {

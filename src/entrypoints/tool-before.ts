@@ -2,13 +2,7 @@ import type { Decision, HarnessEvent } from "../contracts/index.ts";
 import { coreFacade } from "../core/index.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
-import {
-  effectiveAllowedModels,
-  effectiveBlockedPatterns,
-  effectiveMinEffort,
-  obsConfigFor,
-  readModelFromToolInput,
-} from "./support.ts";
+import { obsConfigFor, readModelFromToolInput, subagentSpawnInput } from "./support.ts";
 
 const READONLY_BLOCKED_TOOLS = new Set(["Write", "Delete", "Shell"]);
 
@@ -93,20 +87,9 @@ async function handleToolBefore(event: HarnessEvent, ctx: HandlerContext): Promi
 
   if (event.toolName === "Task") {
     const model = event.spawnModel ?? readModelFromToolInput(event.toolInput);
-    const spawnDecision = coreFacade.subagentPolicy.evaluateSubagentSpawn({
-      provider: provider.name,
-      sessionKey: event.sessionKey,
-      projectDir: event.projectDir,
-      model,
-      effort: event.effort,
-      allowedModels: effectiveAllowedModels(policy.subagents.allowedModels, provider),
-      blockedPatterns: effectiveBlockedPatterns(policy.subagents.blockedPatterns, provider),
-      minEffort: effectiveMinEffort(policy.subagents.minEffort, provider),
-      requireModel: policy.subagents.requireModel,
-      enforceAllowlist: policy.subagents.enforceAllowlist,
-      blockParentFast: policy.subagents.blockParentFast,
-      blockMode: policy.subagents.blockMode,
-    });
+    const spawnDecision = coreFacade.subagentPolicy.evaluateSubagentSpawn(
+      subagentSpawnInput(event, policy, provider, model),
+    );
     if (spawnDecision.kind !== "allow") {
       return spawnDecision;
     }

@@ -18,6 +18,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-068** — A directory decides what ships, and dist is derived from disk in both directions ([/decisions/ad-068.md](/decisions/ad-068.md))
 - **AD-069** — A decision record declares its shape, and cites by link so a move cannot break it ([/decisions/ad-069.md](/decisions/ad-069.md))
 - **AD-070** — A comment has to read for somebody who was not in the session ([/decisions/ad-070.md](/decisions/ad-070.md))
+- **AD-071** — The turn's added lines are checked against the code the project already has ([/decisions/ad-071.md](/decisions/ad-071.md))
 
 ## 2026-08-12
 

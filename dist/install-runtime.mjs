@@ -370,6 +370,9 @@ var STOPWORDS = new Set([
   "with"
 ]);
 
+// src/core/duplication/duplication.service.ts
+var MIN_RUN = 6;
+
 // src/core/floor/floor.paths.ts
 var SECRET_BASENAMES = new Set([
   ".git-credentials",
@@ -771,6 +774,10 @@ var DEFAULTS = {
     enabled: false,
     onViolation: "followup",
     mode: "declared"
+  },
+  duplication: {
+    enabled: false,
+    minRun: MIN_RUN
   },
   obs: {
     globalSpool: false,
