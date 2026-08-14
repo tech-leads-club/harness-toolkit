@@ -59,7 +59,7 @@ test("the optional halves default to empty rather than to invented text", () => 
   assert.equal(lesson.preRetryCheck, "");
 });
 
-// invariant: the decay clock starts now, so an authored lesson ages by recurrence like any other (AD-023).
+// invariant: the decay clock starts now, so an authored lesson ages by recurrence like any other ([/decisions/ad-023.md](/decisions/ad-023.md)).
 test("the decay fields all start at the given time", () => {
   const lesson = buildAuthoredLesson({ instruction: "x", now: NOW });
   assert.equal(lesson.firstSeenAt, NOW);

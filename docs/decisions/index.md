@@ -83,5 +83,6 @@ Handoff section and a link back to this index.
 | [AD-066](/decisions/ad-066.md) | Uninstall reads the artefact, and the plan is the confirmation | active |
 | [AD-067](/decisions/ad-067.md) | A reserved file that cannot be retired is rendered, and the gate holds it there | active |
 | [AD-068](/decisions/ad-068.md) | A directory decides what ships, and dist is derived from disk in both directions | active |
+| [AD-069](/decisions/ad-069.md) | A decision record declares its shape, and cites by link so a move cannot break it | active |
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).

@@ -319,7 +319,7 @@ test("two loads with different project overrides do not leak state into each oth
 });
 
 // invariant: the posture the hooks obey and the posture `status` and `doctor` report are one answer. They used to
-// be two derivations of the same fact, which is the only reason they could disagree (AD-020).
+// be two derivations of the same fact, which is the only reason they could disagree ([/decisions/ad-020.md](/decisions/ad-020.md)).
 test("the policy's mode and the reported resolution never disagree, whichever config supplies it", () => {
   const root = tempRoot();
   const home = tempRoot();

@@ -103,7 +103,7 @@ test("a blocked subagent model is denied under Claude with the identical reason 
   }
 });
 
-test("a subagent spawn is denied when the sticky parent state is Fast (AD-001)", async () => {
+test("a subagent spawn is denied when the sticky parent state is Fast ([/decisions/ad-001.md](/decisions/ad-001.md))", async () => {
   const root = tempRoot();
   try {
     writeProjectPolicy(root, { subagents: { blockParentFast: true } });

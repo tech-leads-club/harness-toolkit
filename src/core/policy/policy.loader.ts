@@ -68,7 +68,7 @@ function postureOf(root: string, pair: ConfigPair): PostureResolution {
 /**
  * invariant: the resolution the loader itself applies, origin included. `status` and `doctor` need the origin
  * and the rejected value, which `Policy.mode` cannot carry — reading it from here is what stops either of them
- * from recomputing a posture and reporting the opposite of what the hooks resolved (AD-020).
+ * from recomputing a posture and reporting the opposite of what the hooks resolved ([/decisions/ad-020.md](/decisions/ad-020.md)).
  */
 export function resolveProjectPosture(root: string): PostureResolution {
   return postureOf(root, readConfigPair(root));

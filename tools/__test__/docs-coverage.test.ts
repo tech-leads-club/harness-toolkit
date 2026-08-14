@@ -140,7 +140,7 @@ test("concepts.md names every tunable obs field, and no more", () => {
 });
 
 // hazard: the deepest posture once had two spellings — one the CLI accepted, one the config field stored — and
-// the documented word therefore matched no branch at all (AD-025). A regression here is silent: the second name
+// the documented word therefore matched no branch at all ([/decisions/ad-025.md](/decisions/ad-025.md)). A regression here is silent: the second name
 // would work at whichever surface reintroduced it and be refused at every other. Decision records are excluded
 // on purpose; they describe the defect and have to be able to name it.
 test("no source file or operator-facing document carries a retired posture spelling", () => {
@@ -182,7 +182,7 @@ test("no source file or operator-facing document carries a retired posture spell
   assert.deepEqual(hits, []);
 });
 
-// hazard: honouring the legacy key would have been back-compat this project refuses (AD-003), and leaving it
+// hazard: honouring the legacy key would have been back-compat this project refuses ([/decisions/ad-003.md](/decisions/ad-003.md)), and leaving it
 // in an example invites an operator to write something nothing reads.
 test("no shipped config advertises the removed observability section", () => {
   for (const file of ["config.example.json", join(".tlc", "harness", "config.json")]) {

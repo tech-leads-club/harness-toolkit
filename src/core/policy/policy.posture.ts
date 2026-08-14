@@ -53,7 +53,7 @@ function readModeFile(root: string): string | null {
 /**
  * invariant: the only place that answers both "which posture" and "where did it come from". The loader,
  * `tlc harness status` and `tlc harness doctor` read this one result — status used to recompute posture on its
- * own and reported the opposite of what the hooks resolved (AD-020).
+ * own and reported the opposite of what the hooks resolved ([/decisions/ad-020.md](/decisions/ad-020.md)).
  *
  * Precedence is unchanged: mode state file, then the posture flag files, then config, then the default.
  */

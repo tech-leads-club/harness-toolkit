@@ -251,7 +251,7 @@ function planRuntime(items: PlanItem[], home: string, purge: boolean): boolean {
   const homeIsLink = isSymlink(home);
   if (homeIsLink) {
     // hazard: this is the contributor's checkout on every development machine. `rm -rf` through the link deletes
-    // the repository. The installer refuses to touch it for the same reason (AD-046) and so does this.
+    // the repository. The installer refuses to touch it for the same reason ([/decisions/ad-046.md](/decisions/ad-046.md)) and so does this.
     items.push({
       action: "unlink",
       target: home,

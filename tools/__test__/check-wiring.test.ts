@@ -125,7 +125,7 @@ test("the clean report states how many members were checked", () => {
   );
 });
 
-// invariant: an escape hatch that says nothing reads as a passing check (AD-034), so every unchecked union is
+// invariant: an escape hatch that says nothing reads as a passing check ([/decisions/ad-034.md](/decisions/ad-034.md)), so every unchecked union is
 // named with its reason in the clean report.
 test("the clean report names every union it did not check, and why", () => {
   const report = formatFindings([], 128);

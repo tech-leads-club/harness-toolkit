@@ -16,6 +16,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 ## 2026-08-13
 
 - **AD-068** — A directory decides what ships, and dist is derived from disk in both directions ([/decisions/ad-068.md](/decisions/ad-068.md))
+- **AD-069** — A decision record declares its shape, and cites by link so a move cannot break it ([/decisions/ad-069.md](/decisions/ad-069.md))
 
 ## 2026-08-12
 

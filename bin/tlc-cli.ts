@@ -127,7 +127,7 @@ export type StatusReport = {
 export function statusJson(root: string): StatusReport {
   const policy = coreFacade.policy.loadPolicy(root);
   // invariant: posture and its origin come from the resolver the loader itself uses. Status recomputing either
-  // one is what made it report the opposite of every hook (AD-020).
+  // one is what made it report the opposite of every hook ([/decisions/ad-020.md](/decisions/ad-020.md)).
   const posture = coreFacade.policy.resolveProjectPosture(root);
   return {
     root,
@@ -791,7 +791,7 @@ export function setGateCommand(root: string, field: GateField, argv: string[], i
     // why: AD-021 already treats a gate command that never resolved as a config fault. Refusing it at the
     // point of writing turns that fault into something the operator sees now instead of at the next gate.
     throw new UsageError(
-      `\`${binary}\` was not found on PATH, and a gate command that cannot run is a config fault (AD-021).`,
+      `\`${binary}\` was not found on PATH, and a gate command that cannot run is a config fault ([/decisions/ad-021.md](/decisions/ad-021.md)).`,
     );
   }
 
@@ -1076,7 +1076,7 @@ export function buildTestSteps(): TestStep[] {
     // sat in this repo across several green gates until someone read the output by hand. Escalating every group to
     // `error` in biome.json was measured instead and rejected: it enables each group's non-recommended rules too,
     // which produced 3763 findings and included `noBarrelFile` and `noReExportAll` — the two rules that forbid the
-    // core facade this architecture is built on (AD-004) — and `noNodejsModules` in a Node CLI.
+    // core facade this architecture is built on ([/decisions/ad-004.md](/decisions/ad-004.md)) — and `noNodejsModules` in a Node CLI.
     { label: "biome check", bin: "npx", args: ["biome", "check", "--error-on-warnings"] },
     { label: "tsc --noEmit", bin: "npx", args: ["tsc", "--noEmit"] },
     { label: "src suite", bin: "node", args: [...TEST_ENV_IMPORT, "--test", "src/**/__test__/*.test.ts"] },
@@ -1087,6 +1087,10 @@ export function buildTestSteps(): TestStep[] {
     { label: "check-suppressions", bin: "node", args: ["tools/dev/check-suppressions.ts"] },
     { label: "check-wiring", bin: "node", args: ["tools/dev/check-wiring.ts"] },
     { label: "check-docs-bundle", bin: "node", args: ["tools/dev/check-docs-bundle.ts"] },
+    // why: the bundle check validates frontmatter and links; this one validates that a decision record still has
+    // the shape that makes it worth reading, and that it is cited in a form a move cannot break
+    // ([/decisions/ad-069.md](/decisions/ad-069.md)).
+    { label: "check-decisions", bin: "node", args: ["tools/dev/check-decisions.ts"] },
     { label: "check-screens", bin: "node", args: ["tools/dev/check-screens.ts"] },
     { label: "check-obs-contract", bin: "node", args: ["tools/dev/check-obs-contract.ts"] },
     { label: "capabilities in sync", bin: "node", args: ["tools/dev/render-capabilities.ts", "--check"] },
@@ -1284,7 +1288,7 @@ function runUpdate(root: string): never {
   }
 
   // invariant: never build into the artifact when it is already complete. `dist/` is committed for the Node
-  // fallback (AD-012) and the gate keeps it matching `src/`, so the pulled revision already carries the right
+  // fallback ([/decisions/ad-012.md](/decisions/ad-012.md)) and the gate keeps it matching `src/`, so the pulled revision already carries the right
   // bundles. Rebuilding them with a different bundler is what dirtied every user's checkout
   // ([/decisions/ad-046.md](/decisions/ad-046.md)).
   const missing = missingBundles(dest);

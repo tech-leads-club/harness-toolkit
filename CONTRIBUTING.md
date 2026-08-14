@@ -38,7 +38,7 @@ The gate is a single command:
 tlc harness test
 ```
 
-Fourteen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
+Fifteen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
 source of truth, and this table is here to say what each step is for.
 
 | # | Step | Fails on |
@@ -51,12 +51,13 @@ source of truth, and this table is here to say what each step is for.
 | 6 | `check-suppressions` | a lint suppression whose reason is not a reason — step 1 cannot see a rule that was silenced rather than fixed |
 | 7 | `check-wiring` | a declared union member that is read and never written |
 | 8 | `check-docs-bundle` | a broken link or a doc outside the bundle's shape |
-| 9 | `check-screens` | a terminal renderer that paints its own strings instead of going through the shared one |
-| 10 | `check-obs-contract` | a kind a consumer counts and no producer emits, or one landing on a plane the consumer does not read |
-| 11 | `render-capabilities --check` | a generated README region that no longer matches `capabilities/catalog.json` |
-| 12 | `render-changelog --check` | a `CHANGELOG.md` that no longer matches `docs/decisions/` |
-| 13 | `render-log --check` | a `docs/log.md` that no longer matches `docs/decisions/` |
-| 14 | `check-dist-fresh` | **CI only** — a `dist/` bundle that does not match `src/`. Run `./bin/tlc-build` and commit the result |
+| 9 | `check-decisions` | a decision record off the required shape, a status outside the closed set, or an AD cited by bare number instead of a link |
+| 10 | `check-screens` | a terminal renderer that paints its own strings instead of going through the shared one |
+| 11 | `check-obs-contract` | a kind a consumer counts and no producer emits, or one landing on a plane the consumer does not read |
+| 12 | `render-capabilities --check` | a generated README region that no longer matches `capabilities/catalog.json` |
+| 13 | `render-changelog --check` | a `CHANGELOG.md` that no longer matches `docs/decisions/` |
+| 14 | `render-log --check` | a `docs/log.md` that no longer matches `docs/decisions/` |
+| 15 | `check-dist-fresh` | **CI only** — a `dist/` bundle that does not match `src/`. Run `./bin/tlc-build` and commit the result |
 
 Equivalent by hand, for local debugging:
 
@@ -69,6 +70,7 @@ node tools/dev/check-boundaries.ts
 node tools/dev/check-suppressions.ts
 node tools/dev/check-wiring.ts
 node tools/dev/check-docs-bundle.ts
+node tools/dev/check-decisions.ts
 node tools/dev/check-screens.ts
 node tools/dev/check-obs-contract.ts
 node tools/dev/render-capabilities.ts --check

@@ -36,7 +36,7 @@ export const ALLOWLIST_KEY = "subagents.allowedModels";
 export function allowlistRefusal(model: string, allowed: readonly string[]): string {
   const base = `"${model}" is not in \`${ALLOWLIST_KEY}\`. Use one of: ${allowed.join(", ")}.`;
   // why: `inherit` is not a model name — it means the parent's model — so listing slugs answers a question it did
-  // not ask. It is a value the operator may put on the list, and saying so is the route that works (AD-047).
+  // not ask. It is a value the operator may put on the list, and saying so is the route that works ([/decisions/ad-047.md](/decisions/ad-047.md)).
   return model === "inherit"
     ? `${base} \`inherit\` is a value that list may contain; add it there to permit it.`
     : base;

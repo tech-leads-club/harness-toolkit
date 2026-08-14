@@ -6779,7 +6779,7 @@ function setGateCommand(root, field, argv, interactive) {
   }
   const binary = argv[0];
   if (resolveExecutable(binary) === null) {
-    throw new UsageError(`\`${binary}\` was not found on PATH, and a gate command that cannot run is a config fault (AD-021).`);
+    throw new UsageError(`\`${binary}\` was not found on PATH, and a gate command that cannot run is a config fault ([/decisions/ad-021.md](/decisions/ad-021.md)).`);
   }
   const path = projectConfigPath(root);
   const parsed = existsSync24(path) ? JSON.parse(readFileSync25(path, "utf8")) : {};
@@ -7012,6 +7012,7 @@ function buildTestSteps() {
     { label: "check-suppressions", bin: "node", args: ["tools/dev/check-suppressions.ts"] },
     { label: "check-wiring", bin: "node", args: ["tools/dev/check-wiring.ts"] },
     { label: "check-docs-bundle", bin: "node", args: ["tools/dev/check-docs-bundle.ts"] },
+    { label: "check-decisions", bin: "node", args: ["tools/dev/check-decisions.ts"] },
     { label: "check-screens", bin: "node", args: ["tools/dev/check-screens.ts"] },
     { label: "check-obs-contract", bin: "node", args: ["tools/dev/check-obs-contract.ts"] },
     { label: "capabilities in sync", bin: "node", args: ["tools/dev/render-capabilities.ts", "--check"] },

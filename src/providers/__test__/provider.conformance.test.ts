@@ -84,7 +84,7 @@ test("abstain never renders anything that reads as an approval", () => {
   }
 });
 
-// invariant: exit code is never a policy channel (AD-004). A provider signalling a decision through it would put
+// invariant: exit code is never a policy channel ([/decisions/ad-004.md](/decisions/ad-004.md)). A provider signalling a decision through it would put
 // policy in a place `degrade` cannot see and the host may not read.
 test("every render returns exit code 0, whatever the decision", () => {
   for (const provider of providers) {
