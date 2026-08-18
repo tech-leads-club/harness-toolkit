@@ -5,10 +5,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { coreFacade } from "../../core/index.ts";
+import { resolveObsLevel } from "../../core/observability/observability.types.ts";
 import { projectConfigPath } from "../../platform/paths.ts";
+import { claudeWiring } from "../../providers/claude/claude.wiring.ts";
 import { responseAfterHandler } from "../response-after.ts";
 import { type RunOutcome, runHandler } from "../run.ts";
-import { stopHandler } from "../stop.ts";
+import { STOP_LOCK_WAIT_MS, stopHandler, stopLockWaitMs } from "../stop.ts";
 
 function git(cwd: string, args: string[]): void {
   execFileSync("git", args, { cwd });
@@ -72,6 +74,7 @@ function claudeStop(root: string, overrides: Record<string, unknown> = {}): stri
 }
 
 const ALWAYS_FAIL = { grind: { enabled: true, lintCommand: ["node", "-e", "process.exit(1)"] } };
+const ALWAYS_PASS = { grind: { enabled: true, lintCommand: ["node", "-e", "process.exit(0)"] } };
 
 test("a lint gate failure yields continue (followup_message) under Cursor", async () => {
   const root = repoWithChange();
@@ -246,8 +249,16 @@ test("a ship claim with a non-empty diff does not trigger the empty-diff gate", 
   }
 });
 
-test("a grind lock held by another provider yields a follow-up naming that provider", async () => {
+/**
+ * hazard: this test used to assert the defect. A live neighbour made the stop return `continue` — which renders as
+ * `{"decision":"block"}` — so a session was blocked because a sibling was mid-gate, told to "wait for it to
+ * release", which a stop hook cannot do. Reported from the field three times in one day
+ * ([/decisions/ad-073.md](/decisions/ad-073.md)).
+ */
+test("a grind lock held by a neighbour defers the gate instead of blocking the turn", async () => {
   const root = repoWithChange();
+  const previous = process.env.TLC_TEST_GATE_LOCK_WAIT_MS;
+  process.env.TLC_TEST_GATE_LOCK_WAIT_MS = "150";
   try {
     writeProjectPolicy(root, ALWAYS_FAIL);
     let release: () => void = () => {};
@@ -260,15 +271,103 @@ test("a grind lock held by another provider yields a follow-up naming that provi
           release = resolve;
         }),
     );
+    const startedAt = Date.now();
     const outcome = await runHandler(stopHandler, stdinOf(cursorStop(root)));
-    assert.equal(outcome.decision.kind, "continue");
-    if (outcome.decision.kind === "continue") {
-      assert.match(outcome.decision.text, /claude/);
-      assert.match(outcome.decision.text, /other-session/);
-    }
+    const elapsedMs = Date.now() - startedAt;
+    // invariant: the turn ends. Nothing tells the model to wait, because it has no way to.
+    assert.equal(outcome.decision.kind, "abstain");
+    /**
+     * hazard: asserting the bound as a constant was not enough — a mutant that stopped *passing* it fell back to
+     * the library's 120-second default, still deferred, and passed every other assertion while taking two
+     * minutes. Only elapsed time proves the seam reaches the lock. The bound is generous against the 120s it
+     * catches, so it is not a timing race.
+     */
+    assert.equal(
+      elapsedMs < 30_000,
+      true,
+      `the wait honoured the seam: ${elapsedMs}ms, not the ${coreFacade.gate.GATE_LOCK_WAIT_MS}ms default`,
+    );
+
+    // invariant: `skipped`, never `pass` — no gate produced a verdict for this turn.
+    const handoff = coreFacade.handoff.readHandoff(root, "cursor");
+    assert.equal(handoff?.last_gate_result, "skipped");
+    assert.match(handoff?.next_action ?? "", /other-session/);
+
+    // invariant: the plane comes from the resolver, not from a guess. Reading `debug.jsonl` found nothing because
+    // `gate.outcome` resolves to signal — the plane mismatch AD-065 built a checker for, made here in a test.
+    const plane = resolveObsLevel("gate.outcome") === "signal" ? "obs.jsonl" : "debug.jsonl";
+    const deferrals = coreFacade.observability
+      .readSignalEvents(root, plane, 200)
+      .filter((event) => event.kind === "gate.outcome" && event.attrs?.deferred_to !== undefined);
+    assert.equal(deferrals.length > 0, true, "the deferral is recorded, not only narrated");
+    assert.match(String(deferrals[0]?.attrs?.deferred_to ?? ""), /other-session/);
     release();
     await held;
   } finally {
+    if (previous === undefined) {
+      delete process.env.TLC_TEST_GATE_LOCK_WAIT_MS;
+    } else {
+      process.env.TLC_TEST_GATE_LOCK_WAIT_MS = previous;
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * hazard: the sharpest half of the defect. `runLockedGate` consults the recorded verdict *before* taking the lock,
+ * so a turn whose inputs hash to what a neighbour already verified needs no lock at all — and the pre-check
+ * returned `continue` before that line was ever reached. A usable verdict sat on disk, unread, while the turn was
+ * blocked ([/decisions/ad-073.md](/decisions/ad-073.md)).
+ */
+test("a reusable verdict is honoured while a neighbour holds the lock", async () => {
+  const root = repoWithChange();
+  const previous = process.env.TLC_TEST_GATE_LOCK_WAIT_MS;
+  process.env.TLC_TEST_GATE_LOCK_WAIT_MS = "150";
+  try {
+    writeProjectPolicy(root, ALWAYS_PASS);
+    // the neighbour's run: it takes the lock, passes, and leaves a verdict keyed on these inputs
+    const first = await runHandler(stopHandler, stdinOf(cursorStop(root)));
+    assert.equal(first.decision.kind, "abstain");
+
+    let release: () => void = () => {};
+    const held = coreFacade.gate.withGateLock(
+      root,
+      "claude",
+      "other-session",
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const outcome = await runHandler(stopHandler, stdinOf(cursorStop(root)));
+    assert.equal(outcome.decision.kind, "abstain");
+
+    // invariant: reused, not deferred. The lock was never needed, so a live holder is irrelevant.
+    const handoff = coreFacade.handoff.readHandoff(root, "cursor");
+    assert.equal(handoff?.last_gate_result, "pass");
+
+    const plane = resolveObsLevel("gate.outcome") === "signal" ? "obs.jsonl" : "debug.jsonl";
+    const outcomes = coreFacade.observability
+      .readSignalEvents(root, plane, 200)
+      .filter((event) => event.kind === "gate.outcome");
+    assert.equal(
+      outcomes.some((event) => event.attrs?.reused === true),
+      true,
+      "the second turn reused the neighbour's verdict",
+    );
+    assert.equal(
+      outcomes.some((event) => event.attrs?.deferred_to !== undefined),
+      false,
+      "nothing deferred, because nothing waited",
+    );
+    release();
+    await held;
+  } finally {
+    if (previous === undefined) {
+      delete process.env.TLC_TEST_GATE_LOCK_WAIT_MS;
+    } else {
+      process.env.TLC_TEST_GATE_LOCK_WAIT_MS = previous;
+    }
     rmSync(root, { recursive: true, force: true });
   }
 });
@@ -971,4 +1070,32 @@ test("a turn that ran a tool is not idle, even when the tool succeeded", async (
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+/**
+ * hazard: a mutant that dropped the bound and took the library's 120-second default survived every other test
+ * here — it still deferred, so the assertions held and only the clock noticed. The hook's own registered timeout
+ * is the number the wait has to fit inside, so the test reads it from the wiring rather than restating it.
+ */
+test("the lock wait leaves the Stop hook room to run the gate it waited for", () => {
+  const stopEntry = claudeWiring({ launcherPath: "/opt/tlc/bin/tlc-exec.mjs" }).entries.find(
+    (entry) => entry.hookEvent === "Stop",
+  );
+  assert.notEqual(stopEntry, undefined, "the Stop hook is registered");
+  const budgetMs = (stopEntry?.timeoutSeconds ?? 0) * 1000;
+
+  assert.equal(STOP_LOCK_WAIT_MS < budgetMs, true, `${STOP_LOCK_WAIT_MS}ms must fit inside ${budgetMs}ms`);
+  // invariant: a wait that eats most of the budget starves the gate. A fifth leaves four fifths to run it.
+  assert.equal(STOP_LOCK_WAIT_MS <= budgetMs / 5, true, "the wait may not claim most of the hook's budget");
+  assert.equal(
+    STOP_LOCK_WAIT_MS < coreFacade.gate.GATE_LOCK_WAIT_MS,
+    true,
+    "bounded below the library default",
+  );
+
+  // invariant: the seam only ever shortens the wait, and only when set.
+  assert.equal(stopLockWaitMs({}), STOP_LOCK_WAIT_MS);
+  assert.equal(stopLockWaitMs({ TLC_TEST_GATE_LOCK_WAIT_MS: "150" }), 150);
+  assert.equal(stopLockWaitMs({ TLC_TEST_GATE_LOCK_WAIT_MS: "nonsense" }), STOP_LOCK_WAIT_MS);
+  assert.equal(stopLockWaitMs({ TLC_TEST_GATE_LOCK_WAIT_MS: "0" }), STOP_LOCK_WAIT_MS);
 });

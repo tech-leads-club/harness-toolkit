@@ -59,6 +59,33 @@ function recordGateOutcome(args: {
 }
 
 /**
+ * why: a gate that deferred has to be findable afterwards. Without a record the only trace was one turn's reply,
+ * which is why the same neighbour collision was reported three times as if each were new
+ * ([/decisions/ad-073.md](/decisions/ad-073.md)).
+ */
+function recordGateDeferred(args: {
+  root: string;
+  provider: string;
+  sessionKey: string;
+  gate: string;
+  holder: string;
+  policy: Policy;
+}): void {
+  coreFacade.observability.recordObs(args.root, obsConfigFor(args.policy), {
+    provider: args.provider,
+    kind: "gate.outcome",
+    sessionKey: args.sessionKey,
+    attrs: {
+      gate: args.gate,
+      // invariant: not `passed: false`. A deferred gate produced no verdict, and recording one as a failure would
+      // put a failure in the report that nothing failed.
+      deferred_to: args.holder,
+      rule: "grind",
+    },
+  });
+}
+
+/**
  * The verdict a gate would produce, without producing it twice.
  *
  * why: keyed on a content hash of the command and the files, which is the monorepo-tooling rule — same inputs,
@@ -66,7 +93,31 @@ function recordGateOutcome(args: {
  * question, because the trigger read the state of the tree rather than what the turn did
  * ([/decisions/ad-045.md](/decisions/ad-045.md)).
  */
-type GateRun = { artifact: LastGateArtifact; reused: boolean };
+/**
+ * invariant: a union, so a deferred gate cannot be read as a passing artifact. A shape with an optional artifact
+ * would have let `undefined` mean "fine" at three call sites that reach straight for `artifact.passed`
+ * ([/decisions/ad-073.md](/decisions/ad-073.md)).
+ */
+type GateRun =
+  | { kind: "ran"; artifact: LastGateArtifact; reused: boolean }
+  | { kind: "deferred"; holder: string };
+
+/**
+ * hazard: `GATE_LOCK_WAIT_MS` is 120 000 and the Stop hook is registered with `timeoutSeconds: 120`, so waiting
+ * the library default leaves nothing for the gate the wait exists to run — the host kills the hook first. This is
+ * the share of the budget a neighbour may spend before the turn stops waiting for it.
+ */
+export const STOP_LOCK_WAIT_MS = 10_000;
+
+/**
+ * why: a test that proves the wait has to wait, and a suite that pays ten seconds for it pays that on every gate
+ * run in every environment. This is the only seam and it is read here, so the production default is a constant
+ * nobody can reconfigure from a project ([/decisions/ad-073.md](/decisions/ad-073.md)).
+ */
+export function stopLockWaitMs(env: NodeJS.ProcessEnv = process.env): number {
+  const declared = Number(env.TLC_TEST_GATE_LOCK_WAIT_MS);
+  return Number.isFinite(declared) && declared > 0 ? declared : STOP_LOCK_WAIT_MS;
+}
 
 /**
  * Grades the lessons that were injected the last time this gate failed. `helped` means the gate the lessons were
@@ -111,21 +162,41 @@ async function runLockedGate(args: {
   const inputs = coreFacade.gate.computeInputsHash(args.root, args.recordFiles, command);
   const cached = coreFacade.gate.cachedVerdict(coreFacade.gate.readLastGate(args.root), args.gate, inputs);
 
-  const artifact =
-    cached ??
-    (await coreFacade.gate.withGateLock(args.root, args.provider, args.session, async () => {
-      const result = await runCommand(args.root, args.command, args.argvFiles);
-      return coreFacade.gate.writeLastGate({
-        root: args.root,
-        gate: args.gate,
-        exitCode: result.exitCode,
-        command,
-        files: args.recordFiles,
-        durationMs: result.durationMs,
-        output: result.output,
-        ...(inputs.complete ? { inputsHash: inputs.hash } : {}),
-      });
-    }));
+  let artifact: LastGateArtifact;
+  if (cached !== null) {
+    artifact = cached;
+  } else {
+    try {
+      artifact = await coreFacade.gate.withGateLock(
+        args.root,
+        args.provider,
+        args.session,
+        async () => {
+          const result = await runCommand(args.root, args.command, args.argvFiles);
+          return coreFacade.gate.writeLastGate({
+            root: args.root,
+            gate: args.gate,
+            exitCode: result.exitCode,
+            command,
+            files: args.recordFiles,
+            durationMs: result.durationMs,
+            output: result.output,
+            ...(inputs.complete ? { inputsHash: inputs.hash } : {}),
+          });
+        },
+        { waitMs: stopLockWaitMs() },
+      );
+    } catch (error) {
+      // why: a neighbour in the same checkout is running these very commands over this very tree, so the property
+      // is being verified — by somebody else. Blocking this turn tells the one participant that cannot act.
+      if (!(error instanceof coreFacade.gate.GateLockTimeoutError)) {
+        throw error;
+      }
+      const holder = coreFacade.gate.describeHolder(args.root) ?? "another session";
+      recordGateDeferred({ ...args, holder });
+      return { kind: "deferred", holder };
+    }
+  }
 
   // invariant: recorded outside the lock. A measurement must not widen the window in which one gate blocks another.
   recordGateOutcome({ ...args, artifact, reused: cached !== null });
@@ -136,7 +207,7 @@ async function runLockedGate(args: {
     gate: args.gate,
     passed: artifact.passed,
   });
-  return { artifact, reused: cached !== null };
+  return { kind: "ran", artifact, reused: cached !== null };
 }
 
 async function failGate(args: {
@@ -335,6 +406,11 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   //
   // invariant: absent, this is the string `HEAD`, which is exactly the previous behaviour.
   const turnBase = handoff.turn_base_sha ?? "HEAD";
+  /**
+   * why: collected rather than returned. A turn may defer more than one gate to the same neighbour, and the reply
+   * says so once at the end instead of three times ([/decisions/ad-073.md](/decisions/ad-073.md)).
+   */
+  const deferred: string[] = [];
   const changedFiles = await listChangedRepoFiles(root, turnBase);
   const codeTargets = filterCodeTargets(changedFiles, policy.codePaths);
   const testTargets = filterTestTargets(changedFiles);
@@ -414,16 +490,6 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
     };
   }
 
-  if (policy.grind.enabled && (codeTargets.length > 0 || testTargets.length > 0)) {
-    const holder = coreFacade.gate.describeHolder(root);
-    if (holder) {
-      return {
-        kind: "continue",
-        text: `BLOCKED: the grind lock is held by ${holder}. Wait for it to release or coordinate, then continue.`,
-      };
-    }
-  }
-
   if (policy.grind.enabled && policy.grind.lintCommand && codeTargets.length > 0) {
     const run = await runLockedGate({
       root,
@@ -439,7 +505,9 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
         : [],
       recordFiles: codeTargets,
     });
-    if (!run.artifact.passed) {
+    if (run.kind === "deferred") {
+      deferred.push(run.holder);
+    } else if (!run.artifact.passed) {
       return failGate({
         root,
         provider,
@@ -474,7 +542,9 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
           : [],
         recordFiles,
       });
-      if (!run.artifact.passed) {
+      if (run.kind === "deferred") {
+        deferred.push(run.holder);
+      } else if (!run.artifact.passed) {
         return failGate({
           root,
           provider,
@@ -590,7 +660,9 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
       argvFiles: [],
       recordFiles: changedFiles,
     });
-    if (!run.artifact.passed) {
+    if (run.kind === "deferred") {
+      deferred.push(run.holder);
+    } else if (!run.artifact.passed) {
       if (policy.docs.severity === "deny") {
         return failGate({
           root,
@@ -727,13 +799,28 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   coreFacade.stagnation.clearFingerprint(root, sessionKey);
   coreFacade.shellPolicy.clearShellStall(root, sessionKey);
   coreFacade.turn.resetLoop(root, sessionKey);
+  /**
+   * invariant: a deferred gate is `skipped`, never `pass`. Nothing verified this turn — a neighbour session is
+   * verifying the same tree — and writing `pass` would put a verdict in the handoff that no gate produced
+   * ([/decisions/ad-073.md](/decisions/ad-073.md)).
+   *
+   * why: recorded and not narrated. `continue` is the only stop-time channel that carries text and it renders as
+   * `{"decision":"block"}`, so telling the turn would mean blocking it — the defect being fixed. `gate.outcome` is
+   * a `why` kind, so `tlc harness why` answers it after the fact.
+   */
+  const holders = [...new Set(deferred)];
   await coreFacade.handoff.patchHandoff(root, provider, {
     slice: {
-      last_gate_result: "pass",
+      last_gate_result: holders.length > 0 ? "skipped" : "pass",
       blockers: undefined,
       previous_gaps: undefined,
       last_failure_category: undefined,
-      next_action: changedFiles.length > 0 ? "Continue or commit when ready." : undefined,
+      next_action:
+        holders.length > 0
+          ? `The grind gate deferred to ${holders.join(", ")} — that session is running it over this tree.`
+          : changedFiles.length > 0
+            ? "Continue or commit when ready."
+            : undefined,
       fingerprint_hits: 0,
     },
   });

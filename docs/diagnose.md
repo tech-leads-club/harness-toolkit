@@ -173,15 +173,29 @@ Nothing withheld and still absent? Then it lost on rank or budget, not on health
 `tlc harness doctor` carries the same facts as one row (`lesson health`), and warns separately about stale,
 out-of-window and unproven lessons. See [/lessons.md](/lessons.md).
 
-## Grind blocked by a lock nobody holds
+## Two agents in one checkout, and the grind
 
-`BLOCKED: the grind lock is held by …` when no session is running means the holder died without releasing
-`.tlc/harness/state/grind.lock`. The runtime reclaims it: past `GATE_LOCK_STALE_MS` (30 minutes) by age, and
-after a five-second grace window when the body cannot be read or names no holder — a truncated write, a
-zero-length file, or JSON that parses to something without `provider` / `session` / `pid`. Deleting the file
-by hand is no longer necessary.
+A turn no longer blocks because a neighbour session is mid-gate. It resolves in this order
+([/decisions/ad-073.md](/decisions/ad-073.md)):
 
-If it persists, read the file: a body naming a live pid is a real holder, and the wait is correct.
+1. **A recorded verdict whose inputs hash matches is reused**, and the lock is never taken. Two sessions editing
+   one tree usually land here, because the hash covers the command and the files rather than the session.
+2. **Otherwise the turn waits**, up to ten seconds — bounded so the wait plus the gate still fit inside the
+   `Stop` hook's 120-second timeout.
+3. **If the wait expires the gate defers.** The turn ends, the handoff records `last_gate_result: skipped` naming
+   the holder, and a `gate.outcome` carrying `deferred_to` reaches the record, so `tlc harness why` shows it.
+
+Deferring is safe because both sessions share the tree: the neighbour's commands cover this turn's edits too. If
+they pass, this turn was legitimate. If they fail, the neighbour is blocked holding the failure and the tree is
+still broken, so the next stop in either session blocks on it. What is given up is only *which* turn is told.
+
+A dead or stale holder never causes even the wait: the runtime reclaims past `GATE_LOCK_STALE_MS` (30 minutes) by
+age, immediately when the pid is gone, and after a five-second grace window when the body cannot be read or names
+no holder — a truncated write, a zero-length file, or JSON without `provider` / `session` / `pid`. Deleting the
+file by hand is never necessary.
+
+**An agent cannot switch the grind off from inside a session**, and that is correct: those subcommands are policy
+surface ([/decisions/ad-022.md](/decisions/ad-022.md)). Run them from your own terminal.
 
 ## `status` disagrees with what a hook does
 

@@ -44,7 +44,7 @@ import {
 } from "./gate/gate.command.ts";
 import { filesFromOutput } from "./gate/gate.findings.ts";
 import { cachedVerdict, computeInputsHash, isCacheHit } from "./gate/gate.inputs.ts";
-import { describeHolder, withGateLock } from "./gate/gate.lock.ts";
+import { describeHolder, GATE_LOCK_WAIT_MS, GateLockTimeoutError, withGateLock } from "./gate/gate.lock.ts";
 import { gapsFromArtifact } from "./gate/gate.service.ts";
 import { patchHandoff, readForeignSlices, readHandoff, readHandoffFile } from "./handoff/handoff.service.ts";
 import { authoredLessonId, buildAuthoredLesson } from "./lesson/lesson.authored.ts";
@@ -225,6 +225,8 @@ export const coreFacade = {
     formatAvailableInventory,
   },
   gate: {
+    GATE_LOCK_WAIT_MS,
+    GateLockTimeoutError,
     writeLastGate,
     readLastGate,
     computeGateFingerprint,

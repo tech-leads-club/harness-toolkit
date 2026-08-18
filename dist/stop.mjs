@@ -6334,6 +6334,8 @@ var coreFacade = {
     formatAvailableInventory
   },
   gate: {
+    GATE_LOCK_WAIT_MS,
+    GateLockTimeoutError,
     writeLastGate,
     readLastGate,
     computeGateFingerprint,
@@ -7505,6 +7507,23 @@ function recordGateOutcome(args) {
     }
   });
 }
+function recordGateDeferred(args) {
+  coreFacade.observability.recordObs(args.root, obsConfigFor(args.policy), {
+    provider: args.provider,
+    kind: "gate.outcome",
+    sessionKey: args.sessionKey,
+    attrs: {
+      gate: args.gate,
+      deferred_to: args.holder,
+      rule: "grind"
+    }
+  });
+}
+var STOP_LOCK_WAIT_MS = 1e4;
+function stopLockWaitMs(env = process.env) {
+  const declared = Number(env.TLC_TEST_GATE_LOCK_WAIT_MS);
+  return Number.isFinite(declared) && declared > 0 ? declared : STOP_LOCK_WAIT_MS;
+}
 async function creditPendingLessons(args) {
   const { pending } = args;
   if (!pending || pending.gate !== args.gate || pending.ids.length === 0) {
@@ -7519,19 +7538,33 @@ async function runLockedGate(args) {
   const command = [...args.command, ...args.argvFiles];
   const inputs = coreFacade.gate.computeInputsHash(args.root, args.recordFiles, command);
   const cached = coreFacade.gate.cachedVerdict(coreFacade.gate.readLastGate(args.root), args.gate, inputs);
-  const artifact = cached ?? await coreFacade.gate.withGateLock(args.root, args.provider, args.session, async () => {
-    const result = await runCommand(args.root, args.command, args.argvFiles);
-    return coreFacade.gate.writeLastGate({
-      root: args.root,
-      gate: args.gate,
-      exitCode: result.exitCode,
-      command,
-      files: args.recordFiles,
-      durationMs: result.durationMs,
-      output: result.output,
-      ...inputs.complete ? { inputsHash: inputs.hash } : {}
-    });
-  });
+  let artifact;
+  if (cached !== null) {
+    artifact = cached;
+  } else {
+    try {
+      artifact = await coreFacade.gate.withGateLock(args.root, args.provider, args.session, async () => {
+        const result = await runCommand(args.root, args.command, args.argvFiles);
+        return coreFacade.gate.writeLastGate({
+          root: args.root,
+          gate: args.gate,
+          exitCode: result.exitCode,
+          command,
+          files: args.recordFiles,
+          durationMs: result.durationMs,
+          output: result.output,
+          ...inputs.complete ? { inputsHash: inputs.hash } : {}
+        });
+      }, { waitMs: stopLockWaitMs() });
+    } catch (error) {
+      if (!(error instanceof coreFacade.gate.GateLockTimeoutError)) {
+        throw error;
+      }
+      const holder = coreFacade.gate.describeHolder(args.root) ?? "another session";
+      recordGateDeferred({ ...args, holder });
+      return { kind: "deferred", holder };
+    }
+  }
   recordGateOutcome({ ...args, artifact, reused: cached !== null });
   await creditPendingLessons({
     root: args.root,
@@ -7540,7 +7573,7 @@ async function runLockedGate(args) {
     gate: args.gate,
     passed: artifact.passed
   });
-  return { artifact, reused: cached !== null };
+  return { kind: "ran", artifact, reused: cached !== null };
 }
 async function failGate(args) {
   const { policy } = args;
@@ -7685,6 +7718,7 @@ var stopHandler = async (event, ctx) => {
   const loopCount = capabilities.nativeLoopCounter ? event.loopCount ?? 0 : coreFacade.turn.nextLoop(root, sessionKey);
   const handoff = coreFacade.handoff.readHandoff(root, provider);
   const turnBase = handoff.turn_base_sha ?? "HEAD";
+  const deferred = [];
   const changedFiles = await listChangedRepoFiles(root, turnBase);
   const codeTargets = filterCodeTargets(changedFiles, policy.codePaths);
   const testTargets = filterTestTargets(changedFiles);
@@ -7740,15 +7774,6 @@ var stopHandler = async (event, ctx) => {
 `)
     };
   }
-  if (policy.grind.enabled && (codeTargets.length > 0 || testTargets.length > 0)) {
-    const holder = coreFacade.gate.describeHolder(root);
-    if (holder) {
-      return {
-        kind: "continue",
-        text: `BLOCKED: the grind lock is held by ${holder}. Wait for it to release or coordinate, then continue.`
-      };
-    }
-  }
   if (policy.grind.enabled && policy.grind.lintCommand && codeTargets.length > 0) {
     const run = await runLockedGate({
       root,
@@ -7762,7 +7787,9 @@ var stopHandler = async (event, ctx) => {
       argvFiles: coreFacade.gate.shouldAppendFiles(policy.grind.lintCommand, policy.grind.appendFiles) ? codeTargets : [],
       recordFiles: codeTargets
     });
-    if (!run.artifact.passed) {
+    if (run.kind === "deferred") {
+      deferred.push(run.holder);
+    } else if (!run.artifact.passed) {
       return failGate({
         root,
         provider,
@@ -7791,7 +7818,9 @@ var stopHandler = async (event, ctx) => {
         argvFiles: coreFacade.gate.shouldAppendFiles(policy.grind.testCommand, policy.grind.appendFiles) ? testTargets : [],
         recordFiles
       });
-      if (!run.artifact.passed) {
+      if (run.kind === "deferred") {
+        deferred.push(run.holder);
+      } else if (!run.artifact.passed) {
         return failGate({
           root,
           provider,
@@ -7873,7 +7902,9 @@ var stopHandler = async (event, ctx) => {
       argvFiles: [],
       recordFiles: changedFiles
     });
-    if (!run.artifact.passed) {
+    if (run.kind === "deferred") {
+      deferred.push(run.holder);
+    } else if (!run.artifact.passed) {
       if (policy.docs.severity === "deny") {
         return failGate({
           root,
@@ -7990,13 +8021,14 @@ var stopHandler = async (event, ctx) => {
   coreFacade.stagnation.clearFingerprint(root, sessionKey);
   coreFacade.shellPolicy.clearShellStall(root, sessionKey);
   coreFacade.turn.resetLoop(root, sessionKey);
+  const holders = [...new Set(deferred)];
   await coreFacade.handoff.patchHandoff(root, provider, {
     slice: {
-      last_gate_result: "pass",
+      last_gate_result: holders.length > 0 ? "skipped" : "pass",
       blockers: undefined,
       previous_gaps: undefined,
       last_failure_category: undefined,
-      next_action: changedFiles.length > 0 ? "Continue or commit when ready." : undefined,
+      next_action: holders.length > 0 ? `The grind gate deferred to ${holders.join(", ")} — that session is running it over this tree.` : changedFiles.length > 0 ? "Continue or commit when ready." : undefined,
       fingerprint_hits: 0
     }
   });
@@ -8006,5 +8038,7 @@ if (__require.main == __require.module) {
   await main(stopHandler);
 }
 export {
-  stopHandler
+  stopLockWaitMs,
+  stopHandler,
+  STOP_LOCK_WAIT_MS
 };

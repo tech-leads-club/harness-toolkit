@@ -6284,6 +6284,8 @@ var coreFacade = {
     formatAvailableInventory
   },
   gate: {
+    GATE_LOCK_WAIT_MS,
+    GateLockTimeoutError,
     writeLastGate,
     readLastGate,
     computeGateFingerprint,
