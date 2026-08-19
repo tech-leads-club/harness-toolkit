@@ -25,6 +25,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-088** — The release keeps its pull request and merges it with --admin, and a hand-written workflow linter is replaced by zizmor ([/decisions/ad-088.md](/decisions/ad-088.md))
 - **AD-089** — The release is chained to CI instead of racing it, and a superseded run is cancelled ([/decisions/ad-089.md](/decisions/ad-089.md))
 - **AD-090** — A draft release creates no tag, and without the tag the release loops ([/decisions/ad-090.md](/decisions/ad-090.md))
+- **AD-091** — One workflow owns main and one owns pull requests, so there is one run and one matrix ([/decisions/ad-091.md](/decisions/ad-091.md))
 
 ## 2026-08-17
 

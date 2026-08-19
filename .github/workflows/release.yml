@@ -10,14 +10,15 @@ name: Release
 # commits, and bumps the minor every round. With this workflow chained to CI that became a loop: six versions,
 # 0.2.3 through 0.7.0, in nine minutes ([/decisions/ad-090.md](/decisions/ad-090.md)).
 #
-# why: triggered by CI finishing, not by the push. Both fired on the same commit before, so the three-platform
-# matrix ran twice for one release — once as CI and once as this workflow's `verify` job calling it. Chaining
-# removes the second copy and makes the ordering real: a release cannot start until the gate is green on the exact
-# commit it would release ([/decisions/ad-089.md](/decisions/ad-089.md)).
+# why: this workflow owns `main`, and `ci.yml` owns pull requests. The gate is the first job here, called from that
+# file rather than copied, so a commit on `main` produces exactly one run containing exactly one matrix — and the
+# ordering is a `needs:` rather than a second workflow racing the first.
+#
+# hazard: this was briefly a `workflow_run` chained to CI. That removed the duplication and introduced a worse
+# problem: zizmor flags `workflow_run` as `dangerous-triggers` at high severity, because it runs with the base
+# repository's secrets and token regardless of what triggered it ([/decisions/ad-091.md](/decisions/ad-091.md)).
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
+  push:
     branches: [main]
   workflow_dispatch:
 
@@ -31,11 +32,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # invariant: a red gate releases nothing, expressed as a dependency rather than as a condition on somebody else's
+  # conclusion. Every job below needs this one, so a failing matrix skips the release with no `if:` to get wrong.
+  gate:
+    uses: ./.github/workflows/ci.yml
+
   release-please:
-    # invariant: a red gate releases nothing. `workflow_run` fires on *completed*, whatever the conclusion, so the
-    # conclusion is the condition — without it a chained workflow runs after a failure exactly as it does after a
-    # pass, which is worse than the duplication it replaced.
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    needs: gate
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

@@ -15,6 +15,7 @@ doctor reports against your own configuration.
 - **AD-088** — The release keeps its pull request and merges it with --admin, and a hand-written workflow linter is replaced by zizmor
 - **AD-089** — The release is chained to CI instead of racing it, and a superseded run is cancelled
 - **AD-090** — A draft release creates no tag, and without the tag the release loops
+- **AD-091** — One workflow owns main and one owns pull requests, so there is one run and one matrix
 
 ## v0.2.2
 

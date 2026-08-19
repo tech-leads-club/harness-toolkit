@@ -2,10 +2,12 @@ name: CI
 
 # Standard GitHub-hosted runners are free and unlimited on public repositories, so the whole matrix
 # runs on every push. Larger runners would bill even here — keep the matrix on standard ones.
+# why: no `push` trigger. On `main` this matrix runs as the first job of `release.yml`, which calls this file — so a
+# push trigger here would run it a second time in parallel, which is the duplication that produced four live runs
+# for one release ([/decisions/ad-091.md](/decisions/ad-091.md)).
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_call:
   workflow_dispatch:
 
 permissions:

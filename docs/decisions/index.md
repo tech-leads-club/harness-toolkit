@@ -105,6 +105,7 @@ Handoff section and a link back to this index.
 | [AD-088](/decisions/ad-088.md) | The release keeps its pull request and merges it with --admin, and a hand-written workflow linter is replaced by zizmor | active |
 | [AD-089](/decisions/ad-089.md) | The release is chained to CI instead of racing it, and a superseded run is cancelled | active |
 | [AD-090](/decisions/ad-090.md) | A draft release creates no tag, and without the tag the release loops | active |
+| [AD-091](/decisions/ad-091.md) | One workflow owns main and one owns pull requests, so there is one run and one matrix | active |
 
 ## Archived
 
