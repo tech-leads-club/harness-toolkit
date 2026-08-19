@@ -102,4 +102,37 @@ describe("linkHealth", () => {
   test("the runtime home itself counts as inside", () => {
     assert.equal(linkHealth("/x", HOME, probe(HOME)).state, "ok");
   });
+
+  /**
+   * hazard: this is the false positive the first version shipped. On a contributor install the runtime home is a
+   * symlink to a working clone — `doctor` reports that as healthy — so the link's realpath and the home as
+   * configured never share a prefix, and two failures printed on a machine where nothing was wrong. AD-034: a
+   * warning that fires on a healthy install is not a warning.
+   */
+  test("AC a runtime home that is itself a link is resolved before comparing", () => {
+    const clone = "/somewhere/checkout";
+    const health = linkHealth("/cfg/skills/x", HOME, {
+      linkTarget: () => `${clone}/skills/${SKILL_NAME}`,
+      exists: () => true,
+      realpath: (path) => (path === HOME ? clone : path),
+    });
+
+    assert.equal(health.state, "ok");
+  });
+
+  /** invariant: resolving the home must not turn a genuinely foreign link into a healthy one. */
+  test("AC a foreign link is still foreign once the home is resolved", () => {
+    const health = linkHealth("/cfg/skills/x", HOME, {
+      linkTarget: () => "/tmp/tlc-recovery-abc/install/skills/x",
+      exists: () => true,
+      realpath: (path) => (path === HOME ? "/somewhere/checkout" : path),
+    });
+
+    assert.equal(health.state, "outside-runtime");
+  });
+
+  /** why: without a resolver the comparison is textual, which is what every caller before doctor relied on. */
+  test("with no resolver the home is compared as given", () => {
+    assert.equal(linkHealth("/x", HOME, probe(`${HOME}/skills/${SKILL_NAME}`)).state, "ok");
+  });
 });

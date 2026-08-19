@@ -48,11 +48,21 @@ export type LinkHealth =
  *
  * invariant: a link that resolves outside the runtime home is reported even when it currently exists, because
  * a source that is not the runtime is a source that will move.
+ *
+ * hazard: BOTH sides have to be resolved. The first version compared the link's realpath against the runtime home
+ * as configured, and on a contributor install — where `~/.tlc/harness` is a symlink to a working clone, which
+ * `doctor` reports as healthy — the two never share a prefix. It printed two failures on a machine where nothing
+ * was wrong, which is the reading AD-034 exists to forbid: a warning that fires on a healthy install is not a
+ * warning ([/decisions/ad-095.md](/decisions/ad-095.md)).
  */
 export function linkHealth(
   target: string,
   runtimeHome: string,
-  probe: { linkTarget: (path: string) => string | null; exists: (path: string) => boolean },
+  probe: {
+    linkTarget: (path: string) => string | null;
+    exists: (path: string) => boolean;
+    realpath?: (path: string) => string;
+  },
 ): LinkHealth {
   const resolved = probe.linkTarget(target);
   if (resolved === null) {
@@ -61,7 +71,8 @@ export function linkHealth(
   if (!probe.exists(resolved)) {
     return { state: "dangling", target, resolved };
   }
-  const home = runtimeHome.replace(/\/+$/, "");
+  const resolveHome = probe.realpath ?? ((path: string) => path);
+  const home = resolveHome(runtimeHome).replace(/\/+$/, "");
   return resolved === home || resolved.startsWith(`${home}/`)
     ? { state: "ok", target, resolved }
     : { state: "outside-runtime", target, resolved };

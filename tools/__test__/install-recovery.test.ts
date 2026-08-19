@@ -89,18 +89,34 @@ function stuckInstall(): { install: string; upstream: string } {
  * branch — `BASH_SOURCE` has a sibling `bin/tlc-exec.mjs` — which is correct for a contributor and not the path
  * under test. A `curl | bash` install has no such sibling, and a lone copy is the faithful model of it.
  */
+/**
+ * hazard: a fake `HOME` is not enough isolation. `install.sh` resolves `${CURSOR_CONFIG_DIR:-$HOME/.cursor}` and
+ * `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`, and those variables arrive through `...process.env` — so a relocation
+ * variable set in the shell running the suite overrides the fake home and the installer links the init skill into
+ * the operator's real provider directory, pointing at this test's scratch tree. Measured: on a machine with
+ * `CLAUDE_CONFIG_DIR` set, that provider's skill link was repeatedly left pointing at
+ * `/tmp/tlc-recovery-…/install/skills/harness-init`, a directory gone on the next boot, while the other provider —
+ * which had no relocation variable — was untouched ([/decisions/ad-095.md](/decisions/ad-095.md)).
+ *
+ * invariant: every path the installer resolves from the environment is named here. Isolating the home only covers
+ * the defaults.
+ */
+function sandboxEnv(dest: string): Record<string, string> {
+  const home = newDir("tlc-fakehome-");
+  return {
+    ...process.env,
+    TLC_HOME: dest,
+    TLC_BIN_DIR: join(newDir("tlc-bin-"), "bin"),
+    HOME: home,
+    CURSOR_CONFIG_DIR: join(home, ".cursor"),
+    CLAUDE_CONFIG_DIR: join(home, ".claude"),
+  } as Record<string, string>;
+}
+
 function runInstaller(dest: string): { status: number | null; output: string } {
   const standalone = join(newDir("tlc-installer-"), "install.sh");
   writeFileSync(standalone, readFileSync(join(repoRoot, "install.sh"), "utf8"));
-  const result = spawnSync("bash", [standalone], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      TLC_HOME: dest,
-      TLC_BIN_DIR: join(newDir("tlc-bin-"), "bin"),
-      HOME: newDir("tlc-fakehome-"),
-    },
-  });
+  const result = spawnSync("bash", [standalone], { encoding: "utf8", env: sandboxEnv(dest) });
   return { status: result.status, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
 }
 
@@ -168,4 +184,36 @@ test("update rejects an unknown flag by name", () => {
 test("update --check still routes, and a bare update still routes", () => {
   assert.equal(route(["update", "--check"]).kind, "update-check");
   assert.equal(route(["update"]).kind, "update");
+});
+
+/**
+ * hazard: this is the assertion whose absence let the suite corrupt the machine running it. The installer links the
+ * init skill into every provider config directory it resolves, and it resolves them from the environment — so a
+ * relocation variable inherited from the shell sends that link into the operator's real directory, pointing at a
+ * scratch tree that will not exist tomorrow. It happened repeatedly, to one provider and not the other, and only
+ * the one with the variable set ([/decisions/ad-095.md](/decisions/ad-095.md)).
+ *
+ * invariant: every provider path the sandbox hands the installer is inside the sandbox. Naming the variables in
+ * `sandboxEnv` is the fix; this is what notices when a new one is added and not named.
+ */
+test("the sandbox names every provider path the installer resolves, and all of them are inside it", () => {
+  const dest = newDir("tlc-env-probe-");
+  const env = sandboxEnv(dest);
+  const home = env.HOME as string;
+
+  for (const key of ["CURSOR_CONFIG_DIR", "CLAUDE_CONFIG_DIR"]) {
+    const value = env[key];
+    assert.ok(value, `${key} must be set, or the installer falls back to a path outside the sandbox`);
+    assert.ok(
+      (value as string).startsWith(home),
+      `${key} is ${value}, which is outside the sandbox home ${home}`,
+    );
+  }
+
+  // invariant: and it must differ from whatever this shell has, otherwise the isolation is accidental.
+  for (const key of ["CURSOR_CONFIG_DIR", "CLAUDE_CONFIG_DIR"]) {
+    if (process.env[key]) {
+      assert.notEqual(env[key], process.env[key], `${key} leaked from the shell into the sandbox`);
+    }
+  }
 });

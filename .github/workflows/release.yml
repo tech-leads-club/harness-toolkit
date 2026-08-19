@@ -28,8 +28,15 @@ on:
 permissions:
   contents: read
 
-# invariant: one release at a time, and never cancelled halfway. A run cancelled between the publish and the push
-# is the one state that needs a human, so it must not be caused by a second run arriving.
+# invariant: one release at a time, and NEVER cancelled halfway. `cancel-in-progress: true` here would mean a run
+# arriving during the seconds between `npm publish` and the tag push destroys the only process that can finish the
+# job — leaving an immutable version on the registry with no tag, which is the one state that needs a human. The
+# published guidance says the same: cancel superseded work on pull requests, serialise deployments.
+#
+# why: waiting runs are still collapsed, but by the release itself rather than by this setting. Several pushes with
+# nothing released yet leave several runs pending approval; approving one has it cancel the others before it
+# publishes, so their commits land in the single version it computes rather than in one version each. The run doing
+# the publishing is therefore never the run being cancelled ([/decisions/ad-095.md](/decisions/ad-095.md)).
 concurrency:
   group: release
   cancel-in-progress: false
@@ -91,6 +98,9 @@ jobs:
     environment: publish
     permissions:
       contents: write
+      # why: cancelling the runs this one supersedes. Granted to GITHUB_TOKEN rather than added to the App's scope,
+      # because the App token is the one that writes to `main` and it should not also be able to stop workflows.
+      actions: write
       # Trusted publishing: npm exchanges this OIDC token for a short-lived credential, so no npm token is stored
       # anywhere. It is also what produces the provenance attestation, and only from a public repository.
       id-token: write
@@ -143,6 +153,37 @@ jobs:
 
       - name: npm ci
         run: npm ci
+
+      # why: this run was approved, so it is the one that publishes — and its plan already covers every commit since
+      # the last tag, including the ones that made the other runs. Cancelling them here collapses several pushes into
+      # one version instead of one version each, and does it from the run that is going to succeed rather than by
+      # cancelling whichever run happened to be publishing ([/decisions/ad-095.md](/decisions/ad-095.md)).
+      #
+      # invariant: only runs older than this one, and only while they are still queued or waiting for approval. A run
+      # that is already `in_progress` has passed its own approval and may be mid-publish; cancelling that is the
+      # thing this whole ordering exists to prevent.
+      - name: Collapse the runs this one supersedes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          superseded="$(gh api "repos/${REPO}/actions/workflows/release.yml/runs?status=waiting&per_page=50" \
+            --jq ".workflow_runs[] | select(.id < ${RUN_ID}) | .id" 2>/dev/null || true)"
+          queued="$(gh api "repos/${REPO}/actions/workflows/release.yml/runs?status=queued&per_page=50" \
+            --jq ".workflow_runs[] | select(.id < ${RUN_ID}) | .id" 2>/dev/null || true)"
+          count=0
+          for id in $superseded $queued; do
+            # why: a failure to cancel is reported and never fatal. Publishing the right version matters more than
+            # tidying the queue, and a stale pending run costs nothing but a line in the list.
+            if gh api -X POST "repos/${REPO}/actions/runs/${id}/cancel" >/dev/null 2>&1; then
+              echo "cancelled superseded run ${id}"
+              count=$((count + 1))
+            else
+              echo "::warning::could not cancel run ${id} — it stays pending and releases nothing on its own"
+            fi
+          done
+          echo "${count} superseded run(s) cancelled; this run releases ${{ needs.decide.outputs.version }}"
 
       # invariant: the version about to be published must not already exist — not as a tag, not on the registry.
       # The base is the last tag, so a collision means the plan was computed against a state that has since moved,

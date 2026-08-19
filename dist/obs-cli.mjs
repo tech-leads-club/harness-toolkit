@@ -5611,7 +5611,8 @@ function linkHealth(target, runtimeHome2, probe) {
   if (!probe.exists(resolved)) {
     return { state: "dangling", target, resolved };
   }
-  const home = runtimeHome2.replace(/\/+$/, "");
+  const resolveHome = probe.realpath ?? ((path) => path);
+  const home = resolveHome(runtimeHome2).replace(/\/+$/, "");
   return resolved === home || resolved.startsWith(`${home}/`) ? { state: "ok", target, resolved } : { state: "outside-runtime", target, resolved };
 }
 function linkHealthMessage(health) {

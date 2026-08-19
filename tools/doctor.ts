@@ -158,6 +158,15 @@ export function checkSkillLinks(
       }
     },
     exists: existsSync,
+    // why: the runtime home is itself a symlink on a contributor install, so it has to be resolved before the
+    // comparison. Without this both sides are spelled differently and every healthy link reads as foreign.
+    realpath: (path: string) => {
+      try {
+        return realpathSync(path);
+      } catch {
+        return path;
+      }
+    },
   },
 ): Check[] {
   return providerDirs
