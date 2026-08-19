@@ -88,6 +88,7 @@ Handoff section and a link back to this index.
 | [AD-071](/decisions/ad-071.md) | The turn's added lines are checked against the code the project already has | active |
 | [AD-072](/decisions/ad-072.md) | A record can leave the corpus, and removing is a change worth recording | active |
 | [AD-073](/decisions/ad-073.md) | A neighbour mid-gate is not a reason to block a turn | active |
+| [AD-074](/decisions/ad-074.md) | Code the gate cannot read is refused, and a credential is not always a file | active |
 
 ## Archived
 

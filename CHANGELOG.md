@@ -83,3 +83,4 @@ doctor reports against your own configuration.
 - **AD-071** — The turn's added lines are checked against the code the project already has
 - **AD-072** — A record can leave the corpus, and removing is a change worth recording
 - **AD-073** — A neighbour mid-gate is not a reason to block a turn
+- **AD-074** — Code the gate cannot read is refused, and a credential is not always a file

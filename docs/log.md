@@ -16,6 +16,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 ## 2026-08-17
 
 - **AD-073** — A neighbour mid-gate is not a reason to block a turn ([/decisions/ad-073.md](/decisions/ad-073.md))
+- **AD-074** — Code the gate cannot read is refused, and a credential is not always a file ([/decisions/ad-074.md](/decisions/ad-074.md))
 
 ## 2026-08-13
 

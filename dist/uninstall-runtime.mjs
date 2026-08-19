@@ -472,6 +472,8 @@ var READER_VERBS = new Set(["base64", "cat", "head", "less", "more", "od", "stri
 var READING_TOOLS = new Set(["Read", "Edit", "MultiEdit", "NotebookEdit"]);
 var EXPANDING_VERBS = new Set([".", "eval", "source"]);
 var SHELLS = new Set(["ash", "bash", "dash", "fish", "ksh", "sh", "zsh"]);
+var FETCH_VERBS = new Set(["aria2c", "curl", "fetch", "http", "httpie", "https", "wget"]);
+var NETWORK_VERBS = new Set([...FETCH_VERBS, "nc", "ncat", "socat", "telnet", "lwp-request"]);
 
 // src/core/gate/gate.findings.ts
 var SOURCE_EXT = "ts|tsx|mts|cts|js|jsx|mjs|cjs|py|go|rb|rs|java|kt|swift|php|sh|sql";

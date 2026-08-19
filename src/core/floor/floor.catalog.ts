@@ -37,6 +37,11 @@ export const FLOOR_RULES: Record<FloorRule, FloorRuleDoc> = {
   "machine-control": {
     denies: "`shutdown`, `reboot`, `halt`, `poweroff`",
   },
+  "unprovable-execution": {
+    denies:
+      "a program fetched over the network and handed to a shell — piped, process-substituted, or inside a shell's `-c`/`eval` substitution. The gate cannot read what would run",
+    allows: "a fetch with no shell downstream, and a shell fed a local file the gate can read",
+  },
   "policy-surface-write": {
     denies:
       "every route an agent has to harness policy and state — a shell redirect, an interpreter, a heredoc program, or a write tool — in the project and under the runtime home, plus the mutating `tlc harness` subcommands from inside a session",

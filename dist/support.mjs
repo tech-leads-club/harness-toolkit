@@ -1625,6 +1625,36 @@ var READER_VERBS = new Set(["base64", "cat", "head", "less", "more", "od", "stri
 var READING_TOOLS = new Set(["Read", "Edit", "MultiEdit", "NotebookEdit"]);
 var EXPANDING_VERBS = new Set([".", "eval", "source"]);
 var SHELLS = new Set(["ash", "bash", "dash", "fish", "ksh", "sh", "zsh"]);
+var FETCH_VERBS = new Set(["aria2c", "curl", "fetch", "http", "httpie", "https", "wget"]);
+var METADATA_HOSTS = ["169.254.169.254", "169.254.170.2", "100.100.100.200", "metadata.google.internal"];
+var NETWORK_VERBS = new Set([...FETCH_VERBS, "nc", "ncat", "socat", "telnet", "lwp-request"]);
+function namesFetcher(text) {
+  return [...FETCH_VERBS].some((verb) => new RegExp(`\\b${verb}\\b`).test(text));
+}
+function fetchedProgramReachesShell(command, segments) {
+  const piped = command.includes("|");
+  let upstreamFetches = false;
+  for (const segment of segments) {
+    const head = verbOf(segment.words);
+    if (!head) {
+      continue;
+    }
+    const { verb, args } = head;
+    if (piped && upstreamFetches && SHELLS.has(verb)) {
+      return true;
+    }
+    if (SHELLS.has(verb) || EXPANDING_VERBS.has(verb)) {
+      for (const word of args) {
+        const substitution = word.text.includes("<(") || word.unresolved;
+        if (substitution && namesFetcher(word.text)) {
+          return true;
+        }
+      }
+    }
+    upstreamFetches = FETCH_VERBS.has(verb);
+  }
+  return false;
+}
 function buildsCommandAtRuntime(verb, args) {
   return EXPANDING_VERBS.has(verb) || SHELLS.has(verb) && args.some((word) => word.text === "-c");
 }
@@ -1664,6 +1694,9 @@ function checkShell(input) {
     return { kind: "allow" };
   }
   const segments = tokenizeShell(command);
+  if (fetchedProgramReachesShell(command, segments)) {
+    return denial("unprovable-execution", "This runs a program fetched over the network, which does not exist for this gate to check. Download it to a file, read it, then run that file.", "fetched program piped to a shell");
+  }
   for (const segment of segments) {
     const head = verbOf(segment.words);
     if (!head) {
@@ -1707,7 +1740,17 @@ function checkShell(input) {
 function checkShellSecrets(segments, projectDir) {
   for (const segment of segments) {
     const head = verbOf(segment.words);
-    if (!head || !READER_VERBS.has(head.verb)) {
+    if (!head) {
+      continue;
+    }
+    if (NETWORK_VERBS.has(head.verb)) {
+      const target = head.args.map((word) => word.text).join(" ");
+      const endpoint = METADATA_HOSTS.find((host) => target.includes(host));
+      if (endpoint !== undefined) {
+        return denial("secret-access", `${endpoint} is the instance metadata service, and \`${head.verb}\` would copy the credentials it returns into the transcript.`, `read of ${endpoint}`);
+      }
+    }
+    if (!READER_VERBS.has(head.verb)) {
       continue;
     }
     for (const word of pathArgs(head.args)) {

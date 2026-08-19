@@ -222,3 +222,16 @@ test("a capability the init skill narrates names every mode the catalog offers",
   }
   assert.deepEqual(missing, [], "modes offered by the catalog and absent from the init skill");
 });
+
+/**
+ * hazard: three surfaces list the floor rules and only two are generated. `docs/troubleshooting.md` names each
+ * rule so an operator can go from a refusal on screen back to the reason, and a rule missing from it is a denial
+ * with no explanation anywhere — the drift class a hand-written half always has
+ * ([/decisions/ad-074.md](/decisions/ad-074.md)).
+ */
+test("troubleshooting names every floor rule, so no refusal is unexplained", async () => {
+  const { FLOOR_RULES } = await import("../../src/core/floor/floor.catalog.ts");
+  const guide = readFileSync(join(repoRoot, "docs", "troubleshooting.md"), "utf8");
+  const missing = Object.keys(FLOOR_RULES).filter((rule) => !guide.includes(`\`${rule}\``));
+  assert.deepEqual(missing, [], "floor rules absent from docs/troubleshooting.md");
+});

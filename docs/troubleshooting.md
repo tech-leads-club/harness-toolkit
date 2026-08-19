@@ -52,7 +52,8 @@ Every refusal names one. The name is the pointer — the reasoning lives in the 
 | --- | --- |
 | `outside-project-destruction` | a destructive command aimed outside the repo and outside the temp directory |
 | `unprovable-destruction` | a destructive verb whose target is built at runtime, so the harness cannot see what it would delete |
-| `secret-access` | a read that would copy credentials into the transcript |
+| `unprovable-execution` | a program fetched over the network and handed to a shell, so the harness cannot read what would run |
+| `secret-access` | a read that would copy credentials into the transcript, from a file **or** from the instance metadata service |
 | `history-rewrite` | `git push --force`. `--force-with-lease` is allowed |
 | `machine-control` | `shutdown`, `reboot`, `halt`, `poweroff` |
 | `policy-surface-write` | any route an agent has to harness policy or state |

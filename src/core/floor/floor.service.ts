@@ -10,7 +10,8 @@ export type FloorRule =
   | "unprovable-destruction"
   | "history-rewrite"
   | "outside-project-destruction"
-  | "policy-surface-write";
+  | "policy-surface-write"
+  | "unprovable-execution";
 
 export type FloorInput = {
   projectDir: string;
@@ -26,6 +27,74 @@ const READER_VERBS = new Set(["base64", "cat", "head", "less", "more", "od", "st
 const READING_TOOLS = new Set(["Read", "Edit", "MultiEdit", "NotebookEdit"]);
 const EXPANDING_VERBS = new Set([".", "eval", "source"]);
 const SHELLS = new Set(["ash", "bash", "dash", "fish", "ksh", "sh", "zsh"]);
+
+/**
+ * why: a verb whose job is to bring bytes from the network. The set is the reason the rule can be stated at all —
+ * a program that arrives over the wire does not exist when the decision is made
+ * ([/decisions/ad-074.md](/decisions/ad-074.md)).
+ */
+const FETCH_VERBS = new Set(["aria2c", "curl", "fetch", "http", "httpie", "https", "wget"]);
+
+/**
+ * The link-local services that hand out cloud credentials over HTTP.
+ *
+ * why: `secret-access` matched by path, so `~/.aws/credentials` was refused while the address returning the same
+ * credential was allowed. A credential is not always a file.
+ */
+const METADATA_HOSTS = ["169.254.169.254", "169.254.170.2", "100.100.100.200", "metadata.google.internal"];
+
+/**
+ * invariant: verbs that speak to the network, and nothing else. `grep -rn 169.254.169.254 .` searches this
+ * repository for a literal string and stays allowed — scoping to the verb is what keeps it that way.
+ */
+const NETWORK_VERBS = new Set([...FETCH_VERBS, "nc", "ncat", "socat", "telnet", "lwp-request"]);
+
+function namesFetcher(text: string): boolean {
+  return [...FETCH_VERBS].some((verb) => new RegExp(`\\b${verb}\\b`).test(text));
+}
+
+/**
+ * A program assembled from a network fetch and handed to a shell.
+ *
+ * hazard: measured against the floor before this existed, all four spellings were allowed — and each one hands
+ * the shell a payload that satisfies every other floor rule by containing nothing the gate can see. The wrapper
+ * deletes nothing, reads nothing and forces nothing; whatever arrives does
+ * ([/decisions/ad-074.md](/decisions/ad-074.md)).
+ */
+function fetchedProgramReachesShell(command: string, segments: readonly ShellSegment[]): boolean {
+  // hazard: the tokenizer splits on `;`, `|` and `&` alike, so carrying a flag across segments treated
+  // `curl --version && bash ./scripts/deploy.sh` as a download piped to a shell. Requiring a literal pipe keeps
+  // every real `curl … | bash` and drops a sequence that merely mentions a fetcher — a false positive is
+  // expensive in a rule with no switch ([/decisions/ad-034.md](/decisions/ad-034.md)).
+  const piped = command.includes("|");
+  let upstreamFetches = false;
+  for (const segment of segments) {
+    const head = verbOf(segment.words);
+    if (!head) {
+      continue;
+    }
+    const { verb, args } = head;
+
+    // 1. a pipeline whose upstream fetched and whose downstream is a shell
+    if (piped && upstreamFetches && SHELLS.has(verb)) {
+      return true;
+    }
+
+    if (SHELLS.has(verb) || EXPANDING_VERBS.has(verb)) {
+      for (const word of args) {
+        // 2. process substitution: `bash <(curl …)`
+        // 3. and 4. an unresolved word that names a fetcher — `sh -c "$(curl …)"`, `eval "$(curl …)"`
+        const substitution = word.text.includes("<(") || word.unresolved;
+        if (substitution && namesFetcher(word.text)) {
+          return true;
+        }
+      }
+    }
+
+    upstreamFetches = FETCH_VERBS.has(verb);
+  }
+  return false;
+}
 
 // why: `bash script.sh` runs a file this gate cannot see, which is a coverage limit rather than evasion.
 // `bash -c "..."` carries the command inline, which is the case worth refusing.
@@ -78,6 +147,16 @@ function checkShell(input: FloorInput): Decision {
   }
 
   const segments = tokenizeShell(command);
+
+  // invariant: asked before the rest. A fetched program satisfies every other rule by containing nothing this
+  // gate can read, so checking the wrapper first and the payload never is the order that let it through.
+  if (fetchedProgramReachesShell(command, segments)) {
+    return denial(
+      "unprovable-execution",
+      "This runs a program fetched over the network, which does not exist for this gate to check. Download it to a file, read it, then run that file.",
+      "fetched program piped to a shell",
+    );
+  }
 
   for (const segment of segments) {
     const head = verbOf(segment.words);
@@ -161,7 +240,21 @@ function checkShell(input: FloorInput): Decision {
 function checkShellSecrets(segments: ShellSegment[], projectDir: string): Decision {
   for (const segment of segments) {
     const head = verbOf(segment.words);
-    if (!head || !READER_VERBS.has(head.verb)) {
+    if (!head) {
+      continue;
+    }
+    if (NETWORK_VERBS.has(head.verb)) {
+      const target = head.args.map((word) => word.text).join(" ");
+      const endpoint = METADATA_HOSTS.find((host) => target.includes(host));
+      if (endpoint !== undefined) {
+        return denial(
+          "secret-access",
+          `${endpoint} is the instance metadata service, and \`${head.verb}\` would copy the credentials it returns into the transcript.`,
+          `read of ${endpoint}`,
+        );
+      }
+    }
+    if (!READER_VERBS.has(head.verb)) {
       continue;
     }
     for (const word of pathArgs(head.args)) {
