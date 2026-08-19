@@ -25,6 +25,13 @@ concurrency:
 
 jobs:
   test:
+    # why: the release bot's own pull request is a version bump, a lockfile and a rendered changelog — and the same
+    # matrix runs again on `main` the moment it merges, as this workflow called from `release.yml`. Running it on
+    # both is the third matrix for one release. Nothing is published behind a red `main`, because every release job
+    # needs that run ([/decisions/ad-094.md](/decisions/ad-094.md)).
+    #
+    # invariant: `workflow_call` is exempt — that *is* the run on `main`, and `github.head_ref` is empty there.
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please--')
     strategy:
       fail-fast: false
       matrix:

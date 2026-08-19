@@ -42,7 +42,7 @@ function decision(root: string, id: string, title: string, migration?: string): 
 /**
  * invariant: the fixture carries a `package.json` with a name, because the release tag is named after the package
  * and a repository without one has no releases to find. Fixtures that omitted it were the reason the tag glob
- * could be wrong and every test still pass ([/decisions/ad-088.md](/decisions/ad-088.md)).
+ * could be wrong and every test still pass ([/decisions/ad-087.md](/decisions/ad-087.md)).
  */
 function repo(): string {
   const root = mkdtempSync(join(tmpdir(), "changelog-"));
@@ -227,7 +227,7 @@ test("a shallow checkout is reported as unreadable, not as drift", () => {
 /**
  * hazard: this used to write only `version`, and the tags below were bare `v0.1.0`. That is a tag scheme this
  * repository has never used — every real tag is `harness-toolkit-v…` — so the fixtures agreed with the bug
- * instead of catching it ([/decisions/ad-088.md](/decisions/ad-088.md)).
+ * instead of catching it ([/decisions/ad-087.md](/decisions/ad-087.md)).
  */
 const FIXTURE_PACKAGE = "@tech-leads-club/harness-toolkit";
 

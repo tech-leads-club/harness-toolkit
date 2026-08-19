@@ -4,7 +4,7 @@
  * hazard: the changelog generator listed tags with the glob `v*` while every tag this repository has ever created
  * is `harness-toolkit-v…`. It matched none, put all 88 decision records under `## Unreleased`, and passed its own
  * `--check` because the generated document and the committed one were wrong in the same way. Three releases shipped
- * with a changelog attributing nothing to any of them ([/decisions/ad-088.md](/decisions/ad-088.md)).
+ * with a changelog attributing nothing to any of them ([/decisions/ad-087.md](/decisions/ad-087.md)).
  *
  * invariant: derived from the package name, which is the same source `release-please-config.json` writes the tag
  * from. A prefix written down twice is a prefix that drifts once.

@@ -22,11 +22,6 @@ export type Violation = { rule: string; detail: string };
 export type Normaliser = (manifest: string) => string;
 
 /**
- * why: `npm pkg fix` is the command npm's own publish warning tells you to run, so it is the same normaliser that
- * silently rewrote the manifest. It runs against a copy in a temp directory: this must never edit `package.json`,
- * because a gate that fixes what it measures reports success it caused.
- */
-/**
  * hazard: on Windows `npm` is `npm.cmd`, and execFile does not consult PATHEXT — the first version threw
  * `spawnSync npm ENOENT` on three tests, only in Windows CI. The same spelling as the npm bump in `runUpdate`, for
  * the same reason. Extracted so the platform branch has a test that does not need the platform
@@ -36,6 +31,11 @@ export function npmSpawnOptions(cwd: string, platform: NodeJS.Platform = process
   return { cwd, stdio: "ignore", shell: platform === "win32" } as const;
 }
 
+/**
+ * why: `npm pkg fix` is the command npm's own publish warning tells you to run, so it is the same normaliser that
+ * silently rewrote the manifest. It runs against a copy in a temp directory: this must never edit `package.json`,
+ * because a gate that fixes what it measures reports success it caused.
+ */
 export function npmPkgFix(manifest: string): string {
   const dir = mkdtempSync(join(tmpdir(), "tlc-manifest-"));
   const path = join(dir, "package.json");
@@ -67,7 +67,7 @@ export function missingBinTargets(root: string, manifest: Manifest): Violation[]
  * version — which is right, because 0.2.1, 0.2.2 and 0.2.3 were all CI, gate and packaging work that changed
  * nothing for anyone installing the package. The rule is only true while those paths stay out of the tarball; the
  * day one of them ships, a change would reach users with no version to name it
- * ([/decisions/ad-090.md](/decisions/ad-090.md)).
+ * ([/decisions/ad-087.md](/decisions/ad-087.md)).
  */
 export type PackedFiles = () => string[];
 
@@ -77,7 +77,7 @@ type PackReport = { files?: { path: string }[] };
  * hazard: npm 12 returns an object keyed by package name; npm 11 and earlier return an array. The first version of
  * this read `parsed[0].files` and got `undefined` on npm 12, so it reported zero packed files and the check passed
  * on everything — the same shape as the two dead rails found in the changelog the same day. An empty answer is
- * therefore an error here, never a verdict ([/decisions/ad-090.md](/decisions/ad-090.md)).
+ * therefore an error here, never a verdict ([/decisions/ad-087.md](/decisions/ad-087.md)).
  */
 export function parsePackReport(json: string): string[] {
   const parsed = JSON.parse(json) as PackReport[] | Record<string, PackReport>;

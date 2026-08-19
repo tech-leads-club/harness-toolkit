@@ -117,7 +117,7 @@ test("the npm invocation goes through a shell on Windows and directly everywhere
 /**
  * hazard: npm 12 returns an object keyed by package name and npm 11 an array. Reading `parsed[0].files` gave
  * `undefined` on npm 12, so the check reported zero packed files and passed on everything — a rail that looks alive
- * because zero is a plausible answer ([/decisions/ad-090.md](/decisions/ad-090.md)).
+ * because zero is a plausible answer ([/decisions/ad-087.md](/decisions/ad-087.md)).
  */
 describe("parsePackReport", () => {
   const files = [{ path: "bin/tlc.mjs" }, { path: "dist/run.mjs" }];

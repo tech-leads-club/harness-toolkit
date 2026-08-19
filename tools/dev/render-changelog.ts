@@ -71,7 +71,7 @@ export function isShallow(root: string): boolean {
  * none, so all 88 decision records sat under `## Unreleased` across three published releases — and `--check`
  * passed the whole time, because the generated document and the committed one were wrong identically. The prefix is
  * now derived from the package name, which is the same source the tag is written from
- * ([/decisions/ad-088.md](/decisions/ad-088.md)).
+ * ([/decisions/ad-087.md](/decisions/ad-087.md)).
  */
 export function packageName(root: string): string | null {
   try {
@@ -174,7 +174,7 @@ export function packageVersionLabel(root: string): string {
  * spelled `harness-toolkit-v0.2.0`. The comparison was therefore never true, so the one-state tolerance it guards
  * never closed and `--check` permanently accepted two renderings, one of which is the stale one it exists to
  * refuse. The same mismatch as the tag glob, in the same file, hidden the same way
- * ([/decisions/ad-088.md](/decisions/ad-088.md)).
+ * ([/decisions/ad-087.md](/decisions/ad-087.md)).
  */
 export function packageVersionTag(root: string): string {
   const name = packageName(root);

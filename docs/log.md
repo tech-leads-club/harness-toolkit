@@ -21,13 +21,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-084** — The rule about unpinned dependencies is applied to this repository too, and the release gate stops being a copy ([/decisions/ad-084.md](/decisions/ad-084.md))
 - **AD-085** — The flake was a test measuring a file the whole machine writes to ([/decisions/ad-085.md](/decisions/ad-085.md))
 - **AD-086** — The write lock read the wrong error code on Windows, in a module that already listed the right ones ([/decisions/ad-086.md](/decisions/ad-086.md))
-- **AD-087** — The tag goes first because npm cannot be undone, and the release stays a draft until the package is real ([/decisions/ad-087.md](/decisions/ad-087.md))
-- **AD-088** — The release keeps its pull request and merges it with --admin, and a hand-written workflow linter is replaced by zizmor ([/decisions/ad-088.md](/decisions/ad-088.md))
-- **AD-089** — The release is chained to CI instead of racing it, and a superseded run is cancelled ([/decisions/ad-089.md](/decisions/ad-089.md))
-- **AD-090** — A draft release creates no tag, and without the tag the release loops ([/decisions/ad-090.md](/decisions/ad-090.md))
-- **AD-091** — One workflow owns main and one owns pull requests, so there is one run and one matrix ([/decisions/ad-091.md](/decisions/ad-091.md))
-- **AD-092** — The guard against the release loop counts untagged releases, because one is normal and two is the loop ([/decisions/ad-092.md](/decisions/ad-092.md))
-- **AD-093** — The App token is scoped to this repository and not to a list of verbs ([/decisions/ad-093.md](/decisions/ad-093.md))
+- **AD-087** — How the release works, and the six wrong shapes it took first ([/decisions/ad-087.md](/decisions/ad-087.md))
 
 ## 2026-08-17
 

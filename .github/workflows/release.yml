@@ -195,69 +195,6 @@ jobs:
           git commit -m "docs(changelog): render the decisions at the pending version"
           git push origin HEAD:"${{ needs.release-please.outputs.pr_branch }}"
 
-  # why: the release PR is a mechanism here, not a gate — it is where the version bump and the rendered changelog
-  # are assembled, and the bot merges it as soon as they are ([/decisions/ad-057.md](/decisions/ad-057.md)).
-  # Merging is a push to main, which runs this workflow again: that second run finds the merged PR and creates the
-  # tag and the release, and the publish job below is what runs off it.
-  #
-  # invariant: this terminates. Once the release exists and no releasable commit has landed since, release-please
-  # opens no PR, so this job is skipped and nothing re-triggers. The changelog commit it merges is `docs(...)`,
-  # which is not a releasable type.
-  merge:
-    needs: [release-please, changelog]
-    timeout-minutes: 10
-    if: needs.release-please.outputs.pr_number != ''
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    env:
-      HAS_RELEASE_APP: ${{ secrets.RELEASE_APP_ID != '' }}
-    steps:
-      - name: Generate a release-bot token
-        id: app-token
-        if: env.HAS_RELEASE_APP == 'true'
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          # invariant: scoped to this repository rather than to every repository the App is installed on. An App
-          # token defaults to the App's whole reach; naming the owner and the repository bounds a leak to this one.
-          #
-          # hazard: `permission-contents: write` and `permission-pull-requests: write` were also set here, copied
-          # from a repository that uses them successfully. Release creation then failed with `Resource not
-          # accessible by integration` — narrowing the token to those two verbs excludes something release-please
-          # needs to create a release. The repository scope is kept and the verb scope is not
-          # ([/decisions/ad-093.md](/decisions/ad-093.md)).
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-
-      - name: Merge the release PR
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
-          PR: ${{ needs.release-please.outputs.pr_number }}
-          REPO: ${{ github.repository }}
-        shell: bash
-        run: |
-          # why: `--rebase`, because the branch ruleset sets `allowed_merge_methods: [rebase]` and squash is
-          # refused outright — measured as `the base branch policy prohibits the merge` on release 0.2.1, once the
-          # repository went public and the ruleset started applying ([/decisions/ad-083.md](/decisions/ad-083.md)).
-          #
-          # why: `--admin`. The ruleset requires one approving review and an App cannot approve its own pull
-          # request, so `--auto` armed the merge and then waited for a human for ever — measured with the App on
-          # the bypass list, all three CI jobs green, still `REVIEW_REQUIRED`. `--admin` is what exercises the
-          # bypass instead of waiting on the rule, and it is how `BHubAI/platform` releases through the same
-          # ruleset shape ([/decisions/ad-088.md](/decisions/ad-088.md)).
-          #
-          # invariant: CI is not skipped by this. `verify` below runs the full matrix before the publish, so the
-          # thing `--admin` bypasses is the review, never the gate.
-          if ! gh pr merge "$PR" --repo "$REPO" --rebase --admin; then
-            echo "::error::could not merge release PR #$PR. --admin needs the release App to be a bypass actor" \
-              "on the branch ruleset; check Settings → Rules → Default → Bypass list."
-            exit 1
-          fi
-          echo "release PR #$PR merged"
-
   # why: no `verify` job. It called `ci.yml`, which had already run the same three-platform matrix on the same
   # commit — the whole workflow now only exists because that run went green, so repeating it was paying twice for
   # one answer ([/decisions/ad-089.md](/decisions/ad-089.md)).
@@ -311,3 +248,80 @@ jobs:
 
       - name: Publish
         run: npm publish
+
+  # why: the release PR is a mechanism here, not a gate — it is where the version bump and the rendered changelog
+  # are assembled, and the bot merges it as soon as they are ([/decisions/ad-057.md](/decisions/ad-057.md)).
+  # Merging is a push to main, which runs this workflow again: that second run finds the merged PR and creates the
+  # tag and the release, and the publish job is what runs off it.
+  #
+  # hazard: this must come *after* `publish`. One invocation of release-please does two things — it creates the
+  # release for the PR that was merged last time, and it opens the PR for next time. Merging that new PR starts the
+  # next run, so with `merge` racing `publish` the next cycle began while this one was still waiting for the
+  # publish approval: overlapping releases, and a run list nobody could read
+  # ([/decisions/ad-094.md](/decisions/ad-094.md)).
+  #
+  # invariant: `always()` with explicit results, because `publish` is skipped whenever this run created no release —
+  # which is most runs. A plain `needs` would skip the merge along with it and no release PR would ever land.
+  #
+  # invariant: this terminates. Once the release exists and no releasable commit has landed since, release-please
+  # opens no PR, so this job is skipped and nothing re-triggers. The changelog commit it merges is `docs(...)`,
+  # which is not a releasable type.
+  merge:
+    needs: [release-please, changelog, publish]
+    timeout-minutes: 10
+    if: >-
+      always() &&
+      needs.release-please.outputs.pr_number != '' &&
+      needs.changelog.result == 'success' &&
+      needs.publish.result != 'failure' &&
+      needs.publish.result != 'cancelled'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      HAS_RELEASE_APP: ${{ secrets.RELEASE_APP_ID != '' }}
+    steps:
+      - name: Generate a release-bot token
+        id: app-token
+        if: env.HAS_RELEASE_APP == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # invariant: scoped to this repository rather than to every repository the App is installed on. An App
+          # token defaults to the App's whole reach; naming the owner and the repository bounds a leak to this one.
+          #
+          # hazard: `permission-contents: write` and `permission-pull-requests: write` were also set here, copied
+          # from a repository that uses them successfully. Release creation then failed with `Resource not
+          # accessible by integration` — narrowing the token to those two verbs excludes something release-please
+          # needs to create a release. The repository scope is kept and the verb scope is not
+          # ([/decisions/ad-093.md](/decisions/ad-093.md)).
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Merge the release PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          PR: ${{ needs.release-please.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          # why: `--rebase`, because the branch ruleset sets `allowed_merge_methods: [rebase]` and squash is
+          # refused outright — measured as `the base branch policy prohibits the merge` on release 0.2.1, once the
+          # repository went public and the ruleset started applying ([/decisions/ad-083.md](/decisions/ad-083.md)).
+          #
+          # why: `--admin`. The ruleset requires one approving review and an App cannot approve its own pull
+          # request, so `--auto` armed the merge and then waited for a human for ever — measured with the App on
+          # the bypass list, all three CI jobs green, still `REVIEW_REQUIRED`. `--admin` is what exercises the
+          # bypass instead of waiting on the rule, and it is how `BHubAI/platform` releases through the same
+          # ruleset shape ([/decisions/ad-088.md](/decisions/ad-088.md)).
+          #
+          # invariant: CI is not skipped by this. `verify` below runs the full matrix before the publish, so the
+          # thing `--admin` bypasses is the review, never the gate.
+          if ! gh pr merge "$PR" --repo "$REPO" --rebase --admin; then
+            echo "::error::could not merge release PR #$PR. --admin needs the release App to be a bypass actor" \
+              "on the branch ruleset; check Settings → Rules → Default → Bypass list."
+            exit 1
+          fi
+          echo "release PR #$PR merged"
