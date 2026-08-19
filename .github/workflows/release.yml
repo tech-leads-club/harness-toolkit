@@ -73,13 +73,16 @@ jobs:
         with:
           client-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          # invariant: scoped to this repository and to the two permissions the release needs, rather than to
-          # everything the App is installed for. An App token defaults to the App's full grant across every
-          # repository it can see; naming the scope is what keeps a leaked token's reach to this one.
+          # invariant: scoped to this repository rather than to every repository the App is installed on. An App
+          # token defaults to the App's whole reach; naming the owner and the repository bounds a leak to this one.
+          #
+          # hazard: `permission-contents: write` and `permission-pull-requests: write` were also set here, copied
+          # from a repository that uses them successfully. Release creation then failed with `Resource not
+          # accessible by integration` — narrowing the token to those two verbs excludes something release-please
+          # needs to create a release. The repository scope is kept and the verb scope is not
+          # ([/decisions/ad-093.md](/decisions/ad-093.md)).
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
-          permission-contents: write
-          permission-pull-requests: write
 
       # why: release-please itself works entirely over the API, so this job had no checkout. The guard below reads
       # the package name off disk and needs the tags and the bot's release commits, which is what `fetch-depth: 0`
@@ -149,13 +152,16 @@ jobs:
         with:
           client-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          # invariant: scoped to this repository and to the two permissions the release needs, rather than to
-          # everything the App is installed for. An App token defaults to the App's full grant across every
-          # repository it can see; naming the scope is what keeps a leaked token's reach to this one.
+          # invariant: scoped to this repository rather than to every repository the App is installed on. An App
+          # token defaults to the App's whole reach; naming the owner and the repository bounds a leak to this one.
+          #
+          # hazard: `permission-contents: write` and `permission-pull-requests: write` were also set here, copied
+          # from a repository that uses them successfully. Release creation then failed with `Resource not
+          # accessible by integration` — narrowing the token to those two verbs excludes something release-please
+          # needs to create a release. The repository scope is kept and the verb scope is not
+          # ([/decisions/ad-093.md](/decisions/ad-093.md)).
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
-          permission-contents: write
-          permission-pull-requests: write
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -215,13 +221,16 @@ jobs:
         with:
           client-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          # invariant: scoped to this repository and to the two permissions the release needs, rather than to
-          # everything the App is installed for. An App token defaults to the App's full grant across every
-          # repository it can see; naming the scope is what keeps a leaked token's reach to this one.
+          # invariant: scoped to this repository rather than to every repository the App is installed on. An App
+          # token defaults to the App's whole reach; naming the owner and the repository bounds a leak to this one.
+          #
+          # hazard: `permission-contents: write` and `permission-pull-requests: write` were also set here, copied
+          # from a repository that uses them successfully. Release creation then failed with `Resource not
+          # accessible by integration` — narrowing the token to those two verbs excludes something release-please
+          # needs to create a release. The repository scope is kept and the verb scope is not
+          # ([/decisions/ad-093.md](/decisions/ad-093.md)).
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
-          permission-contents: write
-          permission-pull-requests: write
 
       - name: Merge the release PR
         env:

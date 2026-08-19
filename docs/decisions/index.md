@@ -107,6 +107,7 @@ Handoff section and a link back to this index.
 | [AD-090](/decisions/ad-090.md) | A draft release creates no tag, and without the tag the release loops | active |
 | [AD-091](/decisions/ad-091.md) | One workflow owns main and one owns pull requests, so there is one run and one matrix | active |
 | [AD-092](/decisions/ad-092.md) | The guard against the release loop counts untagged releases, because one is normal and two is the loop | active |
+| [AD-093](/decisions/ad-093.md) | The App token is scoped to this repository and not to a list of verbs | active |
 
 ## Archived
 

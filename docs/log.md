@@ -27,6 +27,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-090** — A draft release creates no tag, and without the tag the release loops ([/decisions/ad-090.md](/decisions/ad-090.md))
 - **AD-091** — One workflow owns main and one owns pull requests, so there is one run and one matrix ([/decisions/ad-091.md](/decisions/ad-091.md))
 - **AD-092** — The guard against the release loop counts untagged releases, because one is normal and two is the loop ([/decisions/ad-092.md](/decisions/ad-092.md))
+- **AD-093** — The App token is scoped to this repository and not to a list of verbs ([/decisions/ad-093.md](/decisions/ad-093.md))
 
 ## 2026-08-17
 
