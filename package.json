@@ -1,9 +1,16 @@
 {
   "name": "@tech-leads-club/harness-toolkit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Multi-provider agent steering: gates, follow-up, handoff, policy",
-  "keywords": ["agent", "cursor", "claude-code", "hooks", "policy", "governance"],
+  "keywords": [
+    "agent",
+    "cursor",
+    "claude-code",
+    "hooks",
+    "policy",
+    "governance"
+  ],
   "license": "PolyForm-Noncommercial-1.0.0",
   "engines": {
     "node": ">=24"
