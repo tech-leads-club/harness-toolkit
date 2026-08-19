@@ -35,12 +35,17 @@ jobs:
       #
       # invariant: the step is skipped when the secret is absent rather than failing on a missing input, so a
       # repository without the App still reaches release-please and gets its own explicit refusal.
+      #
+      # hazard: `RELEASE_APP_ID` holds the App's **Client ID** (`Iv23…`), not the numeric App ID, and the input is
+      # `client-id` for that reason — the legacy `app-id` input still works but warns on every job. The two are
+      # different values and the secret's name says the wrong one; renaming it needs a new secret, which is the
+      # operator's to create ([/decisions/ad-084.md](/decisions/ad-084.md)).
       - name: Generate a release-bot token
         id: app-token
         if: env.HAS_RELEASE_APP == 'true'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
+          client-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
@@ -70,7 +75,7 @@ jobs:
         if: env.HAS_RELEASE_APP == 'true'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
+          client-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -128,7 +133,7 @@ jobs:
         if: env.HAS_RELEASE_APP == 'true'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
+          client-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Merge the release PR
