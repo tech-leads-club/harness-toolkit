@@ -7,8 +7,21 @@
       "skip-changelog": true,
       "include-v-in-tag": true,
       "bump-minor-pre-major": true,
-      "draft": true,
-      "prerelease": false
+      "draft": false,
+      "prerelease": false,
+      "exclude-paths": [
+        ".github",
+        "tools/dev",
+        "tools/__test__",
+        "docs/decisions",
+        "CONTRIBUTING.md",
+        "biome.json",
+        "tsconfig.json",
+        "install.sh",
+        "install.ps1",
+        "release-please-config.json",
+        ".release-please-manifest.json"
+      ]
     }
   }
 }

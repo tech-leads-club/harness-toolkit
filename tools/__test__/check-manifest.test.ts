@@ -2,13 +2,15 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { test } from "node:test";
+import { describe, test } from "node:test";
 import {
   checkManifest,
+  checkReleaseExclusions,
   type Manifest,
   missingBinTargets,
   npmPkgFix,
   npmSpawnOptions,
+  parsePackReport,
   report,
 } from "../dev/check-manifest.ts";
 
@@ -110,6 +112,61 @@ test("the npm invocation goes through a shell on Windows and directly everywhere
   assert.equal(npmSpawnOptions("/tmp/x", "linux").shell, false);
   assert.equal(npmSpawnOptions("/tmp/x", "darwin").shell, false);
   assert.equal(npmSpawnOptions("/tmp/x", "linux").cwd, "/tmp/x");
+});
+
+/**
+ * hazard: npm 12 returns an object keyed by package name and npm 11 an array. Reading `parsed[0].files` gave
+ * `undefined` on npm 12, so the check reported zero packed files and passed on everything — a rail that looks alive
+ * because zero is a plausible answer ([/decisions/ad-090.md](/decisions/ad-090.md)).
+ */
+describe("parsePackReport", () => {
+  const files = [{ path: "bin/tlc.mjs" }, { path: "dist/run.mjs" }];
+
+  test("the npm 12 shape, an object keyed by package name", () => {
+    assert.deepEqual(parsePackReport(JSON.stringify({ "@scope/pkg": { files } })), [
+      "bin/tlc.mjs",
+      "dist/run.mjs",
+    ]);
+  });
+
+  test("the npm 11 shape, an array", () => {
+    assert.deepEqual(parsePackReport(JSON.stringify([{ files }])), ["bin/tlc.mjs", "dist/run.mjs"]);
+  });
+
+  /** invariant: an empty answer is an error. A check that silently sees nothing passes on everything. */
+  test("a shape with no files is an error naming the reason, not an empty list", () => {
+    for (const json of ["[]", "{}", '[{"files":[]}]', '{"pkg":{"files":[]}}', '[{"other":1}]']) {
+      assert.throws(() => parsePackReport(json), /reported no files/, json);
+    }
+  });
+});
+
+describe("checkReleaseExclusions", () => {
+  test("an excluded path that ships is a violation naming the consequence", () => {
+    const violations = checkReleaseExclusions(["capabilities"], ["capabilities/catalog.json", "bin/tlc.mjs"]);
+
+    assert.deepEqual(
+      violations.map((violation) => violation.rule),
+      ["excluded-path-is-published"],
+    );
+    assert.match(violations[0]?.detail ?? "", /with no version/);
+  });
+
+  test("an excluded path that does not ship is clean", () => {
+    assert.deepEqual(
+      checkReleaseExclusions([".github", "tools/dev"], ["bin/tlc.mjs", "tools/doctor.ts"]),
+      [],
+    );
+  });
+
+  /** invariant: prefix matching is on a path boundary, so `tools/dev` does not match `tools/developer.ts`. */
+  test("a path that merely shares a prefix is not a match", () => {
+    assert.deepEqual(checkReleaseExclusions(["tools/dev"], ["tools/developer.ts"]), []);
+  });
+
+  test("an exact file path counts as shipped", () => {
+    assert.equal(checkReleaseExclusions(["install.sh"], ["install.sh"]).length, 1);
+  });
 });
 
 test("report names every violation and says what held when there are none", () => {

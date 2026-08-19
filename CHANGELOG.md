@@ -13,6 +13,8 @@ doctor reports against your own configuration.
 - **AD-086** — The write lock read the wrong error code on Windows, in a module that already listed the right ones
 - **AD-087** — The tag goes first because npm cannot be undone, and the release stays a draft until the package is real
 - **AD-088** — The release keeps its pull request and merges it with --admin, and a hand-written workflow linter is replaced by zizmor
+- **AD-089** — The release is chained to CI instead of racing it, and a superseded run is cancelled
+- **AD-090** — A draft release creates no tag, and without the tag the release loops
 
 ## v0.2.2
 

@@ -1,20 +1,43 @@
 name: Release
 
-# Release Please computes the version from Conventional Commits and opens a release PR. Merging that PR is the
-# release: it tags, it creates the GitHub Release, and only then does the publish job run. Nothing publishes
-# from an ordinary push to main, and no bot commits to main — the changelog is corrected inside the PR instead
-# ([/decisions/ad-054.md](/decisions/ad-054.md)).
+# Release Please computes the version from Conventional Commits and opens a release PR. The bot merges that PR
+# with `--admin`, which is the release: it tags, it creates the GitHub Release, and only then does the publish job
+# run. No bot commits to `main` outside that PR — the changelog is corrected inside it
+# ([/decisions/ad-054.md](/decisions/ad-054.md), [/decisions/ad-088.md](/decisions/ad-088.md)).
+#
+# hazard: the release must NOT be a draft. A draft release does not create its tag, and the tag is how
+# release-please knows where the last version ended — without it, it reprocesses history, finds old `feat:`
+# commits, and bumps the minor every round. With this workflow chained to CI that became a loop: six versions,
+# 0.2.3 through 0.7.0, in nine minutes ([/decisions/ad-090.md](/decisions/ad-090.md)).
+#
+# why: triggered by CI finishing, not by the push. Both fired on the same commit before, so the three-platform
+# matrix ran twice for one release — once as CI and once as this workflow's `verify` job calling it. Chaining
+# removes the second copy and makes the ordering real: a release cannot start until the gate is green on the exact
+# commit it would release ([/decisions/ad-089.md](/decisions/ad-089.md)).
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# invariant: one release at a time and never cancelled halfway. Two runs racing here would each compute the same
+# version, and the second would fail on a tag the first had already created — after it had published.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release-please:
+    # invariant: a red gate releases nothing. `workflow_run` fires on *completed*, whatever the conclusion, so the
+    # conclusion is the condition — without it a chained workflow runs after a failure exactly as it does after a
+    # pass, which is worse than the duplication it replaced.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
@@ -55,6 +78,35 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
+      # why: release-please itself works entirely over the API, so this job had no checkout. The guard below reads
+      # the manifest and the package name off disk, which is cheaper and more honest than fetching two files.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # invariant: the tag for the version the manifest claims has to exist before another release is computed.
+      # When it does not, release-please has no marker for where the last version ended and bumps from the wrong
+      # base every round — which produced six versions in nine minutes. Refusing here costs one API call and turns
+      # a runaway loop into one failed job ([/decisions/ad-090.md](/decisions/ad-090.md)).
+      - name: The last released version must be tagged
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          version="$(node -p "require('./.release-please-manifest.json')['.']")"
+          name="$(node -p "require('./package.json').name.split('/').pop()")"
+          tag="${name}-v${version}"
+          if [ "$version" = "0.0.0" ]; then
+            echo "no release yet — nothing to check"
+            exit 0
+          fi
+          if ! gh api "repos/${REPO}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+            echo "::error::the manifest says ${version} but ${tag} does not exist. release-please will bump from" \
+              "the wrong base and keep doing it. Check that the release is not a draft — a draft creates no tag."
+            exit 1
+          fi
+          echo "${tag} exists — safe to compute the next version"
+
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
@@ -67,6 +119,7 @@ jobs:
   # tag lands is then a no-op, which is what keeps the gate's `--check` honest on the first push after a release.
   changelog:
     needs: release-please
+    timeout-minutes: 10
     if: needs.release-please.outputs.pr_branch != ''
     runs-on: ubuntu-latest
     permissions:
@@ -134,6 +187,7 @@ jobs:
   # which is not a releasable type.
   merge:
     needs: [release-please, changelog]
+    timeout-minutes: 10
     if: needs.release-please.outputs.pr_number != ''
     runs-on: ubuntu-latest
     permissions:
@@ -183,20 +237,14 @@ jobs:
           fi
           echo "release PR #$PR merged"
 
-  # why: the gate that decides whether to publish is the same gate that decides whether to merge, called rather
-  # than copied. The publish job used to run `tlc harness test` inline on ubuntu only, so a release was verified
-  # on one platform by a second copy of a matrix that covers three ([/decisions/ad-084.md](/decisions/ad-084.md)).
-  #
-  # invariant: this runs at the caller's ref, which after the release PR merges is the commit the tag points at.
-  verify:
+  # why: no `verify` job. It called `ci.yml`, which had already run the same three-platform matrix on the same
+  # commit — the whole workflow now only exists because that run went green, so repeating it was paying twice for
+  # one answer ([/decisions/ad-089.md](/decisions/ad-089.md)).
+  publish:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
-    uses: ./.github/workflows/ci.yml
-
-  publish:
-    needs: [release-please, verify]
-    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # why: the one place a human is put back without changing any code. This environment carries required
     # reviewers, so a publish waits for an approval; emptying it makes the pipeline unattended and changes nothing
     # else. `agent-skills` carries the same environment for the same reason.
@@ -242,24 +290,3 @@ jobs:
 
       - name: Publish
         run: npm publish
-
-  # why: the tag exists before the publish, because npm is irreversible after 72 hours and git is not — the
-  # recoverable half goes first. That leaves a window where the tag exists and the package does not, which is what
-  # happened to v0.2.2 when this job was cancelled waiting for its approval: a release announced on GitHub that
-  # nobody could install. `draft: true` in release-please-config.json closes it, and this promotes the draft once
-  # the package is real ([/decisions/ad-087.md](/decisions/ad-087.md)).
-  #
-  # invariant: a separate job, because promoting a release needs `contents: write` and the job holding the npm
-  # publishing identity keeps `contents: read`.
-  announce:
-    needs: [release-please, publish]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Publish the draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release-please.outputs.tag_name }}
-          REPO: ${{ github.repository }}
-        run: gh release edit "$TAG" --repo "$REPO" --draft=false

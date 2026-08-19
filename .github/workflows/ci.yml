@@ -7,13 +7,19 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
-  # why: `release.yml` calls this instead of repeating the gate. The publish job used to run
-  # `tlc harness test` itself, on ubuntu only — so the thing that decided whether to publish was a
-  # second, weaker copy of the thing that decides whether to merge ([/decisions/ad-084.md](/decisions/ad-084.md)).
-  workflow_call:
 
 permissions:
   contents: read
+
+# why: a push to a pull request used to leave the previous run going — two runs of a three-platform matrix for
+# one branch, and the older one answering about code nobody has any more. A run is superseded, not needed.
+#
+# hazard: `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` is accepted without error and still
+# cancels runs on `main`. The working shape is a group that is *shared* per pull request and *unique* per commit
+# otherwise, so a main run can never collide with anything ([/decisions/ad-089.md](/decisions/ad-089.md)).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -22,6 +28,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    # why: the gate runs in about three minutes. Without a ceiling a hung job holds a runner for the six-hour
+    # default, which on a matrix of three is eighteen hours of nothing.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

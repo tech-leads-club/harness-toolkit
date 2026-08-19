@@ -23,6 +23,8 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-086** — The write lock read the wrong error code on Windows, in a module that already listed the right ones ([/decisions/ad-086.md](/decisions/ad-086.md))
 - **AD-087** — The tag goes first because npm cannot be undone, and the release stays a draft until the package is real ([/decisions/ad-087.md](/decisions/ad-087.md))
 - **AD-088** — The release keeps its pull request and merges it with --admin, and a hand-written workflow linter is replaced by zizmor ([/decisions/ad-088.md](/decisions/ad-088.md))
+- **AD-089** — The release is chained to CI instead of racing it, and a superseded run is cancelled ([/decisions/ad-089.md](/decisions/ad-089.md))
+- **AD-090** — A draft release creates no tag, and without the tag the release loops ([/decisions/ad-090.md](/decisions/ad-090.md))
 
 ## 2026-08-17
 
