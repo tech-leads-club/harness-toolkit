@@ -82,33 +82,42 @@ jobs:
           permission-pull-requests: write
 
       # why: release-please itself works entirely over the API, so this job had no checkout. The guard below reads
-      # the manifest and the package name off disk, which is cheaper and more honest than fetching two files.
+      # the package name off disk and needs the tags and the bot's release commits, which is what `fetch-depth: 0`
+      # is for — a shallow clone has neither, and the guard would report every release as untagged.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
-      # invariant: the tag for the version the manifest claims has to exist before another release is computed.
-      # When it does not, release-please has no marker for where the last version ended and bumps from the wrong
-      # base every round — which produced six versions in nine minutes. Refusing here costs one API call and turns
-      # a runaway loop into one failed job ([/decisions/ad-090.md](/decisions/ad-090.md)).
-      - name: The last released version must be tagged
+      # invariant: at most one released version may be waiting for its tag. Without the tag, release-please has no
+      # marker for where the last version ended, so it bumps from the wrong base — and because it writes the result
+      # back into the manifest, the next round bumps again. That is what produced six versions in nine minutes
+      # ([/decisions/ad-090.md](/decisions/ad-090.md)).
+      #
+      # why: counting, not a single lookup. There is a legitimate window with no tag — merging the release PR bumps
+      # the manifest and the *next* run creates the tag — and the first version of this check failed the release for
+      # being in it. One untagged release is that window; two is the loop
+      # ([/decisions/ad-092.md](/decisions/ad-092.md)).
+      - name: At most one release may be waiting for its tag
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           REPO: ${{ github.repository }}
         run: |
-          version="$(node -p "require('./.release-please-manifest.json')['.']")"
           name="$(node -p "require('./package.json').name.split('/').pop()")"
-          tag="${name}-v${version}"
-          if [ "$version" = "0.0.0" ]; then
-            echo "no release yet — nothing to check"
-            exit 0
-          fi
-          if ! gh api "repos/${REPO}/git/ref/tags/${tag}" >/dev/null 2>&1; then
-            echo "::error::the manifest says ${version} but ${tag} does not exist. release-please will bump from" \
-              "the wrong base and keep doing it. Check that the release is not a draft — a draft creates no tag."
+          untagged=""
+          # why: read the versions out of the bot's own release commits rather than out of the manifest, which only
+          # ever holds the latest. The loop leaves one commit per bogus version, all of them tagless.
+          for version in $(git log -30 --format=%s | sed -n 's/^chore(\(main\|release\)): release .*[^0-9]\([0-9]\+\.[0-9]\+\.[0-9]\+\)$/\2/p'); do
+            if ! git rev-parse -q --verify "refs/tags/${name}-v${version}" >/dev/null; then
+              untagged="${untagged} ${version}"
+            fi
+          done
+          count="$(echo $untagged | wc -w)"
+          echo "released versions still without a tag:${untagged:- none} (${count})"
+          if [ "$count" -gt 1 ]; then
+            echo "::error::${count} released versions have no tag —${untagged}. release-please is bumping from the" \
+              "wrong base and will keep doing it. Check that the release is not a draft: a draft creates no tag."
             exit 1
           fi
-          echo "${tag} exists — safe to compute the next version"
 
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release

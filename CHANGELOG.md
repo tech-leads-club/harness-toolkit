@@ -6,7 +6,7 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
-## v0.2.3
+## Unreleased
 
 - **AD-084** — The rule about unpinned dependencies is applied to this repository too, and the release gate stops being a copy
 - **AD-085** — The flake was a test measuring a file the whole machine writes to
@@ -16,6 +16,7 @@ doctor reports against your own configuration.
 - **AD-089** — The release is chained to CI instead of racing it, and a superseded run is cancelled
 - **AD-090** — A draft release creates no tag, and without the tag the release loops
 - **AD-091** — One workflow owns main and one owns pull requests, so there is one run and one matrix
+- **AD-092** — The guard against the release loop counts untagged releases, because one is normal and two is the loop
 
 ## v0.2.2
 
