@@ -6,6 +6,10 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## Unreleased
+
+- **AD-095** — Four defects about where things are written, and one of them made every hook run twice
+
 ## v0.2.3
 
 - **AD-084** — The rule about unpinned dependencies is applied to this repository too, and the release gate stops being a copy

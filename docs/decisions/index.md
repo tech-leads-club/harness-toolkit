@@ -101,12 +101,8 @@ Handoff section and a link back to this index.
 | [AD-084](/decisions/ad-084.md) | The rule about unpinned dependencies is applied to this repository too, and the release gate stops being a copy | active |
 | [AD-085](/decisions/ad-085.md) | The flake was a test measuring a file the whole machine writes to | active |
 | [AD-086](/decisions/ad-086.md) | The write lock read the wrong error code on Windows, in a module that already listed the right ones | active |
-| [AD-088](/decisions/ad-087.md) | The release keeps its pull request and merges it with --admin, and a hand-written workflow linter is replaced by zizmor | active |
-| [AD-090](/decisions/ad-087.md) | A draft release creates no tag, and without the tag the release loops | active |
-| [AD-091](/decisions/ad-087.md) | One workflow owns main and one owns pull requests, so there is one run and one matrix | active |
-| [AD-092](/decisions/ad-087.md) | The guard against the release loop counts untagged releases, because one is normal and two is the loop | active |
-| [AD-093](/decisions/ad-087.md) | The App token is scoped to this repository and not to a list of verbs | active |
-| [AD-094](/decisions/ad-087.md) | The merge that starts the next release waits for the publish that ends this one | active |
+| [AD-087](/decisions/ad-087.md) | How the release works, and the six wrong shapes it took first | active |
+| [AD-095](/decisions/ad-095.md) | Four defects about where things are written, and one of them made every hook run twice | active |
 
 ## Archived
 
@@ -115,9 +111,6 @@ its row in `CHANGELOG.md` and in [/log.md](/log.md), because it shipped; this in
 separates the two, because it is the only one that claims to say what currently binds. Value decides, never
 volume — see the archive rule in `CONTRIBUTING.md`.
 
-| # | Title | Status |
-| --- | --- | --- |
-| [AD-087](/decisions/archived/ad-087.md) | The tag goes first because npm cannot be undone, and the release stays a draft until the package is real | archived |
-| [AD-089](/decisions/archived/ad-087.md) | The release is chained to CI instead of racing it, and a superseded run is cancelled | archived |
+None yet.
 
 Related: [/architecture.md](/architecture.md), [/concepts.md](/concepts.md), [/providers/index.md](/providers/index.md).
