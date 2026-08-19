@@ -20,6 +20,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-083** — Going public switched the branch ruleset on, and an unattended release needs the App to bypass it ([/decisions/ad-083.md](/decisions/ad-083.md))
 - **AD-084** — The rule about unpinned dependencies is applied to this repository too, and the release gate stops being a copy ([/decisions/ad-084.md](/decisions/ad-084.md))
 - **AD-085** — The flake was a test measuring a file the whole machine writes to ([/decisions/ad-085.md](/decisions/ad-085.md))
+- **AD-086** — The write lock read the wrong error code on Windows, in a module that already listed the right ones ([/decisions/ad-086.md](/decisions/ad-086.md))
 
 ## 2026-08-17
 

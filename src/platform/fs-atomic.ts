@@ -88,20 +88,52 @@ function readJson<T>(path: string): T | null {
   }
 }
 
-async function withFileLock<T>(lockPath: string, fn: () => Promise<T>): Promise<T> {
+/**
+ * hazard: `EEXIST` is what a held lock looks like on POSIX and only sometimes on Windows. There, a concurrent
+ * `wx` open against a file another process is creating or unlinking answers `EPERM` — so the loop below threw
+ * instead of waiting, and the two-concurrent-writers test failed in Windows CI with
+ * `EPERM: operation not permitted, open '…\handoff.json.lock'`. This module already listed the codes that mean
+ * "busy, come back" for its rename; the lock, which is the one place contention is the expected case, did not
+ * consult them ([/decisions/ad-086.md](/decisions/ad-086.md)).
+ */
+function isContention(error: unknown): boolean {
+  return errorCode(error) === "EEXIST" || isRetryableFsError(error);
+}
+
+/**
+ * invariant: prefixed names. `FsAtomicOptions` already carries `attempts` and `sleep` for the rename retry, and
+ * `UpdateJsonAtomicOptions` is the intersection of both — sharing a name there would silently hand the lock's
+ * budget to the rename, or the other way round.
+ */
+export type FileLockOptions = {
+  /** Injected so the contention branch has a test that does not need a second process or Windows. */
+  openLock?: (path: string) => void;
+  lockSleep?: (ms: number) => Promise<void>;
+  lockAttempts?: number;
+};
+
+export async function withFileLock<T>(
+  lockPath: string,
+  fn: () => Promise<T>,
+  options: FileLockOptions = {},
+): Promise<T> {
+  const {
+    openLock = (path: string) => closeSync(openSync(path, "wx")),
+    lockSleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+    lockAttempts = 200,
+  } = options;
   mkdirSync(dirname(lockPath), { recursive: true });
-  const attempts = 200;
   let acquired = false;
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  for (let attempt = 0; attempt < lockAttempts; attempt++) {
     try {
-      closeSync(openSync(lockPath, "wx"));
+      openLock(lockPath);
       acquired = true;
       break;
     } catch (error) {
-      if (errorCode(error) !== "EEXIST") {
+      if (!isContention(error)) {
         throw error;
       }
-      await new Promise((resolve) => setTimeout(resolve, nextDelay({ attempt, baseMs: 10, capMs: 200 })));
+      await lockSleep(nextDelay({ attempt, baseMs: 10, capMs: 200 }));
     }
   }
   if (!acquired) {
@@ -116,27 +148,33 @@ async function withFileLock<T>(lockPath: string, fn: () => Promise<T>): Promise<
   }
 }
 
-export type UpdateJsonAtomicOptions = FsAtomicOptions & {
-  lockPath: string /**
-   * Run inside the write lock, after the file lands. The platform does not care what it does — recording a
-   * content hash is core's business, and doing it here is what makes the record and the content one write.
-   */;
-  afterWrite?: (path: string) => void;
-};
+export type UpdateJsonAtomicOptions = FsAtomicOptions &
+  FileLockOptions & {
+    lockPath: string;
+    /**
+     * Run inside the write lock, after the file lands. The platform does not care what it does — recording a
+     * content hash is core's business, and doing it here is what makes the record and the content one write.
+     */
+    afterWrite?: (path: string) => void;
+  };
 
 export async function updateJsonAtomic<T>(
   path: string,
   mutator: (current: T | null) => T,
   options: UpdateJsonAtomicOptions,
 ): Promise<T> {
-  const { lockPath, afterWrite, ...atomicOptions } = options;
-  return withFileLock(lockPath, async () => {
-    const current = readJson<T>(path);
-    const next = mutator(current);
-    await writeJsonAtomic(path, next, atomicOptions);
-    // why: inside the lock. A caller that sealed after the lock released would race the next writer, and the pair
-    // that lost would leave a record matching neither content ([/decisions/ad-078.md](/decisions/ad-078.md)).
-    afterWrite?.(path);
-    return next;
-  });
+  const { lockPath, afterWrite, openLock, lockSleep, lockAttempts, ...atomicOptions } = options;
+  return withFileLock(
+    lockPath,
+    async () => {
+      const current = readJson<T>(path);
+      const next = mutator(current);
+      await writeJsonAtomic(path, next, atomicOptions);
+      // why: inside the lock. A caller that sealed after the lock released would race the next writer, and the
+      // pair that lost would leave a record matching neither content ([/decisions/ad-078.md](/decisions/ad-078.md)).
+      afterWrite?.(path);
+      return next;
+    },
+    { openLock, lockSleep, lockAttempts },
+  );
 }

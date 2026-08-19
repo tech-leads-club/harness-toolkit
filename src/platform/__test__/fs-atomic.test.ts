@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { updateJsonAtomic, writeJsonAtomic } from "../fs-atomic.ts";
+import { updateJsonAtomic, withFileLock, writeJsonAtomic } from "../fs-atomic.ts";
 
 function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "fs-atomic-test-"));
@@ -207,6 +207,87 @@ describe("updateJsonAtomic", () => {
     await Promise.all([increment(), increment(), increment(), increment(), increment()]);
 
     assert.deepEqual(JSON.parse(readFileSync(target, "utf8")), { count: 5 });
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * hazard: a held lock is `EEXIST` on POSIX and not always on Windows — a concurrent `wx` open against a file
+ * another process is creating or unlinking answers `EPERM` there. The loop treated anything but `EEXIST` as fatal,
+ * so `two concurrent writers under the same provider merge without losing either field` failed in Windows CI with
+ * `EPERM: operation not permitted`. This module already listed the codes meaning "busy, come back" for its rename
+ * and the lock did not read them ([/decisions/ad-086.md](/decisions/ad-086.md)).
+ *
+ * invariant: the opener is injected, so the branch is covered on the platform a contributor actually runs.
+ */
+describe("withFileLock contention", () => {
+  function failingOpener(code: string, times: number): (path: string) => void {
+    let left = times;
+    return () => {
+      if (left-- > 0) {
+        throw Object.assign(new Error(`${code}: injected`), { code });
+      }
+    };
+  }
+
+  for (const code of ["EPERM", "EBUSY", "EACCES", "EEXIST"]) {
+    test(`${code} is contention: the lock waits and then acquires`, async () => {
+      const dir = tempDir();
+      const acquired = await withFileLock(join(dir, "state.lock"), async () => "ran", {
+        openLock: failingOpener(code, 3),
+        lockSleep: async () => {},
+      });
+
+      assert.equal(acquired, "ran");
+      rmSync(dir, { recursive: true, force: true });
+    });
+  }
+
+  test("a code that is not contention is thrown rather than retried", async () => {
+    const dir = tempDir();
+    await assert.rejects(
+      withFileLock(join(dir, "state.lock"), async () => "ran", {
+        openLock: failingOpener("ENOSPC", 1),
+        lockSleep: async () => {},
+      }),
+      /ENOSPC/,
+    );
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("contention that never clears fails with the lock path, not with the last fs error", async () => {
+    const dir = tempDir();
+    const lockPath = join(dir, "state.lock");
+    await assert.rejects(
+      withFileLock(lockPath, async () => "ran", {
+        openLock: failingOpener("EPERM", 99),
+        lockSleep: async () => {},
+        lockAttempts: 3,
+      }),
+      /could not acquire lock/,
+    );
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** invariant: the lock's budget and the rename's budget are separate fields, so neither can consume the other. */
+  test("updateJsonAtomic passes the lock options through without touching the rename retry", async () => {
+    const dir = tempDir();
+    const target = join(dir, "state.json");
+    let opens = 0;
+
+    await updateJsonAtomic<{ n: number }>(target, () => ({ n: 1 }), {
+      lockPath: join(dir, "state.lock"),
+      openLock: () => {
+        opens += 1;
+        if (opens < 3) {
+          throw Object.assign(new Error("EPERM: injected"), { code: "EPERM" });
+        }
+      },
+      lockSleep: async () => {},
+    });
+
+    assert.equal(opens, 3);
+    assert.deepEqual(JSON.parse(readFileSync(target, "utf8")), { n: 1 });
     rmSync(dir, { recursive: true, force: true });
   });
 });

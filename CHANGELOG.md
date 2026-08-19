@@ -6,7 +6,7 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
-## v0.2.2
+## Unreleased
 
 - **AD-001** — Optional parent-Fast sticky deny for Task spawns
 - **AD-002** — Provider-neutral naming and layout
@@ -95,3 +95,4 @@ doctor reports against your own configuration.
 - **AD-083** — Going public switched the branch ruleset on, and an unattended release needs the App to bypass it
 - **AD-084** — The rule about unpinned dependencies is applied to this repository too, and the release gate stops being a copy
 - **AD-085** — The flake was a test measuring a file the whole machine writes to
+- **AD-086** — The write lock read the wrong error code on Windows, in a module that already listed the right ones

@@ -272,20 +272,27 @@ function readJson(path) {
     return null;
   }
 }
-async function withFileLock(lockPath, fn) {
+function isContention(error) {
+  return errorCode(error) === "EEXIST" || isRetryableFsError(error);
+}
+async function withFileLock(lockPath, fn, options = {}) {
+  const {
+    openLock = (path) => closeSync(openSync(path, "wx")),
+    lockSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    lockAttempts = 200
+  } = options;
   mkdirSync2(dirname2(lockPath), { recursive: true });
-  const attempts = 200;
   let acquired = false;
-  for (let attempt = 0;attempt < attempts; attempt++) {
+  for (let attempt = 0;attempt < lockAttempts; attempt++) {
     try {
-      closeSync(openSync(lockPath, "wx"));
+      openLock(lockPath);
       acquired = true;
       break;
     } catch (error) {
-      if (errorCode(error) !== "EEXIST") {
+      if (!isContention(error)) {
         throw error;
       }
-      await new Promise((resolve) => setTimeout(resolve, nextDelay({ attempt, baseMs: 10, capMs: 200 })));
+      await lockSleep(nextDelay({ attempt, baseMs: 10, capMs: 200 }));
     }
   }
   if (!acquired) {
@@ -300,14 +307,14 @@ async function withFileLock(lockPath, fn) {
   }
 }
 async function updateJsonAtomic(path, mutator, options) {
-  const { lockPath, afterWrite, ...atomicOptions } = options;
+  const { lockPath, afterWrite, openLock, lockSleep, lockAttempts, ...atomicOptions } = options;
   return withFileLock(lockPath, async () => {
     const current = readJson(path);
     const next = mutator(current);
     await writeJsonAtomic(path, next, atomicOptions);
     afterWrite?.(path);
     return next;
-  });
+  }, { openLock, lockSleep, lockAttempts });
 }
 
 // src/core/capability/capability.store.ts

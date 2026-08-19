@@ -100,6 +100,7 @@ Handoff section and a link back to this index.
 | [AD-083](/decisions/ad-083.md) | Going public switched the branch ruleset on, and an unattended release needs the App to bypass it | active |
 | [AD-084](/decisions/ad-084.md) | The rule about unpinned dependencies is applied to this repository too, and the release gate stops being a copy | active |
 | [AD-085](/decisions/ad-085.md) | The flake was a test measuring a file the whole machine writes to | active |
+| [AD-086](/decisions/ad-086.md) | The write lock read the wrong error code on Windows, in a module that already listed the right ones | active |
 
 ## Archived
 
