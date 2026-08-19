@@ -4438,6 +4438,9 @@ var DEFAULTS = {
     onViolation: "followup",
     mode: "declared"
   },
+  supplyChain: {
+    enabled: false
+  },
   duplication: {
     enabled: false,
     minRun: MIN_RUN
@@ -4537,6 +4540,7 @@ function deepMerge(base, patch) {
     docs: { ...base.docs, ...patch.docs },
     observe: { ...base.observe, ...patch.observe },
     comments: { ...base.comments, ...patch.comments },
+    supplyChain: { ...base.supplyChain, ...patch.supplyChain },
     duplication: { ...base.duplication, ...patch.duplication },
     obs: { ...base.obs, ...patch.obs },
     untrustedContent: { ...base.untrustedContent, ...patch.untrustedContent },
@@ -5003,6 +5007,9 @@ function operatorBootstrapLines(policy, stateDir) {
   }
   if (policy.comments.enabled) {
     lines.push(policy.comments.mode === "strict" ? "Comments: do not add any. If one is warranted, say so in your reply and let the owner write it." : policy.comments.mode === "resolvable" ? "Comments: an added comment must declare why:, hazard: or invariant:, and must read for someone who was not in this session. Do not narrate the change (used to, previously, this was), cite a plan, decision number or section only this session saw, speak from the change (this PR, a later commit), or argue your own correctness. State the present behaviour, or the counterfactual: without X, Y happens." : "Comments: an added comment must declare why:, hazard: or invariant:. Narrating what the code does is blocked.");
+  }
+  if (policy.supplyChain.enabled) {
+    lines.push("Dependencies: when you add one, pin a version and commit the lockfile in the same turn — the gate blocks a stop on a manifest that moved without its lockfile, or a specifier of latest/*/no version. If a floating specifier is deliberate, say which and why in one line.");
   }
   if (policy.duplication.enabled) {
     lines.push("Duplication: before writing a block, check whether the project already has it — the gate blocks a stop when this turn added six or more lines that exist elsewhere. Call the existing code or extract what both need. If two copies are deliberate, say which in one line.");
@@ -5813,6 +5820,166 @@ function evaluateSubagentSpawn(args) {
   return { kind: "allow" };
 }
 
+// src/core/supply-chain/supply-chain.catalog.ts
+var MANIFESTS = [
+  { manifest: "package.json", lockfile: "package-lock.json", shape: "json-object" },
+  { manifest: "requirements.txt", lockfile: null, shape: "requirement" },
+  { manifest: "pyproject.toml", lockfile: "poetry.lock", shape: "toml-table" },
+  { manifest: "Cargo.toml", lockfile: "Cargo.lock", shape: "toml-table" },
+  { manifest: "go.mod", lockfile: "go.sum", shape: "directive" },
+  { manifest: "Gemfile", lockfile: "Gemfile.lock", shape: "directive" }
+];
+function manifestFor(relativePath) {
+  const name = relativePath.split(/[\\/]/).pop() ?? relativePath;
+  return MANIFESTS.find((entry) => entry.manifest === name) ?? null;
+}
+var ALTERNATE_LOCKFILES = {
+  "package.json": ["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "npm-shrinkwrap.json", "bun.lockb"],
+  "pyproject.toml": ["poetry.lock", "pdm.lock", "uv.lock"]
+};
+function lockfilesFor(entry) {
+  return ALTERNATE_LOCKFILES[entry.manifest] ?? (entry.lockfile === null ? [] : [entry.lockfile]);
+}
+
+// src/core/supply-chain/supply-chain.service.ts
+function isManifest(relativePath) {
+  return manifestFor(relativePath) !== null;
+}
+var UNPINNED_SPECS = new Set(["latest", "*", "x", "X", "", "main", "master", "HEAD"]);
+function dependencyOf(text, shape) {
+  const line = text.trim().replace(/,$/, "");
+  switch (shape) {
+    case "json-object": {
+      const match = /^"([^"]+)"\s*:\s*"([^"]*)"$/.exec(line);
+      return match ? { name: match[1], spec: match[2] } : null;
+    }
+    case "toml-table": {
+      const match = /^([A-Za-z0-9._-]+)\s*=\s*"([^"]*)"$/.exec(line);
+      return match ? { name: match[1], spec: match[2] } : null;
+    }
+    case "requirement": {
+      if (line === "" || line.startsWith("#") || line.startsWith("-")) {
+        return null;
+      }
+      const match = /^([A-Za-z0-9._-]+)\s*(?:\[[^\]]*\])?\s*(?:[=<>~!]=?\s*(.+))?$/.exec(line);
+      return match ? { name: match[1], spec: (match[2] ?? "").trim() } : null;
+    }
+    default: {
+      const match = /^(?:require|gem)\s+["']?([^"'\s]+)["']?(?:\s*,?\s*["']?([^"'\s]+)["']?)?$/.exec(line);
+      return match ? { name: match[1], spec: (match[2] ?? "").trim() } : null;
+    }
+  }
+}
+function isUnpinned(spec) {
+  const trimmed = spec.trim();
+  if (UNPINNED_SPECS.has(trimmed)) {
+    return true;
+  }
+  return /^>=?\s*[\d.]+$/.test(trimmed);
+}
+var DEPENDENCY_SECTIONS = [
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+  "optionalDependencies",
+  "require",
+  "require-dev"
+];
+function declaredDependencies(manifestText) {
+  if (manifestText === null) {
+    return null;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(manifestText);
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== "object") {
+    return null;
+  }
+  const names = new Set;
+  const record = parsed;
+  for (const section of DEPENDENCY_SECTIONS) {
+    const block = record[section];
+    if (block !== null && typeof block === "object" && !Array.isArray(block)) {
+      for (const name of Object.keys(block)) {
+        names.add(name);
+      }
+    }
+  }
+  return names;
+}
+function inspectSupplyChain(input) {
+  const findings = [];
+  const changed = new Set(input.changedFiles.map((path) => path.split(/[\\/]/).pop() ?? path));
+  const manifestsTouched = new Map;
+  for (const path of input.changedFiles) {
+    const entry = manifestFor(path);
+    if (entry !== null) {
+      manifestsTouched.set(path, entry);
+    }
+  }
+  for (const [path, entry] of manifestsTouched) {
+    const addedHere = input.added.filter((line) => line.file === path);
+    const declared = entry.shape === "json-object" ? declaredDependencies(input.readManifest?.(path) ?? null) : null;
+    const dependencies = addedHere.map((line) => ({ line, dependency: dependencyOf(line.text, entry.shape) })).filter((row) => {
+      if (row.dependency === null) {
+        return false;
+      }
+      if (entry.shape !== "json-object") {
+        return true;
+      }
+      return declared?.has(row.dependency.name) === true;
+    });
+    if (dependencies.length === 0) {
+      continue;
+    }
+    const locks = lockfilesFor(entry);
+    if (locks.length > 0 && !locks.some((lock) => changed.has(lock))) {
+      const head = dependencies[0];
+      findings.push({
+        kind: "unlocked",
+        file: path,
+        line: head.line.line,
+        detail: `${path} gained a dependency and none of ${locks.join(", ")} moved, so what installs is decided at install time`
+      });
+    }
+    for (const { line, dependency } of dependencies) {
+      if (isUnpinned(dependency.spec)) {
+        findings.push({
+          kind: "unpinned",
+          file: path,
+          line: line.line,
+          detail: `${dependency.name} is specified as \`${dependency.spec || "(no version)"}\`, so tomorrow's bytes are not today's`
+        });
+      }
+    }
+  }
+  const unknownManifests = input.changedFiles.filter((path) => {
+    const name = path.split(/[\\/]/).pop() ?? path;
+    return /^(?:.*\.)?(?:lock|manifest)$/.test(name) && manifestFor(path) === null;
+  }).sort();
+  return { findings, unknownManifests };
+}
+function supplyChainMessage(findings) {
+  const unlocked = findings.filter((finding) => finding.kind === "unlocked");
+  const unpinned = findings.filter((finding) => finding.kind === "unpinned");
+  return [
+    `BLOCKED: this turn changed the dependency graph in ${findings.length} way(s) that outlive it.`,
+    "TRIED: compared the manifest lines this turn added against the commit it started from, and checked",
+    "whether the paired lockfile moved with them.",
+    ...unlocked.length > 0 ? [
+      "NEED: run the ecosystem's install so the lockfile records what resolves, and commit it with the manifest."
+    ] : [],
+    ...unpinned.length > 0 ? ["NEED: name a version. `latest` and `*` mean the bytes that arrive tomorrow were never reviewed."] : [],
+    "If a floating specifier is deliberate, say which and why in one line and continue.",
+    "",
+    ...findings.slice(0, 10).map((finding) => `${finding.file}:${finding.line}  [${finding.kind}]  ${finding.detail}`)
+  ].join(`
+`);
+}
+
 // src/core/turn/turn.activity.ts
 var TOOL_KINDS = new Set([
   "tool.start",
@@ -6434,6 +6601,11 @@ var coreFacade = {
     evaluateSubagentSpawn,
     upsertParentModelState,
     readParentModelState
+  },
+  supplyChain: {
+    isManifest,
+    inspectSupplyChain,
+    supplyChainMessage
   },
   duplication: {
     scanProject,

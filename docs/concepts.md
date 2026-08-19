@@ -171,6 +171,25 @@ than a deletion ([/decisions/ad-070.md](/decisions/ad-070.md)); `strict` accepts
 asks the operator to write it. Tool directives (`biome-ignore`, `@ts-`, `noqa`, `shellcheck`, shebang) are
 exempt in both modes.
 
+## supply chain
+
+`supplyChain.enabled`, off by default. Blocks the stop when this turn added a dependency and left one of two
+things undone: the paired lockfile did not move, or the specifier names no version — `latest`, `*`, `x`, or blank.
+Diff-scoped against the sha the turn started from, so a manifest already unlocked before the turn is not this
+turn's to answer for.
+
+A manifest is recognised by filename from one table that pairs each with its lockfile, and accepts any lockfile
+the ecosystem uses — a project on pnpm has locked as firmly as one on npm. A filename the table does not carry
+produces no findings.
+
+For a JSON manifest the declared dependency sections decide what counts, so the manifest is read as it stands.
+Without that step a rename reads as a dependency: calibrated against this repository's own history, the textual
+shape alone reported `"name": "harness-toolkit"` from a rename commit, and would report every `scripts` entry the
+same way.
+
+It does not check advisories, licences or typosquats. Each needs the network on every stop, and `npm audit` is
+already a gate command an operator can configure.
+
 ## duplication
 
 `duplication.enabled`, off by default, with `duplication.minRun` (default 6). Blocks the stop when this turn

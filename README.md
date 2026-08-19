@@ -64,9 +64,9 @@ Three tiers, and which tier a check is in decides whether you can turn it off.
 |------|-------|--------------|------|
 | [Floor](#tier-1--the-floor-no-configuration-reaches-it) | 7 rules | Never | Before any policy is loaded, on every tool call, shell command and read |
 | [Always on](#tier-2--always-on-no-switch) | 3 checks | Never | After the floor, on every acting event |
-| [Rails](#tier-3--the-rails-you-choose) | 22 capabilities | Each one, individually | Where the table says |
+| [Rails](#tier-3--the-rails-you-choose) | 23 capabilities | Each one, individually | Where the table says |
 
-Nothing else runs. If a message on your screen is not from one of the thirty-two rows below, it is not the
+Nothing else runs. If a message on your screen is not from one of the thirty-three rows below, it is not the
 harness.
 
 ### Tier 1 — the floor, no configuration reaches it
@@ -108,7 +108,7 @@ otherwise switch off.
 
 ### Tier 3 — the rails you choose
 
-All 22 are off unless the **default** column says `on`, and each was presented with its benefit and its
+All 23 are off unless the **default** column says `on`, and each was presented with its benefit and its
 trade-off when you ran the init wizard. `configPath` is the key in `.tlc/harness/config.json`.
 
 <!-- generated:validates -->
@@ -120,6 +120,7 @@ trade-off when you ran the init wizard. `configPath` is the key in `.tlc/harness
 | **Empty-diff anti-ship**<br>`shipGate.emptyDiffAntiShip` · off | Checks that a ship claim has a non-empty diff behind it. | `stop` | `block-stop` | the ship ledger in the project state directory — the challenge row names the empty diff |
 | **Comment gate (agent-added comments)**<br>`comments.enabled` · off | Checks the comment lines this turn added against the commit the turn started from: by reason, by resolvability, or none. | `stop` | `block-stop` | tlc harness obs report — the comments gate appears among the gate outcomes |
 | **Duplication gate (agent-added copies)**<br>`duplication.enabled` · off | Checks whether the runs of code this turn added already exist somewhere else in the project. | `stop` | `block-stop` | tlc harness obs report — the duplication gate appears among the gate outcomes |
+| **Supply-chain gate (dependencies this turn added)**<br>`supplyChain.enabled` · off | Checks what this turn added to the dependency graph: a manifest that moved without its lock, or an unpinned version. | `stop` | `block-stop` | tlc harness obs report — the supply-chain gate appears among the gate outcomes |
 | **Subagent allowlist**<br>`subagents.enforceAllowlist` · off | Checks a subagent's model against the list you wrote, and against the blocked *-fast shapes. | `tool.before`<br>`subagent.start` | `deny` | tlc harness obs report — refusals attributed by rule; the denial text names subagents.allowedModels and lists what is permitted |
 | **Block parent Fast mode for Task spawns**<br>`subagents.blockParentFast` · off | Checks whether the parent chat is in Fast mode before letting it spawn a subagent. | `tool.before`<br>`subagent.start` | `deny` | tlc harness obs report — refusals by rule; tlc harness status shows the sticky parent model it read |
 | **Shell stall detection**<br>`shell.stallDetection` · off | Counts identical shell commands in a row and stops the loop at your threshold. | `shell.before` | `deny` | tlc harness obs report — interruptions attributed to the shell-stall rule |

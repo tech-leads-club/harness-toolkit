@@ -58,6 +58,9 @@ export const DEFAULTS: Policy = {
     onViolation: "followup",
     mode: "declared",
   },
+  supplyChain: {
+    enabled: false,
+  },
   duplication: {
     enabled: false,
     minRun: MIN_RUN,

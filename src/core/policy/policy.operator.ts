@@ -56,6 +56,11 @@ export function operatorBootstrapLines(policy: Policy, stateDir: string): string
           : "Comments: an added comment must declare why:, hazard: or invariant:. Narrating what the code does is blocked.",
     );
   }
+  if (policy.supplyChain.enabled) {
+    lines.push(
+      "Dependencies: when you add one, pin a version and commit the lockfile in the same turn — the gate blocks a stop on a manifest that moved without its lockfile, or a specifier of latest/*/no version. If a floating specifier is deliberate, say which and why in one line.",
+    );
+  }
   if (policy.duplication.enabled) {
     lines.push(
       "Duplication: before writing a block, check whether the project already has it — the gate blocks a stop when this turn added six or more lines that exist elsewhere. Call the existing code or extract what both need. If two copies are deliberate, say which in one line.",

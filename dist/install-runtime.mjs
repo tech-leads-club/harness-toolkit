@@ -777,6 +777,9 @@ var DEFAULTS = {
     onViolation: "followup",
     mode: "declared"
   },
+  supplyChain: {
+    enabled: false
+  },
   duplication: {
     enabled: false,
     minRun: MIN_RUN
@@ -830,6 +833,9 @@ var NETWORK = new Set(["curl", "ftp", "gh", "nc", "ncat", "rsync", "scp", "sftp"
 var WRITE = new Set(["cp", "mv", "rm", "rmdir", "tee", "truncate"]);
 var PRIVILEGE = new Set(["chmod", "chown"]);
 var PAIRED_ASK = new Set(["write", "privilege", "network"]);
+// src/core/supply-chain/supply-chain.service.ts
+var UNPINNED_SPECS = new Set(["latest", "*", "x", "X", "", "main", "master", "HEAD"]);
+
 // src/core/turn/turn.activity.ts
 var TOOL_KINDS = new Set([
   "tool.start",

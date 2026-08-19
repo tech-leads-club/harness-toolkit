@@ -637,6 +637,9 @@ var DEFAULTS = {
     onViolation: "followup",
     mode: "declared"
   },
+  supplyChain: {
+    enabled: false
+  },
   duplication: {
     enabled: false,
     minRun: MIN_RUN

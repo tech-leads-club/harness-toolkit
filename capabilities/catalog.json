@@ -1,5 +1,5 @@
 {
-  "catalogVersion": 11,
+  "catalogVersion": 12,
   "capabilities": [
     {
       "id": "grind",
@@ -96,6 +96,22 @@
       "asks": [
         "minRun: lines a run must reach before two copies count (default 6)"
       ]
+    },
+    {
+      "id": "supplyChain",
+      "configPath": "supplyChain.enabled",
+      "title": "Supply-chain gate (dependencies this turn added)",
+      "summary": "Checks what this turn added to the dependency graph: a manifest that moved without its lock, or an unpinned version.",
+      "benefit": "Blocks the stop when a dependency added this turn is not recorded in a lockfile, or is specified as latest/*/no version. A dependency added in a turn runs on every later turn, in CI, and on every machine that installs the project.",
+      "tradeOff": "Recognises a manifest by filename from one table, so an ecosystem the table does not carry is not covered. For a JSON manifest the declared dependency sections decide, so it reads the manifest as it stands — without that, a rename or a scripts entry reads as a dependency. It does not check advisories, licences or typosquats: those need the network on every stop.",
+      "defaultOn": false,
+      "sinceCatalogVersion": 12,
+      "fires": [
+        "stop"
+      ],
+      "verdict": "block-stop",
+      "inspect": "tlc harness obs report — the supply-chain gate appears among the gate outcomes",
+      "asks": []
     },
     {
       "id": "subagents",

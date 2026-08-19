@@ -613,6 +613,42 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   }
 
   /**
+   * why: a dependency added in a turn is code that runs on every later turn, in CI, and on every machine that
+   * installs the project. Two mechanical failures are worth a stop: a manifest that moved without its lockfile,
+   * and a specifier that names no version ([/decisions/ad-075.md](/decisions/ad-075.md)).
+   */
+  if (policy.supplyChain.enabled && changedFiles.length > 0) {
+    const manifests = changedFiles.filter((path) => coreFacade.supplyChain.isManifest(path));
+    if (manifests.length > 0) {
+      const added = await listAddedLines(root, manifests, turnBase);
+      const outcome = coreFacade.supplyChain.inspectSupplyChain({
+        changedFiles,
+        added,
+        readManifest: (relativePath) => {
+          try {
+            return readFileSync(join(root, relativePath), "utf8");
+          } catch {
+            return null;
+          }
+        },
+      });
+      if (outcome.findings.length > 0) {
+        await coreFacade.handoff.patchHandoff(root, provider, {
+          slice: {
+            last_gate_result: "fail",
+            blockers: `This turn changed the dependency graph in ${outcome.findings.length} way(s) that outlive it.`,
+            next_action: coreFacade.turn.suggestionFor("verification", "supplyChain"),
+          },
+        });
+        return {
+          kind: "continue",
+          text: coreFacade.supplyChain.supplyChainMessage(outcome.findings),
+        };
+      }
+    }
+  }
+
+  /**
    * why: the same diff scope the comment gate uses, asking a different question — did this turn write something
    * the project already has? Two copies of a run drift apart, and the second copy is where the drift starts
    * ([/decisions/ad-071.md](/decisions/ad-071.md)).

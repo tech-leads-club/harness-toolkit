@@ -153,6 +153,7 @@ import {
   upsertParentModelState,
 } from "./subagent-policy/subagent-policy.parent-model.ts";
 import { evaluateSubagentSpawn } from "./subagent-policy/subagent-policy.service.ts";
+import { inspectSupplyChain, isManifest, supplyChainMessage } from "./supply-chain/supply-chain.service.ts";
 import { endedWithoutActing, idleTurnMessage, readTurnActivity } from "./turn/turn.activity.ts";
 import { formatAutopilotBlock, resolveAutopilot } from "./turn/turn.autopilot.ts";
 import {
@@ -349,6 +350,11 @@ export const coreFacade = {
     evaluateSubagentSpawn,
     upsertParentModelState,
     readParentModelState,
+  },
+  supplyChain: {
+    isManifest,
+    inspectSupplyChain,
+    supplyChainMessage,
   },
   duplication: {
     scanProject,
