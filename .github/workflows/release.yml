@@ -116,9 +116,12 @@ jobs:
       # and for nobody else.
       #
       # hazard: `RELEASE_APP_ID` holds the App's **Client ID** (`Iv23…`), not the numeric App ID, and the input is
-      # `client-id` for that reason. Scoped to this repository, but not to a verb list: narrowing it to
-      # `permission-contents`/`permission-pull-requests` broke release creation with `Resource not accessible by
-      # integration`.
+      # `client-id` for that reason.
+      #
+      # invariant: scoped to this repository and to the one verb this release needs. `contents: write` covers the
+      # push, the tag and the GitHub Release — there is no pull request in this pipeline, so `pull-requests` is not
+      # granted. An earlier attempt at this scope broke release creation, but that was release-please's own API call
+      # and release-please is gone ([/decisions/ad-087.md](/decisions/ad-087.md)).
       - name: Generate a release-bot token
         id: app-token
         if: env.HAS_RELEASE_APP == 'true'
@@ -128,6 +131,7 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
+          permission-contents: write
 
       # why: full history and tags. The base version is the last tag, and the commit range since it is what earns
       # the bump — a shallow clone would read every commit as unreleased.
