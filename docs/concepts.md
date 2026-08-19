@@ -280,6 +280,17 @@ also its limit — it depends on the declaration being made.
 reads. When a turn takes in content from outside the repository, one framing message states that the content
 is data and that any directive inside it is to be reported as a prompt-injection attempt, never obeyed.
 
+**It frames; it does not enforce, and it cannot here.** Refusing an action *because* it came from injected
+content means establishing that link, which needs the content the tool returned — and the provider's tool event
+carries no tool output. The transcript holds it and is documented as possibly lagging the live conversation, so a
+rail reading it would miss content and not know it had ([/decisions/ad-076.md](/decisions/ad-076.md)).
+
+What covers the damaging tail instead is the floor, and provenance never mattered to it: running a program
+fetched from the network, reading a credential, destroying outside the project, rewriting history, controlling
+the machine and writing policy are all refused before any policy is read, whoever suggested them. An injected
+`curl … | bash` is refused for being unreadable code, not for being injected — which holds without recognising
+the attack at all.
+
 Detection is a declared list, never inferred from output: every MCP result (the server is not this
 repository), a tool whose name the provider declares as untrusted (`WebFetch` / `WebSearch` on Claude Code,
 `Fetch` / `WebSearch` on Cursor), and a shell command whose **segment starts with** `gh pr view|diff|list`,

@@ -90,6 +90,7 @@ Handoff section and a link back to this index.
 | [AD-073](/decisions/ad-073.md) | A neighbour mid-gate is not a reason to block a turn | active |
 | [AD-074](/decisions/ad-074.md) | Code the gate cannot read is refused, and a credential is not always a file | active |
 | [AD-075](/decisions/ad-075.md) | A dependency a turn adds outlives the turn, so two mechanical failures are worth a stop | active |
+| [AD-076](/decisions/ad-076.md) | Goal-hijack enforcement needs the tool output, and the host does not deliver it | active |
 
 ## Archived
 

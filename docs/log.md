@@ -18,6 +18,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-073** — A neighbour mid-gate is not a reason to block a turn ([/decisions/ad-073.md](/decisions/ad-073.md))
 - **AD-074** — Code the gate cannot read is refused, and a credential is not always a file ([/decisions/ad-074.md](/decisions/ad-074.md))
 - **AD-075** — A dependency a turn adds outlives the turn, so two mechanical failures are worth a stop ([/decisions/ad-075.md](/decisions/ad-075.md))
+- **AD-076** — Goal-hijack enforcement needs the tool's output, and the host does not deliver it ([/decisions/ad-076.md](/decisions/ad-076.md))
 
 ## 2026-08-13
 

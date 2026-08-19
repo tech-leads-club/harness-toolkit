@@ -211,7 +211,7 @@ and not described there fails the typecheck.
 |---|---|---|
 | `outside-project-destruction` | a destructive command whose target resolves outside the repository and outside the OS temp directory | the same command inside the repository, or inside the temp directory |
 | `unprovable-destruction` | a destructive verb whose target is a variable, a command substitution, or otherwise built at runtime — the harness cannot see what it would delete | a literal path it can resolve and check |
-| `secret-access` | a read that would copy `.env`, `~/.ssh`, `~/.aws`, `*.pem` or similar into the transcript, through a shell reader or through the editor's own read tool | — |
+| `secret-access` | a read that would copy a credential into the transcript — `.env`, `~/.ssh`, `~/.aws`, `*.pem` and similar through a shell reader or the editor's own read tool, and the instance metadata service through any verb that speaks to the network | searching local files for the literal address, because `grep` and its kin make no request |
 | `history-rewrite` | `git push --force` | `--force-with-lease`, which refuses on its own when the remote moved |
 | `machine-control` | `shutdown`, `reboot`, `halt`, `poweroff` | — |
 | `unprovable-execution` | a program fetched over the network and handed to a shell — piped, process-substituted, or inside a shell's `-c`/`eval` substitution. The gate cannot read what would run | a fetch with no shell downstream, and a shell fed a local file the gate can read |

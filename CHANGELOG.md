@@ -85,3 +85,4 @@ doctor reports against your own configuration.
 - **AD-073** — A neighbour mid-gate is not a reason to block a turn
 - **AD-074** — Code the gate cannot read is refused, and a credential is not always a file
 - **AD-075** — A dependency a turn adds outlives the turn, so two mechanical failures are worth a stop
+- **AD-076** — Goal-hijack enforcement needs the tool's output, and the host does not deliver it
