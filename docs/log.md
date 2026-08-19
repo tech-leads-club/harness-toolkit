@@ -22,6 +22,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-077** — A command that appears verbatim in fetched content is put to the operator ([/decisions/ad-077.md](/decisions/ad-077.md))
 - **AD-078** — The two files the harness reads aloud are sealed on write and verified on injection ([/decisions/ad-078.md](/decisions/ad-078.md))
 - **AD-079** — The coverage claim is a generated page with its gaps in it, not a badge in the README ([/decisions/ad-079.md](/decisions/ad-079.md))
+- **AD-080** — Every hand-written list of our own rules is now checked, including the one that drifted while writing this ([/decisions/ad-080.md](/decisions/ad-080.md))
 
 ## 2026-08-13
 

@@ -8135,7 +8135,8 @@ var stopHandler = async (event, ctx) => {
   const status = event.status ?? "completed";
   const maxLoops = policy.grind.maxLoops;
   const loopCount = capabilities.nativeLoopCounter ? event.loopCount ?? 0 : coreFacade.turn.nextLoop(root, sessionKey);
-  const handoff = coreFacade.handoff.readHandoff(root, provider);
+  const stopSeal = coreFacade.handoff.handoffInjectable(root);
+  const handoff = stopSeal.ok ? coreFacade.handoff.readHandoff(root, provider) : {};
   const turnBase = handoff.turn_base_sha ?? "HEAD";
   const deferred = [];
   const changedFiles = await listChangedRepoFiles(root, turnBase);

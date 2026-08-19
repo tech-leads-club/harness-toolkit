@@ -38,7 +38,7 @@ The gate is a single command:
 tlc harness test
 ```
 
-Fifteen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
+Sixteen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
 source of truth, and this table is here to say what each step is for.
 
 | # | Step | Fails on |
@@ -57,7 +57,8 @@ source of truth, and this table is here to say what each step is for.
 | 12 | `render-capabilities --check` | a generated README region that no longer matches `capabilities/catalog.json` |
 | 13 | `render-changelog --check` | a `CHANGELOG.md` that no longer matches `docs/decisions/` |
 | 14 | `render-log --check` | a `docs/log.md` that no longer matches `docs/decisions/` |
-| 15 | `check-dist-fresh` | **CI only** — a `dist/` bundle that does not match `src/`. Run `./bin/tlc-build` and commit the result |
+| 15 | `render-coverage --check` | a control named in `docs/coverage.md` that is neither a floor rule nor a capability id, or a row short of `covered` that states no limit |
+| 16 | `check-dist-fresh` | **CI only** — a `dist/` bundle that does not match `src/`. Run `./bin/tlc-build` and commit the result |
 
 Equivalent by hand, for local debugging:
 
@@ -76,6 +77,7 @@ node tools/dev/check-obs-contract.ts
 node tools/dev/render-capabilities.ts --check
 node tools/dev/render-changelog.ts --check
 node tools/dev/render-log.ts --check
+node tools/dev/render-coverage.ts --check
 node tools/dev/check-dist-fresh.ts
 ```
 
@@ -127,6 +129,23 @@ gaining sixty-seven that added. When you are deciding whether something can go:
 - `tools/dev/check-wiring.ts` and `tools/dev/check-obs-contract.ts` already report what nothing reads. Those
   lists are where to look first, and they are reports rather than failures precisely because the judgement is
   yours.
+
+## Changing the init skill
+
+The wizard has two halves. `skills/harness-init/references/capabilities.md` is generated from
+`capabilities/catalog.json` — never edit it. `skills/harness-init/SKILL.md` is hand-written and narrates three
+capabilities in prose; the gate fails if one of those three gains a mode the skill does not name.
+
+The skill's `description` is what decides whether a host routes a request to it at all, so a change there is a
+behaviour change with no test attached. Before changing it, run the routing evaluation:
+
+```bash
+ANTHROPIC_API_KEY=... node tools/dev/eval-skill-triggers.ts --json
+```
+
+It reports which phrasings route and which do not. Without a key it exits 0 and says so, so it is safe to run
+blind. Nothing invokes it automatically — the point of naming it here is that a change to the description has a
+documented step rather than an orphaned tool ([/decisions/ad-080.md](/decisions/ad-080.md)).
 
 ## Conventions
 

@@ -89,3 +89,4 @@ doctor reports against your own configuration.
 - **AD-077** — A command that appears verbatim in fetched content is put to the operator
 - **AD-078** — The two files the harness reads aloud are sealed on write and verified on injection
 - **AD-079** — The coverage claim is a generated page with its gaps in it, not a badge in the README
+- **AD-080** — Every hand-written list of our own rules is now checked, including the one that drifted while writing this

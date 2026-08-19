@@ -399,7 +399,15 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
     ? (event.loopCount ?? 0)
     : coreFacade.turn.nextLoop(root, sessionKey);
 
-  const handoff = coreFacade.handoff.readHandoff(root, provider);
+  /**
+   * why: the stop reads the handoff to decide rather than to tell the model, so a diverged file is a different
+   * risk — a decision taken from planted text. Withholding here means deciding from the file's absence, which is
+   * the same answer a first turn gets ([/decisions/ad-080.md](/decisions/ad-080.md)).
+   */
+  const stopSeal = coreFacade.handoff.handoffInjectable(root);
+  const handoff = stopSeal.ok
+    ? coreFacade.handoff.readHandoff(root, provider)
+    : ({} as ReturnType<typeof coreFacade.handoff.readHandoff>);
   // hazard: read before the file list, because the list is diffed against it. A turn that commits moves `HEAD`
   // past its own changes, and every gate below then saw an empty diff and skipped — the comment gate in a repo
   // whose task was "schema v2 + tests + commit" ([/decisions/ad-058.md](/decisions/ad-058.md)).

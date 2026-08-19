@@ -235,3 +235,79 @@ test("troubleshooting names every floor rule, so no refusal is unexplained", asy
   const missing = Object.keys(FLOOR_RULES).filter((rule) => !guide.includes(`\`${rule}\``));
   assert.deepEqual(missing, [], "floor rules absent from docs/troubleshooting.md");
 });
+
+/**
+ * hazard: `concepts.md` is the last unrendered view of the rails, and this week gave three examples of what that
+ * costs — the wizard's narrated half, the grind-lock timing here, and `secret-access`'s own description all stated
+ * something a decision had already replaced. Presence is already gated; this gates the one fact in the prose that
+ * has an exact answer elsewhere ([/decisions/ad-080.md](/decisions/ad-080.md)).
+ */
+test("every default concepts.md states matches the catalog", async () => {
+  const catalog = JSON.parse(readFileSync(join(repoRoot, "capabilities", "catalog.json"), "utf8")) as {
+    capabilities: { id: string; configPath: string; defaultOn: boolean }[];
+  };
+  const concepts = readFileSync(join(repoRoot, "docs", "concepts.md"), "utf8");
+
+  const wrong: string[] = [];
+  for (const capability of catalog.capabilities) {
+    const at = concepts.indexOf(`\`${capability.configPath}\``);
+    if (at < 0) {
+      continue;
+    }
+    // why: a window rather than the whole document, so a default stated about one rail is not read as another's.
+    const window = concepts.slice(at, at + 120);
+    const saysOff = /\boff by default\b/.test(window);
+    const saysOn = /\bon by default\b/.test(window);
+    if (!saysOff && !saysOn) {
+      continue;
+    }
+    const stated = saysOn && !saysOff;
+    if (stated !== capability.defaultOn) {
+      wrong.push(
+        `${capability.id}: concepts.md says ${stated ? "on" : "off"}, catalog says ${capability.defaultOn ? "on" : "off"}`,
+      );
+    }
+  }
+  assert.deepEqual(wrong, [], "defaults stated in docs/concepts.md that disagree with the catalog");
+});
+
+/**
+ * hazard: this is the drift that happened while writing the record about drift. A sixteenth gate step shipped and
+ * CONTRIBUTING still said fifteen — the contributor-facing list of our own checks, wrong the moment a check was
+ * added. Presence is the checkable half ([/decisions/ad-080.md](/decisions/ad-080.md)).
+ */
+test("CONTRIBUTING names every gate step, and states the right count", async () => {
+  const { buildTestSteps } = await import("../../bin/tlc-cli.ts");
+  const guide = readFileSync(join(repoRoot, "CONTRIBUTING.md"), "utf8");
+  const steps = buildTestSteps();
+
+  /**
+   * invariant: the tool path, not the step label. The label is internal; the path is what a contributor types, so
+   * it is what the guide names and what is worth checking.
+   */
+  const tools = steps
+    .map((step) => step.args.find((arg) => arg.startsWith("tools/dev/")))
+    .filter((path): path is string => path !== undefined);
+  assert.equal(tools.length > 0, true, "the gate runs tools from tools/dev");
+  const missing = tools.filter((path) => !guide.includes(path));
+  assert.deepEqual(missing, [], "gate tools absent from CONTRIBUTING.md");
+
+  // invariant: the count includes check-dist-fresh, which CI owns and the local gate does not run.
+  const declared = /\b(Fifteen|Sixteen|Seventeen|Eighteen|Nineteen|Twenty)\b steps/.exec(guide)?.[1];
+  const words: Record<string, number> = {
+    Fifteen: 15,
+    Sixteen: 16,
+    Seventeen: 17,
+    Eighteen: 18,
+    Nineteen: 19,
+    Twenty: 20,
+  };
+  assert.equal(
+    declared === undefined ? -1 : words[declared],
+    steps.length + 1,
+    `CONTRIBUTING says ${declared}, the gate has ${steps.length} plus check-dist-fresh`,
+  );
+
+  const rows = [...guide.matchAll(/^\| (\d+) \| /gm)].length;
+  assert.equal(rows, steps.length + 1, "one table row per step");
+});

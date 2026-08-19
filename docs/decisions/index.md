@@ -94,6 +94,7 @@ Handoff section and a link back to this index.
 | [AD-077](/decisions/ad-077.md) | A command that appears verbatim in fetched content is put to the operator | active |
 | [AD-078](/decisions/ad-078.md) | The two files the harness reads aloud are sealed on write and verified on injection | active |
 | [AD-079](/decisions/ad-079.md) | The coverage claim is a generated page with its gaps in it, not a badge in the README | active |
+| [AD-080](/decisions/ad-080.md) | Every hand-written list of our own rules is now checked, including the one that drifted while writing this | active |
 
 ## Archived
 
