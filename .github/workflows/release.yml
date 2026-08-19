@@ -1,22 +1,21 @@
 name: Release
 
-# Release Please computes the version from Conventional Commits and opens a release PR. The bot merges that PR
-# with `--admin`, which is the release: it tags, it creates the GitHub Release, and only then does the publish job
-# run. No bot commits to `main` outside that PR — the changelog is corrected inside it
-# ([/decisions/ad-054.md](/decisions/ad-054.md), [/decisions/ad-088.md](/decisions/ad-088.md)).
+# The version is computed from Conventional Commits since the last tag, and the release is written straight to
+# `main` — no pull request. `tools/dev/next-version.ts` does the arithmetic against
+# `src/core/release/release.version.ts`, which is pure, tested, and reproduces every version this repository has
+# actually released ([/decisions/ad-087.md](/decisions/ad-087.md)).
 #
-# hazard: the release must NOT be a draft. A draft release does not create its tag, and the tag is how
-# release-please knows where the last version ended — without it, it reprocesses history, finds old `feat:`
-# commits, and bumps the minor every round. With this workflow chained to CI that became a loop: six versions,
-# 0.2.3 through 0.7.0, in nine minutes ([/decisions/ad-090.md](/decisions/ad-090.md)).
+# ORDER, and why it is this order: approve → gate → decide → build the release locally → npm publish → push the
+# commit and tag → GitHub Release.
 #
-# why: this workflow owns `main`, and `ci.yml` owns pull requests. The gate is the first job here, called from that
-# file rather than copied, so a commit on `main` produces exactly one run containing exactly one matrix — and the
-# ordering is a `needs:` rather than a second workflow racing the first.
+# The approval is FIRST, so nothing exists before a human says so. The publish comes BEFORE anything reaches the
+# remote: `v0.2.0`, `v0.2.2` and `v0.2.3` were all tagged and released on GitHub while npm stayed on `0.2.1`,
+# because the old shape tagged first and published later behind an approval that never came. And the push is LAST
+# because it is the only step that is reversible — npm is immutable after 72 hours, a branch and a tag are not.
 #
-# hazard: this was briefly a `workflow_run` chained to CI. That removed the duplication and introduced a worse
-# problem: zizmor flags `workflow_run` as `dangerous-triggers` at high severity, because it runs with the base
-# repository's secrets and token regardless of what triggered it ([/decisions/ad-091.md](/decisions/ad-091.md)).
+# hazard: nothing here reads `package.json` to decide the next version. The base is the last *tag*. A manifest
+# claiming a version no tag corresponds to is exactly what made the previous tool reprocess history and bump six
+# times in nine minutes.
 on:
   push:
     branches: [main]
@@ -25,201 +24,78 @@ on:
 permissions:
   contents: read
 
-# invariant: one release at a time and never cancelled halfway. Two runs racing here would each compute the same
-# version, and the second would fail on a tag the first had already created — after it had published.
+# invariant: one release at a time, and never cancelled halfway. A run cancelled between the publish and the push
+# is the one state that needs a human, so it must not be caused by a second run arriving.
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  # invariant: a red gate releases nothing, expressed as a dependency rather than as a condition on somebody else's
-  # conclusion. Every job below needs this one, so a failing matrix skips the release with no `if:` to get wrong.
+  # why: the gate that decides whether to release is the gate that runs on every pull request, called rather than
+  # copied. One definition, one matrix, three platforms.
   gate:
     uses: ./.github/workflows/ci.yml
 
-  release-please:
+  # why: the approval is the first thing, and its body is an echo. Its whole purpose is to carry
+  # `environment: publish` so that nothing — no tag, no publish, no push — starts until a human approves. This is
+  # the shape `agent-skills` uses.
+  #
+  # invariant: the release bot's own push is exempt, so a release does not ask for a second approval for the commit
+  # it just made. That commit is `chore(release):`, which releases nothing anyway.
+  approve:
     needs: gate
+    if: github.actor != 'tech-leads-club-release-bot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-      pull-requests: write
-    # hazard: the `secrets` context is not available in a step `if:` — a workflow using it fails validation and
-    # produces a run with zero jobs and no log to read. Hoisted here, where `env` is available to the condition.
-    env:
-      HAS_RELEASE_APP: ${{ secrets.RELEASE_APP_ID != '' }}
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      pr_branch: ${{ steps.release.outputs.prs_created == 'true' && fromJSON(steps.release.outputs.pr).headBranchName || '' }}
-      pr_number: ${{ steps.release.outputs.prs_created == 'true' && fromJSON(steps.release.outputs.pr).number || '' }}
+    timeout-minutes: 60
+    environment: publish
     steps:
-      # why: the tech-leads-club org disables write permissions for GITHUB_TOKEN across every repository, so it
-      # cannot open the release PR — `GitHub Actions is not permitted to create or approve pull requests`, HTTP
-      # 409 from the settings API. A GitHub App token is a separate credential and that policy does not reach it.
-      # This is the same App `agent-skills` releases with, pinned to the same commit.
-      #
-      # invariant: the step is skipped when the secret is absent rather than failing on a missing input, so a
-      # repository without the App still reaches release-please and gets its own explicit refusal.
-      #
-      # hazard: `RELEASE_APP_ID` holds the App's **Client ID** (`Iv23…`), not the numeric App ID, and the input is
-      # `client-id` for that reason — the legacy `app-id` input still works but warns on every job. The two are
-      # different values and the secret's name says the wrong one; renaming it needs a new secret, which is the
-      # operator's to create ([/decisions/ad-084.md](/decisions/ad-084.md)).
-      - name: Generate a release-bot token
-        id: app-token
-        if: env.HAS_RELEASE_APP == 'true'
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          # invariant: scoped to this repository rather than to every repository the App is installed on. An App
-          # token defaults to the App's whole reach; naming the owner and the repository bounds a leak to this one.
-          #
-          # hazard: `permission-contents: write` and `permission-pull-requests: write` were also set here, copied
-          # from a repository that uses them successfully. Release creation then failed with `Resource not
-          # accessible by integration` — narrowing the token to those two verbs excludes something release-please
-          # needs to create a release. The repository scope is kept and the verb scope is not
-          # ([/decisions/ad-093.md](/decisions/ad-093.md)).
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
+      - name: Approved
+        run: echo "approved — the version may be computed, published and pushed"
 
-      # why: release-please itself works entirely over the API, so this job had no checkout. The guard below reads
-      # the package name off disk and needs the tags and the bot's release commits, which is what `fetch-depth: 0`
-      # is for — a shallow clone has neither, and the guard would report every release as untagged.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      # invariant: at most one released version may be waiting for its tag. Without the tag, release-please has no
-      # marker for where the last version ended, so it bumps from the wrong base — and because it writes the result
-      # back into the manifest, the next round bumps again. That is what produced six versions in nine minutes
-      # ([/decisions/ad-090.md](/decisions/ad-090.md)).
-      #
-      # why: counting, not a single lookup. There is a legitimate window with no tag — merging the release PR bumps
-      # the manifest and the *next* run creates the tag — and the first version of this check failed the release for
-      # being in it. One untagged release is that window; two is the loop
-      # ([/decisions/ad-092.md](/decisions/ad-092.md)).
-      - name: At most one release may be waiting for its tag
-        env:
-          REPO: ${{ github.repository }}
-        run: |
-          name="$(node -p "require('./package.json').name.split('/').pop()")"
-          untagged=""
-          # why: read the versions out of the bot's own release commits rather than out of the manifest, which only
-          # ever holds the latest. The loop leaves one commit per bogus version, all of them tagless.
-          for version in $(git log -30 --format=%s | sed -n 's/^chore(\(main\|release\)): release .*[^0-9]\([0-9]\+\.[0-9]\+\.[0-9]\+\)$/\2/p'); do
-            if ! git rev-parse -q --verify "refs/tags/${name}-v${version}" >/dev/null; then
-              untagged="${untagged} ${version}"
-            fi
-          done
-          count="$(echo $untagged | wc -w)"
-          echo "released versions still without a tag:${untagged:- none} (${count})"
-          if [ "$count" -gt 1 ]; then
-            echo "::error::${count} released versions have no tag —${untagged}. release-please is bumping from the" \
-              "wrong base and will keep doing it. Check that the release is not a draft: a draft creates no tag."
-            exit 1
-          fi
-
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        id: release
-        with:
-          token: ${{ steps.app-token.outputs.token || github.token }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-
-  # why: `skip-changelog` is set, so Release Please never writes CHANGELOG.md — the document is generated from
-  # docs/decisions/ and this step puts the final version heading in the release PR itself. Regenerating after the
-  # tag lands is then a no-op, which is what keeps the gate's `--check` honest on the first push after a release.
-  changelog:
-    needs: release-please
-    timeout-minutes: 10
-    if: needs.release-please.outputs.pr_branch != ''
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      HAS_RELEASE_APP: ${{ secrets.RELEASE_APP_ID != '' }}
-    steps:
-      # invariant: a fresh token rather than one carried on a job output. An App token is a credential and a job
-      # output is not the place for one, and this job pushes — the half of the release the org's read-only default
-      # would otherwise decide.
-      - name: Generate a release-bot token
-        id: app-token
-        if: env.HAS_RELEASE_APP == 'true'
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          # invariant: scoped to this repository rather than to every repository the App is installed on. An App
-          # token defaults to the App's whole reach; naming the owner and the repository bounds a leak to this one.
-          #
-          # hazard: `permission-contents: write` and `permission-pull-requests: write` were also set here, copied
-          # from a repository that uses them successfully. Release creation then failed with `Resource not
-          # accessible by integration` — narrowing the token to those two verbs excludes something release-please
-          # needs to create a release. The repository scope is kept and the verb scope is not
-          # ([/decisions/ad-093.md](/decisions/ad-093.md)).
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.release-please.outputs.pr_branch }}
-          fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token || github.token }}
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "24"
-
-      - name: Render the changelog at the pending version
-        shell: bash
-        run: |
-          version="$(node -p "require('./package.json').version")"
-          node tools/dev/render-changelog.ts --release "v${version}"
-
-      - name: Commit it to the release PR if it moved
-        shell: bash
-        run: |
-          if git diff --quiet -- CHANGELOG.md; then
-            echo "changelog already current"
-            exit 0
-          fi
-          # why: the same identity that authored the rest of the release PR, so the branch does not end up with
-          # two authors for one logical change.
-          author="${{ steps.app-token.outputs.app-slug || 'github-actions' }}[bot]"
-          git config user.name "$author"
-          git config user.email "$author@users.noreply.github.com"
-          git add CHANGELOG.md
-          git commit -m "docs(changelog): render the decisions at the pending version"
-          git push origin HEAD:"${{ needs.release-please.outputs.pr_branch }}"
-
-  # why: no `verify` job. It called `ci.yml`, which had already run the same three-platform matrix on the same
-  # commit — the whole workflow now only exists because that run went green, so repeating it was paying twice for
-  # one answer ([/decisions/ad-089.md](/decisions/ad-089.md)).
-  publish:
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+  release:
+    needs: [gate, approve]
+    # invariant: `always()` with named results, because `approve` is skipped on the bot's own push. A plain `needs`
+    # would skip the release with it.
+    if: >-
+      always() &&
+      needs.gate.result == 'success' &&
+      needs.approve.result != 'failure' &&
+      needs.approve.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # why: the one place a human is put back without changing any code. This environment carries required
-    # reviewers, so a publish waits for an approval; emptying it makes the pipeline unattended and changes nothing
-    # else. `agent-skills` carries the same environment for the same reason.
-    environment: publish
     permissions:
-      contents: read
-      # Trusted publishing: npm exchanges this OIDC token for a short-lived credential, so no npm token is
-      # stored anywhere. It is also what produces the provenance attestation, automatically and only from a
-      # public repository.
+      contents: write
+      # Trusted publishing: npm exchanges this OIDC token for a short-lived credential, so no npm token is stored
+      # anywhere. It is also what produces the provenance attestation, and only from a public repository.
       id-token: write
+    env:
+      HAS_RELEASE_APP: ${{ secrets.RELEASE_APP_ID != '' }}
     steps:
+      # why: the org disables write permissions for GITHUB_TOKEN across every repository, and the branch ruleset on
+      # `main` requires an approving review. A GitHub App token is a separate credential that neither reaches, and
+      # this App is a bypass actor on that ruleset — which is what makes a direct push to `main` legal for the bot
+      # and for nobody else.
+      #
+      # hazard: `RELEASE_APP_ID` holds the App's **Client ID** (`Iv23…`), not the numeric App ID, and the input is
+      # `client-id` for that reason. Scoped to this repository, but not to a verb list: narrowing it to
+      # `permission-contents`/`permission-pull-requests` broke release creation with `Resource not accessible by
+      # integration`.
+      - name: Generate a release-bot token
+        id: app-token
+        if: env.HAS_RELEASE_APP == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      # why: full history and tags. The base version is the last tag, and the commit range since it is what earns
+      # the bump — a shallow clone would read every commit as unreleased.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
-          # invariant: this job publishes to npm and pushes nothing, so the checkout credential has no business
-          # surviving in `.git/config` where any later step could read it.
-          persist-credentials: false
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token || github.token }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -234,94 +110,89 @@ jobs:
       - name: npm ci
         run: npm ci
 
-      # invariant: the published dist/ is built here rather than trusted from the commit. dist/ is committed for
-      # the Node fallback path and check-dist-fresh proves it matches src/, but a release is the one moment where
-      # building it again costs nothing and removes the question entirely.
+      - name: What this release would be
+        id: plan
+        run: node tools/dev/next-version.ts >> "$GITHUB_OUTPUT"
+
+      # invariant: every step below is skipped when nothing releasable landed. `docs`, `chore`, `ci` and the inert
+      # scopes (`fix(ci)`, `fix(gate)`, `fix(release)`) release nothing — three versions were published for exactly
+      # that kind of work before this rule existed.
+      - name: Bump the version
+        if: steps.plan.outputs.released == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        # why: `npm version --no-git-tag-version` updates package.json and package-lock.json together. Writing the
+        # version by hand leaves the lockfile behind and `npm ci` then fails on a mismatch nobody caused.
+        run: npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      # why: CHANGELOG.md is generated from docs/decisions/, and `--release` names the version the pending section
+      # becomes ([/decisions/ad-055.md](/decisions/ad-055.md)).
+      - name: Render the changelog at this version
+        if: steps.plan.outputs.released == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: node tools/dev/render-changelog.ts --release "v${VERSION}"
+
+      # invariant: the published dist/ is built here rather than trusted from the commit. `check-dist-fresh` proves
+      # the committed bundles match src/, and a release is the one moment where building again costs nothing.
       - name: Build dist/
+        if: steps.plan.outputs.released == 'true'
         run: bash bin/tlc-build
         env:
           TLC_HOME: ${{ github.workspace }}
 
       # Trusted publishing needs npm >= 11.5.1, which is newer than the npm bundled with Node 24.
       - name: Use an npm that speaks OIDC
+        if: steps.plan.outputs.released == 'true'
         run: npm install -g npm@latest
 
-      - name: Publish
+      # THE IRREVERSIBLE STEP. Nothing has reached the remote yet: the bump, the changelog and dist/ are local to
+      # this runner. If this fails, the run stops here and the repository is untouched — no tag, no commit, no
+      # release to clean up.
+      - name: Publish to npm
+        if: steps.plan.outputs.released == 'true'
         run: npm publish
 
-  # why: the release PR is a mechanism here, not a gate — it is where the version bump and the rendered changelog
-  # are assembled, and the bot merges it as soon as they are ([/decisions/ad-057.md](/decisions/ad-057.md)).
-  # Merging is a push to main, which runs this workflow again: that second run finds the merged PR and creates the
-  # tag and the release, and the publish job is what runs off it.
-  #
-  # hazard: this must come *after* `publish`. One invocation of release-please does two things — it creates the
-  # release for the PR that was merged last time, and it opens the PR for next time. Merging that new PR starts the
-  # next run, so with `merge` racing `publish` the next cycle began while this one was still waiting for the
-  # publish approval: overlapping releases, and a run list nobody could read
-  # ([/decisions/ad-094.md](/decisions/ad-094.md)).
-  #
-  # invariant: `always()` with explicit results, because `publish` is skipped whenever this run created no release —
-  # which is most runs. A plain `needs` would skip the merge along with it and no release PR would ever land.
-  #
-  # invariant: this terminates. Once the release exists and no releasable commit has landed since, release-please
-  # opens no PR, so this job is skipped and nothing re-triggers. The changelog commit it merges is `docs(...)`,
-  # which is not a releasable type.
-  merge:
-    needs: [release-please, changelog, publish]
-    timeout-minutes: 10
-    if: >-
-      always() &&
-      needs.release-please.outputs.pr_number != '' &&
-      needs.changelog.result == 'success' &&
-      needs.publish.result != 'failure' &&
-      needs.publish.result != 'cancelled'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    env:
-      HAS_RELEASE_APP: ${{ secrets.RELEASE_APP_ID != '' }}
-    steps:
-      - name: Generate a release-bot token
-        id: app-token
-        if: env.HAS_RELEASE_APP == 'true'
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          # invariant: scoped to this repository rather than to every repository the App is installed on. An App
-          # token defaults to the App's whole reach; naming the owner and the repository bounds a leak to this one.
-          #
-          # hazard: `permission-contents: write` and `permission-pull-requests: write` were also set here, copied
-          # from a repository that uses them successfully. Release creation then failed with `Resource not
-          # accessible by integration` — narrowing the token to those two verbs excludes something release-please
-          # needs to create a release. The repository scope is kept and the verb scope is not
-          # ([/decisions/ad-093.md](/decisions/ad-093.md)).
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-
-      - name: Merge the release PR
+      # why: after the publish, and atomically. `--atomic` means the branch and the tag land together or neither
+      # does; a tag without its commit points at a tree whose package.json says the previous version.
+      #
+      # hazard: this is the one window that needs a human. If the publish succeeded and this push fails, npm has the
+      # version and `main` does not. The recovery is to re-run this job: `npm publish` will refuse the existing
+      # version, so re-running is not idempotent — the operator pushes the commit and tag by hand instead. That is
+      # written in the failure message rather than left to be rediscovered.
+      - name: Push the commit and the tag
+        if: steps.plan.outputs.released == 'true'
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
-          PR: ${{ needs.release-please.outputs.pr_number }}
-          REPO: ${{ github.repository }}
-        shell: bash
+          VERSION: ${{ steps.plan.outputs.version }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          AUTHOR: ${{ steps.app-token.outputs.app-slug || 'github-actions' }}
         run: |
-          # why: `--rebase`, because the branch ruleset sets `allowed_merge_methods: [rebase]` and squash is
-          # refused outright — measured as `the base branch policy prohibits the merge` on release 0.2.1, once the
-          # repository went public and the ruleset started applying ([/decisions/ad-083.md](/decisions/ad-083.md)).
-          #
-          # why: `--admin`. The ruleset requires one approving review and an App cannot approve its own pull
-          # request, so `--auto` armed the merge and then waited for a human for ever — measured with the App on
-          # the bypass list, all three CI jobs green, still `REVIEW_REQUIRED`. `--admin` is what exercises the
-          # bypass instead of waiting on the rule, and it is how `BHubAI/platform` releases through the same
-          # ruleset shape ([/decisions/ad-088.md](/decisions/ad-088.md)).
-          #
-          # invariant: CI is not skipped by this. `verify` below runs the full matrix before the publish, so the
-          # thing `--admin` bypasses is the review, never the gate.
-          if ! gh pr merge "$PR" --repo "$REPO" --rebase --admin; then
-            echo "::error::could not merge release PR #$PR. --admin needs the release App to be a bypass actor" \
-              "on the branch ruleset; check Settings → Rules → Default → Bypass list."
+          git config user.name "${AUTHOR}[bot]"
+          git config user.email "${AUTHOR}[bot]@users.noreply.github.com"
+          git add package.json package-lock.json CHANGELOG.md dist
+          # why: `chore(release):` is an inert type, so this commit cannot earn the next version. That is what makes
+          # the pipeline terminate instead of releasing itself for ever.
+          git commit -m "chore(release): ${VERSION}"
+          git tag -a "$TAG" -m "$TAG"
+          if ! git push --atomic origin HEAD:main "refs/tags/$TAG"; then
+            echo "::error::npm has ${VERSION} and main does not. The publish cannot be repeated — push the commit" \
+              "and tag by hand: git push --atomic origin HEAD:main refs/tags/${TAG}"
             exit 1
           fi
-          echo "release PR #$PR merged"
+
+      - name: Create the GitHub release
+        if: steps.plan.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh release create "$TAG" --repo "$REPO" \
+            --title "v${VERSION}" \
+            --notes "See [CHANGELOG.md](https://github.com/${REPO}/blob/${TAG}/CHANGELOG.md)."
+
+      - name: Nothing to release
+        if: steps.plan.outputs.released != 'true'
+        run: |
+          echo "no releasable commit since ${{ steps.plan.outputs.tag }} — staying on ${{ steps.plan.outputs.current }}"
