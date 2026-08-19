@@ -217,12 +217,35 @@ describe("E2E — CG-03: obs fields reach the runtime", () => {
   });
 
   // why: TLC_HOME names both where the runtime lives and where the spool goes, so the two cannot be pointed
-  // apart. This drives the real runtime and asserts on what the append added — the file is append-only and
-  // gitignored, so nothing is disturbed and nothing is deleted.
+  // apart. This drives the real runtime — the file is append-only and gitignored, so nothing is disturbed and
+  // nothing is deleted.
+  //
+  // hazard: this used to compare the file's *length* before and after, which made it a test of whether anything
+  // else appended during its own window. On a machine where the harness is installed, that is the editor session
+  // running the suite: measured failing with the spool 1,760 bytes longer than expected, none of it this test's.
+  // It read as flaky and was recorded as unreproduced ([/decisions/ad-080.md](/decisions/ad-080.md)) because it
+  // only fails when a hook happens to fire inside the window. The fixture's own path is a key nothing else writes
+  // under, so the assertion is now about identity rather than size ([/decisions/ad-085.md](/decisions/ad-085.md)).
   test("a hook appends to the spool only once the project opts in", () => {
     const spoolPath = join(repoRoot, "state", "obs-spool.jsonl");
-    const lengthBefore = existsSync(spoolPath) ? readFileSync(spoolPath, "utf8").length : 0;
     const root = newRepo("tlc-e2e-spool-");
+    const recordsForFixture = (): { stream: string; repo: string }[] => {
+      const raw = existsSync(spoolPath) ? readFileSync(spoolPath, "utf8") : "";
+      return raw
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .flatMap((line) => {
+          // invariant: a concurrent append can leave a partial final line, and one unparseable line is not this
+          // test's business.
+          try {
+            return [JSON.parse(line) as { stream: string; repo: string }];
+          } catch {
+            return [];
+          }
+        })
+        .filter((record) => record.repo === root);
+    };
     const submit = () =>
       hook(
         "prompt-submit",
@@ -238,19 +261,14 @@ describe("E2E — CG-03: obs fields reach the runtime", () => {
       );
 
     submit();
-    const afterOptOut = existsSync(spoolPath) ? readFileSync(spoolPath, "utf8").length : 0;
-    assert.equal(afterOptOut, lengthBefore, "an opted-out project must not append");
+    assert.deepEqual(recordsForFixture(), [], "an opted-out project must not append");
 
     writePolicy(root, { obs: { globalSpool: true } });
     submit();
-    const appended = readFileSync(spoolPath, "utf8").slice(lengthBefore);
     // hazard: a Windows path is escaped inside JSON, so a substring check against the raw path fails there.
-    // Parsing the envelope compares the value the writer stored, on every platform.
-    const records = appended
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .map((line) => JSON.parse(line) as { stream: string; repo: string });
+    // Parsing the envelope compares the value the writer stored, on every platform — which is also what makes
+    // the fixture path usable as the key.
+    const records = recordsForFixture();
     assert.ok(records.length > 0, "the opted-in hook appended at least one record");
     assert.equal(records[0]?.stream, "obs");
     assert.equal(records[0]?.repo, root);

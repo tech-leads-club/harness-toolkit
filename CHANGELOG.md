@@ -93,3 +93,5 @@ doctor reports against your own configuration.
 - **AD-081** — The manifest npm publishes is checked here, because the release runner was the only thing reading it
 - **AD-082** — npm is the documented install, and the first version cannot come from CI
 - **AD-083** — Going public switched the branch ruleset on, and an unattended release needs the App to bypass it
+- **AD-084** — The rule about unpinned dependencies is applied to this repository too, and the release gate stops being a copy
+- **AD-085** — The flake was a test measuring a file the whole machine writes to

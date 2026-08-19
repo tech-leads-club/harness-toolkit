@@ -43,7 +43,7 @@ jobs:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
           token: ${{ steps.app-token.outputs.token || github.token }}
@@ -73,13 +73,13 @@ jobs:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-please.outputs.pr_branch }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token || github.token }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
 
@@ -160,13 +160,23 @@ jobs:
             exit 1
           fi
 
-  publish:
+  # why: the gate that decides whether to publish is the same gate that decides whether to merge, called rather
+  # than copied. The publish job used to run `tlc harness test` inline on ubuntu only, so a release was verified
+  # on one platform by a second copy of a matrix that covers three ([/decisions/ad-084.md](/decisions/ad-084.md)).
+  #
+  # invariant: this runs at the caller's ref, which after the release PR merges is the commit the tag points at.
+  verify:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: [release-please, verify]
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
-    # why: an unattended pipeline, with the one place a human could still be put back without changing any code.
-    # Adding required reviewers to this environment turns the publish into an approval; leaving it empty is the
-    # behaviour asked for. `agent-skills` carries the same environment for the same reason.
+    # why: the one place a human is put back without changing any code. This environment carries required
+    # reviewers, so a publish waits for an approval; emptying it makes the pipeline unattended and changes nothing
+    # else. `agent-skills` carries the same environment for the same reason.
     environment: publish
     permissions:
       contents: read
@@ -175,17 +185,17 @@ jobs:
       # public repository.
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
 
       - name: Install Bun (build toolchain)
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
 
@@ -199,12 +209,6 @@ jobs:
         run: bash bin/tlc-build
         env:
           TLC_HOME: ${{ github.workspace }}
-
-      - name: tlc harness test
-        run: bash bin/tlc harness test
-        env:
-          TLC_HOME: ${{ github.workspace }}
-          HOME: ${{ runner.temp }}
 
       # Trusted publishing needs npm >= 11.5.1, which is newer than the npm bundled with Node 24.
       - name: Use an npm that speaks OIDC

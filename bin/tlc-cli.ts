@@ -1097,6 +1097,10 @@ export function buildTestSteps(): TestStep[] {
     // command at all. The release runner was the only thing that saw it, in a warning on a build that then failed
     // for an unrelated reason ([/decisions/ad-081.md](/decisions/ad-081.md)).
     { label: "check-manifest", bin: "node", args: ["tools/dev/check-manifest.ts"] },
+    // why: this repository asks a turn before it adds an unpinned dependency to somebody's manifest, and nine of
+    // its own twelve action references were mutable tags while that rail shipped
+    // ([/decisions/ad-084.md](/decisions/ad-084.md)).
+    { label: "check-workflows", bin: "node", args: ["tools/dev/check-workflows.ts"] },
     { label: "capabilities in sync", bin: "node", args: ["tools/dev/render-capabilities.ts", "--check"] },
     { label: "changelog in sync", bin: "node", args: ["tools/dev/render-changelog.ts", "--check"] },
     // why: the OKF bundle's log is a reserved file that cannot be retired, and hand-maintaining it drifted to 19

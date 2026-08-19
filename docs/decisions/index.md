@@ -98,6 +98,8 @@ Handoff section and a link back to this index.
 | [AD-081](/decisions/ad-081.md) | The manifest npm publishes is checked here, because the release runner was the only thing reading it | active |
 | [AD-082](/decisions/ad-082.md) | npm is the documented install, and the first version cannot come from CI | active |
 | [AD-083](/decisions/ad-083.md) | Going public switched the branch ruleset on, and an unattended release needs the App to bypass it | active |
+| [AD-084](/decisions/ad-084.md) | The rule about unpinned dependencies is applied to this repository too, and the release gate stops being a copy | active |
+| [AD-085](/decisions/ad-085.md) | The flake was a test measuring a file the whole machine writes to | active |
 
 ## Archived
 

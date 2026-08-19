@@ -36,7 +36,7 @@ The gate is a single command:
 tlc harness test
 ```
 
-Seventeen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
+Eighteen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
 source of truth, and this table is here to say what each step is for.
 
 | # | Step | Fails on |
@@ -53,11 +53,12 @@ source of truth, and this table is here to say what each step is for.
 | 10 | `check-screens` | a terminal renderer that paints its own strings instead of going through the shared one |
 | 11 | `check-obs-contract` | a kind a consumer counts and no producer emits, or one landing on a plane the consumer does not read |
 | 12 | `check-manifest` | a `package.json` npm would rewrite on publish, or a `bin` entry pointing at a file that is not there |
-| 13 | `render-capabilities --check` | a generated README region that no longer matches `capabilities/catalog.json` |
-| 14 | `render-changelog --check` | a `CHANGELOG.md` that no longer matches `docs/decisions/` |
-| 15 | `render-log --check` | a `docs/log.md` that no longer matches `docs/decisions/` |
-| 16 | `render-coverage --check` | a control named in `docs/coverage.md` that is neither a floor rule nor a capability id, or a row short of `covered` that states no limit |
-| 17 | `check-dist-fresh` | **CI only** — a `dist/` bundle that does not match `src/`. Run `./bin/tlc-build` and commit the result |
+| 13 | `check-workflows` | a third-party GitHub Action referenced by tag instead of a commit SHA, or a SHA with no version comment |
+| 14 | `render-capabilities --check` | a generated README region that no longer matches `capabilities/catalog.json` |
+| 15 | `render-changelog --check` | a `CHANGELOG.md` that no longer matches `docs/decisions/` |
+| 16 | `render-log --check` | a `docs/log.md` that no longer matches `docs/decisions/` |
+| 17 | `render-coverage --check` | a control named in `docs/coverage.md` that is neither a floor rule nor a capability id, or a row short of `covered` that states no limit |
+| 18 | `check-dist-fresh` | **CI only** — a `dist/` bundle that does not match `src/`. Run `./bin/tlc-build` and commit the result |
 
 Equivalent by hand, for local debugging:
 
@@ -74,6 +75,7 @@ node tools/dev/check-decisions.ts
 node tools/dev/check-screens.ts
 node tools/dev/check-obs-contract.ts
 node tools/dev/check-manifest.ts
+node tools/dev/check-workflows.ts
 node tools/dev/render-capabilities.ts --check
 node tools/dev/render-changelog.ts --check
 node tools/dev/render-log.ts --check
