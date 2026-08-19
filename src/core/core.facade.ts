@@ -140,6 +140,7 @@ import {
 import { readReleaseSeen, writeReleaseSeen } from "./release/release.seen.ts";
 import { evaluateShellCommand } from "./shell-policy/shell-policy.service.ts";
 import { clearShellStall } from "./shell-policy/shell-policy.stall.ts";
+import { coversHandler, decideShim } from "./shim/shim.precedence.ts";
 import { appendShipLedger, hasRecentEvidence, newestChangeMs, readShipLedger } from "./ship/ship.ledger.ts";
 import {
   detectShipClaim,
@@ -270,6 +271,10 @@ export const coreFacade = {
     readHandoff,
     readHandoffFile,
     readForeignSlices,
+  },
+  shim: {
+    coversHandler,
+    decideShim,
   },
   lesson: {
     projectLessonsInjectable,

@@ -5638,6 +5638,34 @@ function evaluateShellCommand(args) {
   return { kind: "allow" };
 }
 
+// src/core/shim/shim.precedence.ts
+var LAUNCHER = "tlc-exec";
+function invocationText(entry) {
+  return [entry.command ?? "", ...entry.args ?? []].join(" ");
+}
+function coversHandler(settings, handler) {
+  for (const matchers of Object.values(settings.hooks ?? {})) {
+    for (const matcher of matchers) {
+      for (const entry of matcher.hooks ?? []) {
+        const text = invocationText(entry);
+        if (text.includes(LAUNCHER) && new RegExp(`(^|\\s)${handler}(\\s|$)`).test(text)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+function decideShim(userSettings, handler) {
+  if (userSettings === null) {
+    return { run: true, reason: "no user-level settings — this shim is the only hook for this event" };
+  }
+  return coversHandler(userSettings, handler) ? {
+    run: false,
+    reason: `a user-level hook already runs ${handler} — standing down to avoid a second run`
+  } : { run: true, reason: `no user-level hook runs ${handler}` };
+}
+
 // src/core/stagnation/stagnation.resolution.ts
 import { existsSync as existsSync20, mkdirSync as mkdirSync11, readFileSync as readFileSync22, writeFileSync as writeFileSync10 } from "node:fs";
 import { join as join21 } from "node:path";
@@ -6764,6 +6792,10 @@ var coreFacade = {
     readHandoff,
     readHandoffFile,
     readForeignSlices
+  },
+  shim: {
+    coversHandler,
+    decideShim
   },
   lesson: {
     projectLessonsInjectable,

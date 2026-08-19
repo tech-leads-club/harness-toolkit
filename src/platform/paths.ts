@@ -78,3 +78,19 @@ export function cursorConfigDir(): string {
   const custom = process.env.CURSOR_CONFIG_DIR?.trim();
   return custom && custom.length > 0 ? custom : join(homedir(), ".cursor");
 }
+
+/**
+ * The user-level hook documents, in the order the shim reads them.
+ *
+ * why: the project shim is told a handler and nothing else — it does not know which provider invoked it. So it
+ * asks both: if any user-level document already runs this handler, a second run would be a duplicate. The cost of
+ * that imprecision is under-running in a setup where one editor is installed globally and the other only in the
+ * project, which is the safe direction — the alternative was running the handler twice, which is what actually
+ * happened ([/decisions/ad-095.md](/decisions/ad-095.md)).
+ *
+ * invariant: both paths are resolved, never assumed. Either tool can relocate its config directory by env, and
+ * this repository is itself installed under a relocated one.
+ */
+export function userSettingsPaths(): string[] {
+  return [join(claudeConfigDir(), "settings.json"), join(cursorConfigDir(), "hooks.json")];
+}
