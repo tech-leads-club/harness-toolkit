@@ -26,11 +26,21 @@ export type Normaliser = (manifest: string) => string;
  * silently rewrote the manifest. It runs against a copy in a temp directory: this must never edit `package.json`,
  * because a gate that fixes what it measures reports success it caused.
  */
+/**
+ * hazard: on Windows `npm` is `npm.cmd`, and execFile does not consult PATHEXT — the first version threw
+ * `spawnSync npm ENOENT` on three tests, only in Windows CI. The same spelling as the npm bump in `runUpdate`, for
+ * the same reason. Extracted so the platform branch has a test that does not need the platform
+ * ([/decisions/ad-081.md](/decisions/ad-081.md)).
+ */
+export function npmSpawnOptions(cwd: string, platform: NodeJS.Platform = process.platform) {
+  return { cwd, stdio: "ignore", shell: platform === "win32" } as const;
+}
+
 export function npmPkgFix(manifest: string): string {
   const dir = mkdtempSync(join(tmpdir(), "tlc-manifest-"));
   const path = join(dir, "package.json");
   copyFileSync(manifest, path);
-  execFileSync("npm", ["pkg", "fix"], { cwd: dir, stdio: "ignore" });
+  execFileSync("npm", ["pkg", "fix"], npmSpawnOptions(dir));
   return readFileSync(path, "utf8");
 }
 

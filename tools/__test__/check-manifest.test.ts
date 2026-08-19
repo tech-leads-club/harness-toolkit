@@ -3,7 +3,14 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { checkManifest, type Manifest, missingBinTargets, npmPkgFix, report } from "../dev/check-manifest.ts";
+import {
+  checkManifest,
+  type Manifest,
+  missingBinTargets,
+  npmPkgFix,
+  npmSpawnOptions,
+  report,
+} from "../dev/check-manifest.ts";
 
 const repoRoot = join(import.meta.dirname, "..", "..");
 
@@ -91,6 +98,18 @@ test("the normaliser leaves the manifest it was pointed at untouched", () => {
 
 test("this repository's own manifest survives npm's normaliser unchanged", () => {
   assert.deepEqual(checkManifest(repoRoot), []);
+});
+
+/**
+ * hazard: `npm` is `npm.cmd` on Windows and execFile does not consult PATHEXT, so the first version of this
+ * checker threw `spawnSync npm ENOENT` on three tests — in Windows CI only, which is the one platform a
+ * contributor here cannot run locally.
+ */
+test("the npm invocation goes through a shell on Windows and directly everywhere else", () => {
+  assert.equal(npmSpawnOptions("/tmp/x", "win32").shell, true);
+  assert.equal(npmSpawnOptions("/tmp/x", "linux").shell, false);
+  assert.equal(npmSpawnOptions("/tmp/x", "darwin").shell, false);
+  assert.equal(npmSpawnOptions("/tmp/x", "linux").cwd, "/tmp/x");
 });
 
 test("report names every violation and says what held when there are none", () => {
