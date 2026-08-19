@@ -6,7 +6,7 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
-## v0.2.1
+## Unreleased
 
 - **AD-001** — Optional parent-Fast sticky deny for Task spawns
 - **AD-002** — Provider-neutral naming and layout
