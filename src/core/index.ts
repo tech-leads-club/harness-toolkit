@@ -47,6 +47,7 @@ export type { PresenceRecord } from "./presence/presence.types.ts";
 export type { ShellEffectClass } from "./shell-policy/shell-policy.types.ts";
 export type { ProviderSettings } from "./shim/shim.precedence.ts";
 export type { ShipClaim, ShipClaimKind, ShipLedgerEvent, ShipLedgerRow } from "./ship/ship.types.ts";
+export type { LinkHealth, SkillLink } from "./skill/skill.link.ts";
 export type { FingerprintEntry, FingerprintStore } from "./stagnation/stagnation.types.ts";
 export type { ModelParam, ParentModelSnapshot } from "./subagent-policy/subagent-policy.types.ts";
 export type { AutopilotPlan } from "./turn/turn.autopilot.ts";

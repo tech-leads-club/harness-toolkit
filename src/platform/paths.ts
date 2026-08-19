@@ -94,3 +94,14 @@ export function cursorConfigDir(): string {
 export function userSettingsPaths(): string[] {
   return [join(claudeConfigDir(), "settings.json"), join(cursorConfigDir(), "hooks.json")];
 }
+
+/**
+ * The provider config directories, resolved. Each provider reads only its own skills directory, so this is the
+ * list anything linking the init skill must walk.
+ *
+ * invariant: resolved, never assumed — either tool relocates its config directory by env, and this repository is
+ * itself installed under a relocated one ([/decisions/ad-095.md](/decisions/ad-095.md)).
+ */
+export function providerConfigDirs(): string[] {
+  return [cursorConfigDir(), claudeConfigDir()];
+}

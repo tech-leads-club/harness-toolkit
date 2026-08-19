@@ -149,6 +149,7 @@ import {
   recentShipClaimActive,
   touchesRuntime,
 } from "./ship/ship.service.ts";
+import { linkHealth, linkHealthMessage, skillLinks } from "./skill/skill.link.ts";
 import {
   recordResolution,
   resolutionFor,
@@ -275,6 +276,11 @@ export const coreFacade = {
   shim: {
     coversHandler,
     decideShim,
+  },
+  skill: {
+    linkHealth,
+    linkHealthMessage,
+    skillLinks,
   },
   lesson: {
     projectLessonsInjectable,

@@ -1,14 +1,19 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, readFileSync, readlinkSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { homedir, platform as osPlatform } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { runtimePathKind } from "../bin/tlc-cli.ts";
 import { findBunOnPath, writeRuntimeCache } from "../bin/tlc-exec.mjs";
 import { isCursorWired } from "../bin/write-user-hooks.mjs";
 import type { ProviderWiring } from "../src/contracts/index.ts";
 import { coreFacade } from "../src/core/index.ts";
 import { emitJson, takeJsonFlag } from "../src/platform/cli-output.ts";
-import { projectConfigPath, projectStateDir, runtimeHome } from "../src/platform/paths.ts";
+import {
+  projectConfigPath,
+  projectStateDir,
+  providerConfigDirs,
+  runtimeHome,
+} from "../src/platform/paths.ts";
 import { type ColorName, createStyle, PLAIN, type Style, SYMBOLS } from "../src/platform/style.ts";
 import { mergeClaudeSettings } from "../src/providers/claude/claude.wiring.ts";
 import {
@@ -124,6 +129,47 @@ export function runtimeOwnershipCheck(home: string): Check {
     name: "runtime ownership",
     detail: detail[kind],
   };
+}
+
+/**
+ * hazard: a skill link whose destination is gone reads as installed to anything that only checks the link exists.
+ * One on the machine that prompted this pointed at `/tmp/tlc-recovery-…/install/skills/harness-init` — a directory
+ * from a recovery run, gone on the next boot — and nothing in the harness could see it. A provider whose skill link
+ * dangles simply never routes a request to the init skill, silently
+ * ([/decisions/ad-095.md](/decisions/ad-095.md)).
+ *
+ * invariant: reported per provider, because each reads only its own skills directory, and one being healthy says
+ * nothing about the other.
+ */
+export function checkSkillLinks(
+  home: string,
+  providerDirs: readonly string[] = providerConfigDirs(),
+  probe = {
+    linkTarget: (path: string) => {
+      try {
+        return realpathSync(path);
+      } catch {
+        // a dangling link cannot be realpath'd, so read the link itself before giving up
+        try {
+          return readlinkSync(path);
+        } catch {
+          return null;
+        }
+      }
+    },
+    exists: existsSync,
+  },
+): Check[] {
+  return providerDirs
+    .filter((dir) => existsSync(dir))
+    .map((dir) => {
+      const health = coreFacade.skill.linkHealth(join(dir, "skills", "harness-init"), home, probe);
+      return {
+        level: health.state === "ok" ? ("ok" as const) : ("fail" as const),
+        name: `init skill (${basename(dir)})`,
+        detail: coreFacade.skill.linkHealthMessage(health),
+      };
+    });
 }
 
 export function checkRuntimePaths(home: string, platform: NodeJS.Platform): Check[] {
@@ -522,6 +568,7 @@ export function runChecks(ctx: DoctorContext): Check[] {
   return [
     ...checkNodeVersion(ctx.nodeVersion, ctx.bunPath),
     ...checkRuntimePaths(ctx.runtimeHome, ctx.platform),
+    ...checkSkillLinks(ctx.runtimeHome),
     checkHookRuntime(ctx.runtimeHome, ctx.bunPath),
     ...checkProviders(ctx.registry, ctx.runtimeHome),
     ...checkProjectPolicy(ctx.root),

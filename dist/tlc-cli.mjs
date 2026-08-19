@@ -85,6 +85,17 @@ function bootDir(root) {
 function policyBaselineDir(root) {
   return join(projectStateDir(root), "policy-baseline");
 }
+function claudeConfigDir() {
+  const custom = process.env.CLAUDE_CONFIG_DIR?.trim();
+  return custom && custom.length > 0 ? custom : join(homedir(), ".claude");
+}
+function cursorConfigDir() {
+  const custom = process.env.CURSOR_CONFIG_DIR?.trim();
+  return custom && custom.length > 0 ? custom : join(homedir(), ".cursor");
+}
+function providerConfigDirs() {
+  return [cursorConfigDir(), claudeConfigDir()];
+}
 
 // src/core/attest/attest.service.ts
 var CHAIN_ROOT = "genesis";
@@ -5604,6 +5615,40 @@ function decideShim(userSettings, handler) {
   } : { run: true, reason: `no user-level hook runs ${handler}` };
 }
 
+// src/core/skill/skill.link.ts
+var SKILL_NAME = "harness-init";
+function skillLinks(runtimeHome2, providerDirs, present) {
+  const source = `${runtimeHome2}/skills/${SKILL_NAME}`;
+  return providerDirs.filter((dir) => present(dir)).map((providerDir) => ({
+    providerDir,
+    source,
+    target: `${providerDir}/skills/${SKILL_NAME}`
+  }));
+}
+function linkHealth(target, runtimeHome2, probe) {
+  const resolved = probe.linkTarget(target);
+  if (resolved === null) {
+    return { state: "absent", target };
+  }
+  if (!probe.exists(resolved)) {
+    return { state: "dangling", target, resolved };
+  }
+  const home = runtimeHome2.replace(/\/+$/, "");
+  return resolved === home || resolved.startsWith(`${home}/`) ? { state: "ok", target, resolved } : { state: "outside-runtime", target, resolved };
+}
+function linkHealthMessage(health) {
+  switch (health.state) {
+    case "ok":
+      return `linked → ${health.resolved}`;
+    case "dangling":
+      return `points at ${health.resolved}, which does not exist — re-run \`tlc harness install\``;
+    case "outside-runtime":
+      return `points at ${health.resolved}, outside the runtime — it will break when that path goes`;
+    default:
+      return "not linked — the provider cannot see the init skill";
+  }
+}
+
 // src/core/stagnation/stagnation.resolution.ts
 import { existsSync as existsSync20, mkdirSync as mkdirSync11, readFileSync as readFileSync22, writeFileSync as writeFileSync10 } from "node:fs";
 import { join as join21 } from "node:path";
@@ -6735,6 +6780,11 @@ var coreFacade = {
     coversHandler,
     decideShim
   },
+  skill: {
+    linkHealth,
+    linkHealthMessage,
+    skillLinks
+  },
   lesson: {
     projectLessonsInjectable,
     recordLessonFromFailure,
@@ -7812,7 +7862,6 @@ function runUpdate(root) {
   }
   const binDir = process.env.TLC_BIN_DIR || join26(homedir3(), ".local", "bin");
   mkdirSync16(binDir, { recursive: true });
-  mkdirSync16(join26(home, "..", "skills"), { recursive: true });
   if (process.platform === "win32") {
     const installPs1 = join26(dest, "install.ps1");
     const r = spawnSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installPs1], {
@@ -7826,14 +7875,20 @@ function runUpdate(root) {
   } else {
     const tlcBin = join26(dest, "bin", "tlc");
     const skillSrc = join26(dest, "skills", "harness-init");
-    const skillDest = join26(home, "..", "skills", "harness-init");
     spawnSync("ln", ["-sfn", tlcBin, join26(binDir, "tlc")], { stdio: "inherit" });
     if (!existsSync25(skillSrc)) {
       console.error(`update: missing skill at ${skillSrc}`);
       process.exit(1);
     }
-    spawnSync("ln", ["-sfn", skillSrc, skillDest], { stdio: "inherit" });
-    console.log(`update: skill → ${skillDest}`);
+    const links = coreFacade.skill.skillLinks(dest, providerConfigDirs(), existsSync25);
+    if (links.length === 0) {
+      console.log("update: no provider config dir found — skill not linked");
+    }
+    for (const link of links) {
+      mkdirSync16(join26(link.providerDir, "skills"), { recursive: true });
+      spawnSync("ln", ["-sfn", link.source, link.target], { stdio: "inherit" });
+      console.log(`update: skill → ${link.target}`);
+    }
     const hooks = spawnSync(process.execPath, [join26(dest, "bin", "write-user-hooks.mjs")], {
       stdio: "inherit",
       env: { ...process.env, TLC_HOME: home }

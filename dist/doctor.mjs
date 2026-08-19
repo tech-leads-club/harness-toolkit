@@ -3,9 +3,9 @@ var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
 // tools/doctor.ts
 import { spawnSync } from "node:child_process";
-import { existsSync as existsSync29, lstatSync as lstatSync2, readFileSync as readFileSync31, readlinkSync } from "node:fs";
+import { existsSync as existsSync29, lstatSync as lstatSync2, readFileSync as readFileSync31, readlinkSync, realpathSync as realpathSync4 } from "node:fs";
 import { homedir as homedir3, platform as osPlatform } from "node:os";
-import { dirname as dirname9, join as join30 } from "node:path";
+import { basename as basename5, dirname as dirname9, join as join30 } from "node:path";
 
 // bin/tlc-cli.ts
 import {
@@ -96,6 +96,9 @@ function claudeConfigDir() {
 function cursorConfigDir() {
   const custom = process.env.CURSOR_CONFIG_DIR?.trim();
   return custom && custom.length > 0 ? custom : join(homedir(), ".cursor");
+}
+function providerConfigDirs() {
+  return [cursorConfigDir(), claudeConfigDir()];
 }
 
 // src/core/attest/attest.service.ts
@@ -5616,6 +5619,40 @@ function decideShim(userSettings, handler) {
   } : { run: true, reason: `no user-level hook runs ${handler}` };
 }
 
+// src/core/skill/skill.link.ts
+var SKILL_NAME = "harness-init";
+function skillLinks(runtimeHome2, providerDirs, present) {
+  const source = `${runtimeHome2}/skills/${SKILL_NAME}`;
+  return providerDirs.filter((dir) => present(dir)).map((providerDir) => ({
+    providerDir,
+    source,
+    target: `${providerDir}/skills/${SKILL_NAME}`
+  }));
+}
+function linkHealth(target, runtimeHome2, probe) {
+  const resolved = probe.linkTarget(target);
+  if (resolved === null) {
+    return { state: "absent", target };
+  }
+  if (!probe.exists(resolved)) {
+    return { state: "dangling", target, resolved };
+  }
+  const home = runtimeHome2.replace(/\/+$/, "");
+  return resolved === home || resolved.startsWith(`${home}/`) ? { state: "ok", target, resolved } : { state: "outside-runtime", target, resolved };
+}
+function linkHealthMessage(health) {
+  switch (health.state) {
+    case "ok":
+      return `linked → ${health.resolved}`;
+    case "dangling":
+      return `points at ${health.resolved}, which does not exist — re-run \`tlc harness install\``;
+    case "outside-runtime":
+      return `points at ${health.resolved}, outside the runtime — it will break when that path goes`;
+    default:
+      return "not linked — the provider cannot see the init skill";
+  }
+}
+
 // src/core/stagnation/stagnation.resolution.ts
 import { existsSync as existsSync20, mkdirSync as mkdirSync11, readFileSync as readFileSync22, writeFileSync as writeFileSync10 } from "node:fs";
 import { join as join21 } from "node:path";
@@ -6746,6 +6783,11 @@ var coreFacade = {
   shim: {
     coversHandler,
     decideShim
+  },
+  skill: {
+    linkHealth,
+    linkHealthMessage,
+    skillLinks
   },
   lesson: {
     projectLessonsInjectable,
@@ -7932,6 +7974,29 @@ function runtimeOwnershipCheck(home) {
     detail: detail[kind]
   };
 }
+function checkSkillLinks(home, providerDirs = providerConfigDirs(), probe = {
+  linkTarget: (path) => {
+    try {
+      return realpathSync4(path);
+    } catch {
+      try {
+        return readlinkSync(path);
+      } catch {
+        return null;
+      }
+    }
+  },
+  exists: existsSync29
+}) {
+  return providerDirs.filter((dir) => existsSync29(dir)).map((dir) => {
+    const health = coreFacade.skill.linkHealth(join30(dir, "skills", "harness-init"), home, probe);
+    return {
+      level: health.state === "ok" ? "ok" : "fail",
+      name: `init skill (${basename5(dir)})`,
+      detail: coreFacade.skill.linkHealthMessage(health)
+    };
+  });
+}
 function checkRuntimePaths(home, platform) {
   const launcher = join30(home, "bin", "tlc-exec.mjs");
   const distSample = join30(home, "dist", "stop.mjs");
@@ -8210,6 +8275,7 @@ function runChecks(ctx) {
   return [
     ...checkNodeVersion(ctx.nodeVersion, ctx.bunPath),
     ...checkRuntimePaths(ctx.runtimeHome, ctx.platform),
+    ...checkSkillLinks(ctx.runtimeHome),
     checkHookRuntime(ctx.runtimeHome, ctx.bunPath),
     ...checkProviders(ctx.registry, ctx.runtimeHome),
     ...checkProjectPolicy(ctx.root),
@@ -8290,6 +8356,7 @@ export {
   formatReport,
   exitCodeFor,
   checkSubagentAllowlist,
+  checkSkillLinks,
   checkRuntimePaths,
   checkProviders,
   checkProjectPolicy,

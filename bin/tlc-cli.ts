@@ -13,7 +13,13 @@ import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { coreFacade } from "../src/core/index.ts";
 import { emitJson, JSON_FLAG, takeJsonFlag, unknownFlags } from "../src/platform/cli-output.ts";
-import { flagsDir, projectConfigPath, projectStateDir, runtimeHome } from "../src/platform/paths.ts";
+import {
+  flagsDir,
+  projectConfigPath,
+  projectStateDir,
+  providerConfigDirs,
+  runtimeHome,
+} from "../src/platform/paths.ts";
 import { type Row, render, type Screen, type Section } from "../src/platform/screen.ts";
 import { createStyle, PLAIN, type Style } from "../src/platform/style.ts";
 
@@ -1264,7 +1270,6 @@ function runUpdate(root: string): never {
 
   const binDir = process.env.TLC_BIN_DIR || join(homedir(), ".local", "bin");
   mkdirSync(binDir, { recursive: true });
-  mkdirSync(join(home, "..", "skills"), { recursive: true });
 
   if (process.platform === "win32") {
     const installPs1 = join(dest, "install.ps1");
@@ -1279,14 +1284,24 @@ function runUpdate(root: string): never {
   } else {
     const tlcBin = join(dest, "bin", "tlc");
     const skillSrc = join(dest, "skills", "harness-init");
-    const skillDest = join(home, "..", "skills", "harness-init");
     spawnSync("ln", ["-sfn", tlcBin, join(binDir, "tlc")], { stdio: "inherit" });
     if (!existsSync(skillSrc)) {
       console.error(`update: missing skill at ${skillSrc}`);
       process.exit(1);
     }
-    spawnSync("ln", ["-sfn", skillSrc, skillDest], { stdio: "inherit" });
-    console.log(`update: skill → ${skillDest}`);
+    // hazard: this linked to `<home>/../skills/harness-init` — a directory no provider reads, and which did not
+    // exist at all on the machine where this was found. `install.sh` had it right all along, linking into every
+    // provider config directory that exists, because each provider only reads its own. The resolution is now one
+    // function both use ([/decisions/ad-095.md](/decisions/ad-095.md)).
+    const links = coreFacade.skill.skillLinks(dest, providerConfigDirs(), existsSync);
+    if (links.length === 0) {
+      console.log("update: no provider config dir found — skill not linked");
+    }
+    for (const link of links) {
+      mkdirSync(join(link.providerDir, "skills"), { recursive: true });
+      spawnSync("ln", ["-sfn", link.source, link.target], { stdio: "inherit" });
+      console.log(`update: skill → ${link.target}`);
+    }
     const hooks = spawnSync(process.execPath, [join(dest, "bin", "write-user-hooks.mjs")], {
       stdio: "inherit",
       env: { ...process.env, TLC_HOME: home },
