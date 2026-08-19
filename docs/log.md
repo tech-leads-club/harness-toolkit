@@ -13,6 +13,11 @@ Generated from `docs/decisions/` — do not edit by hand. Run `node tools/render
 A reserved file of the [OKF v0.1](/decisions/ad-013.md) bundle: entries grouped under ISO 8601 headings,
 newest first. For what landed in which npm release, see `CHANGELOG.md` at the repository root.
 
+## 2026-08-19
+
+- **AD-081** — The manifest npm publishes is checked here, because the release runner was the only thing reading it ([/decisions/ad-081.md](/decisions/ad-081.md))
+- **AD-082** — npm is the documented install, and the first version cannot come from CI ([/decisions/ad-082.md](/decisions/ad-082.md))
+
 ## 2026-08-17
 
 - **AD-073** — A neighbour mid-gate is not a reason to block a turn ([/decisions/ad-073.md](/decisions/ad-073.md))

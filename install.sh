@@ -105,12 +105,12 @@ else
     echo "install: $DEST exists and is not a git checkout — move it aside and re-run." >&2
     exit 1
   else
-    # why: while the repository is private, an unauthenticated clone fails with git's own credential error, which
-    # says nothing about org membership. A refusal names the route that works ([/decisions/ad-047.md](/decisions/ad-047.md)).
+    # why: a clone can still fail against a fork that is private, or from a network that blocks GitHub. A refusal
+    # names the route that works rather than passing git's own error through ([/decisions/ad-047.md](/decisions/ad-047.md)).
     if ! git clone "$REPO_URL" "$DEST"; then
       echo "install: could not clone $REPO_URL" >&2
-      echo "  While the repository is private this needs a GitHub credential: install the gh CLI and run" >&2
-      echo "  \`gh auth login\` then \`gh auth setup-git\`, and confirm you are in the tech-leads-club org." >&2
+      echo "  The published package needs no clone: npm i -g @tech-leads-club/harness-toolkit" >&2
+      echo "  then \`tlc harness install\`. For a private fork, run \`gh auth login\` and \`gh auth setup-git\` first." >&2
       exit 1
     fi
   fi

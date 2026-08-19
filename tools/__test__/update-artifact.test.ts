@@ -163,16 +163,18 @@ test("the linked message works without a resolvable target", () => {
 });
 
 /**
- * hazard: a bare `update: git fetch failed.` is what an org member sees when the private repository refuses an
- * unauthenticated fetch, and it names neither the credential nor the org. It is also what an install predating the
- * move sees, for a different reason ([/decisions/ad-052.md](/decisions/ad-052.md)).
+ * hazard: a bare `update: git fetch failed.` names a transport problem and not the route that works. An install
+ * predating the move to the org sees the same line for a different reason, and the package is the answer to both
+ * ([/decisions/ad-082.md](/decisions/ad-082.md)).
  */
-test("a failed fetch names the credential and the move, not just the failure", () => {
+test("a failed fetch names the package route and the move, not just the failure", () => {
   const text = fetchFailureMessage("/opt/runtime");
   assert.match(text, /\/opt\/runtime/);
-  assert.match(text, /gh auth setup-git/);
+  assert.match(text, /npm i -g @tech-leads-club\/harness-toolkit@latest/);
+  assert.match(text, /tlc harness install/);
   assert.match(text, /tech-leads-club\/harness-toolkit/);
-  assert.match(text, /re-run the installer/);
+  // why: a private fork is the one case left where a credential is the cause, so it is still named — last.
+  assert.match(text, /gh auth setup-git/);
 });
 
 // invariant: no message may name `reset --hard` against a path the harness has not established it owns, and none
@@ -190,10 +192,11 @@ test("no message offers a remedy the harness does not perform", () => {
   }
 });
 
-test("the unmanaged message points at the installer, not at git", () => {
+test("the unmanaged message points at the package, not at git", () => {
   const text = unmanagedRuntimeMessage("/opt/harness");
   assert.match(text, /not a git checkout/);
-  assert.match(text, /README/);
+  assert.match(text, /npm i -g @tech-leads-club\/harness-toolkit@latest/);
+  assert.match(text, /tlc harness install/);
 });
 
 test("a reset failure reports the path kind and the tail of git's output", () => {

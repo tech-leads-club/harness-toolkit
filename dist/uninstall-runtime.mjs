@@ -1234,7 +1234,7 @@ function uninstallScreen(plan, result) {
         },
         { title: "STILL YOURS TO DO", rows: manualRows(plan) }
       ],
-      footer: "already clean · re-run install with the one-liner in the README"
+      footer: `already clean · reinstall with npm i -g ${NPM_PACKAGE}, then \`tlc harness install\``
     };
   }
   const changes = pending.map((item) => ({
@@ -1275,7 +1275,7 @@ function uninstallScreen(plan, result) {
       plan.homeIsLink ? "runtime: linked checkout, unlinked only" : "runtime: owned by the installer"
     ],
     sections,
-    footer: applied ? "reinstall any time with the one-liner in the README" : "nothing was changed · re-run with --yes to apply this plan"
+    footer: applied ? `reinstall any time with npm i -g ${NPM_PACKAGE}, then \`tlc harness install\`` : "nothing was changed · re-run with --yes to apply this plan"
   };
 }
 function manualRows(plan) {

@@ -158,7 +158,7 @@ test("the installer never runs git against a linked clone", () => {
 test("update --force says what to do instead of being ignored", () => {
   assert.throws(() => route(["update", "--force"]), UsageError);
   assert.throws(() => route(["update", "--force"]), /takes no --force/);
-  assert.throws(() => route(["update", "--force"]), /installer one-liner/);
+  assert.throws(() => route(["update", "--force"]), /npm i -g @tech-leads-club\/harness-toolkit@latest/);
 });
 
 test("update rejects an unknown flag by name", () => {

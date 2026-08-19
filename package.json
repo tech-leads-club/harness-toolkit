@@ -16,8 +16,8 @@
     "node": ">=24"
   },
   "bin": {
-    "tlc": "./bin/tlc.mjs",
-    "tlc-exec": "./bin/tlc-exec.mjs"
+    "tlc": "bin/tlc.mjs",
+    "tlc-exec": "bin/tlc-exec.mjs"
   },
   "files": [
     "bin/",

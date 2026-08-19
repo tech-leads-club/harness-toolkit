@@ -11,17 +11,9 @@ text injected into the turn — and writes a record of what it decided and why.
 
 ## Start here
 
-While this repository is private to the `tech-leads-club` org, install with the `gh` CLI — an
-unauthenticated fetch cannot read a private repository:
-
 ```bash
-gh api repos/tech-leads-club/harness-toolkit/contents/install.sh --jq .content | base64 -d | bash
-```
-
-Once it is public, this is the same install with no CLI needed:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/tech-leads-club/harness-toolkit/main/install.sh | bash
+npm i -g @tech-leads-club/harness-toolkit
+tlc harness install
 ```
 
 Then restart Cursor or Claude Code. That is the whole setup — the installer finds which of the two you
@@ -223,55 +215,35 @@ nothing reads — `src/providers/provider.degrade.ts`.
 | Dependency | Notes |
 |------------|--------|
 | **Bun** *or* **Node.js 24+** | Either one is enough. Bun runs every hook directly with no build step (~1 ms/hook); Node needs 24 LTS or 26 and the shipped `dist/` (~27 ms/hook). With neither, the installer stops and names both fixes |
-| **git** | Installer clone/update |
+| **npm** | Delivers the package on every platform |
 | **esbuild** (only for the Node path) | Needed once to recompile `dist/`; the published `dist/` already works |
-
-| Environment | Installer |
-|-------------|-----------|
-| Linux / macOS / WSL | `install.sh` |
-| Windows | `install.ps1` (see [Windows](#windows)) |
 
 ## Install
 
-Both routes run the same `install.sh` and produce the same managed runtime. The difference is only how the
-script is fetched: `raw.githubusercontent.com` is unauthenticated and cannot read a private repository, and
-`gh` carries your GitHub credential. Use the `gh` form until the repository is public.
-
-**Linux / macOS / WSL**
+The same two commands on every platform.
 
 ```bash
-# while private — needs `gh auth login` and membership of the tech-leads-club org
-gh api repos/tech-leads-club/harness-toolkit/contents/install.sh --jq .content | base64 -d | bash
-
-# once public
-curl -fsSL https://raw.githubusercontent.com/tech-leads-club/harness-toolkit/main/install.sh | bash
+npm i -g @tech-leads-club/harness-toolkit
+tlc harness install
 ```
 
-**Windows (PowerShell)**
-
-```powershell
-# while private
-$s = gh api repos/tech-leads-club/harness-toolkit/contents/install.ps1 --jq .content
-[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($s)) | iex
-
-# once public
-irm https://raw.githubusercontent.com/tech-leads-club/harness-toolkit/main/install.ps1 | iex
-```
-
-The clone the installer then performs also needs that credential while the repository is private: run
-`gh auth setup-git` once, and the installer says so if the clone fails.
+The package is the delivery vehicle and `tlc harness install` is what puts the runtime in place. They are
+separate because a directory npm replaces wholesale cannot hold state — `config.json`, `state/` and `flags/`
+would be deleted by an ordinary update ([`docs/decisions/ad-056.md`](docs/decisions/ad-056.md)).
 
 Install target: `~/.tlc/harness` (runtime). The init skill is linked into the skills directory of
 each provider it finds, because a provider only reads its own.
 
-The installer:
+`tlc harness install`:
 
-1. Clones or updates the runtime at `~/.tlc/harness`
+1. Materialises the runtime at `~/.tlc/harness` from the installed package
 2. Creates `config.json` from `config.example.json` when missing
 3. Adds `tlc` to `~/.local/bin`
 4. Links the init skill into each detected provider's `skills/harness-init`
 5. Wires user-level hooks for every provider it detects installed, in that provider's resolved config
    directory
+
+Update with `tlc harness update`, which bumps the package and re-materialises the runtime.
 
 Overrides: `TLC_HOME`, `TLC_REPO_URL`, `TLC_BIN_DIR`.
 
@@ -308,21 +280,8 @@ outside any project, so the floor answers a delegated uninstall with `policy-sur
 
 Restart or reload the provider session after install.
 
-**From a git clone** (same installers; then build `dist/`):
-
-```bash
-git clone https://github.com/tech-leads-club/harness-toolkit.git
-cd harness-toolkit
-./install.sh
-./bin/tlc-build
-```
-
-```powershell
-git clone https://github.com/tech-leads-club/harness-toolkit.git
-cd harness-toolkit
-.\install.ps1
-.\bin\tlc-build
-```
+**From a git clone** — that is a contributor install, and it is described in
+[`CONTRIBUTING.md`](CONTRIBUTING.md). Update never writes into a clone.
 
 ## Update
 
@@ -338,16 +297,17 @@ Reload/restart the provider session afterward if hooks or the init skill should 
 
 | `tlc harness doctor` says | What update writes |
 | --- | --- |
+| `installed from npm` | bumps the package to `@latest` and re-materialises the runtime. No git command runs |
 | `managed checkout` | moves it to upstream with a hard reset. Do not develop there — a local change is discarded |
 | `link to a working clone` | nothing in the clone. That is a contributor install; you pull it yourself |
 
 `dist/` is rebuilt only when a bundle is missing. Rebuilding a complete `dist/` is what used to dirty the checkout
 and break every later update, because Bun and esbuild emit different bytes for the same source.
 
-**If `update` aborts on `dist/`, re-run the install one-liner once.** A stuck install cannot deliver its own fix —
-the fix lives in the revision `update` has to fetch — so the one-liner, which is fetched fresh from upstream, is
-the recovery route. It hard-resets a managed checkout and leaves `config.json`, `state/` and any linked clone
-untouched ([AD-048](docs/decisions/ad-048.md)). There is no `--force`.
+**If `update` aborts on `dist/`, install the package again.** A stuck install cannot deliver its own fix — the fix
+lives in the revision `update` has to fetch — so `npm i -g @tech-leads-club/harness-toolkit@latest` followed by
+`tlc harness install` is the recovery route, because the registry serves it independently of what is installed. It
+leaves `config.json`, `state/` and any linked clone untouched ([AD-048](docs/decisions/ad-048.md)). There is no `--force`.
 
 After a successful pull, prints a short digest of **optional catalog capabilities this project has not
 enabled yet** (benefit + trade-off + how to enable). Nothing is auto-enabled — use the harness-init skill or

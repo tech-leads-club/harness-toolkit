@@ -559,24 +559,24 @@ export function linkedRuntimeMessage(dest: string, target: string | null): strin
 }
 
 /**
- * hazard: this printed `update: git fetch failed.` and stopped. Against a private repository the cause is almost
- * always a missing GitHub credential, and git's own error does not mention org membership or `gh` — the same shape
- * as the refusal AD-047 was written about ([/decisions/ad-052.md](/decisions/ad-052.md)).
+ * hazard: this printed `update: git fetch failed.` and stopped. git's own error names a transport problem and not
+ * the route that works, which is the same shape as the refusal AD-047 was written about
+ * ([/decisions/ad-052.md](/decisions/ad-052.md)).
  */
 export function fetchFailureMessage(dest: string): string {
   return [
     `update: git fetch failed in ${dest}.`,
-    "  If the repository is private, this needs a GitHub credential: `gh auth login`, then `gh auth setup-git`,",
-    "  and membership of the org that owns it.",
+    `  The published package needs no clone: npm i -g ${NPM_PACKAGE}@latest, then \`tlc harness install\`.`,
     "  If this runtime predates the move to tech-leads-club/harness-toolkit, it is still pointing at the old",
-    "  repository — re-run the installer from the README to move it.",
+    "  repository, and that install is what the package replaces.",
+    "  For a private fork, this needs a GitHub credential: `gh auth login`, then `gh auth setup-git`.",
   ].join("\n");
 }
 
 export function unmanagedRuntimeMessage(dest: string): string {
   return [
     `update: ${dest} is not a git checkout, so there is nothing to pull.`,
-    "Re-install with the curl/irm one-liner from the README to get a managed runtime.",
+    `Install the package to get a runtime update can move: npm i -g ${NPM_PACKAGE}@latest, then \`tlc harness install\`.`,
   ].join("\n");
 }
 
@@ -599,7 +599,7 @@ export function resetFailureMessage(dest: string, mergeRef: string, gitOutput: s
     `update: could not move the runtime to ${mergeRef}.`,
     `  path: ${dest} (managed checkout)`,
     gitOutput.trim() ? `  git: ${gitOutput.trim().split("\n").slice(-3).join(" / ")}` : "",
-    "Nothing was changed. Re-install with the one-liner from the README if this persists.",
+    `Nothing was changed. If this persists, install the package instead: npm i -g ${NPM_PACKAGE}@latest, then \`tlc harness install\`.`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -946,7 +946,7 @@ export function route(args: string[]): Action {
       if (leftover.length > 0) {
         throw new UsageError(
           leftover[0] === "--force"
-            ? "update takes no --force: a managed runtime is already reset to upstream, and a linked clone is never written to. If update cannot move it, re-run the installer one-liner from the README."
+            ? `update takes no --force: a managed runtime is already reset to upstream, and a linked clone is never written to. If update cannot move it, install the package instead: npm i -g ${NPM_PACKAGE}@latest.`
             : `unknown flag: ${leftover[0]}\nusage: tlc harness update [--check]`,
         );
       }
@@ -1093,6 +1093,10 @@ export function buildTestSteps(): TestStep[] {
     { label: "check-decisions", bin: "node", args: ["tools/dev/check-decisions.ts"] },
     { label: "check-screens", bin: "node", args: ["tools/dev/check-screens.ts"] },
     { label: "check-obs-contract", bin: "node", args: ["tools/dev/check-obs-contract.ts"] },
+    // why: `bin` declared `./bin/tlc.mjs` and npm dropped both executables on publish, so the package installed no
+    // command at all. The release runner was the only thing that saw it, in a warning on a build that then failed
+    // for an unrelated reason ([/decisions/ad-081.md](/decisions/ad-081.md)).
+    { label: "check-manifest", bin: "node", args: ["tools/dev/check-manifest.ts"] },
     { label: "capabilities in sync", bin: "node", args: ["tools/dev/render-capabilities.ts", "--check"] },
     { label: "changelog in sync", bin: "node", args: ["tools/dev/render-changelog.ts", "--check"] },
     // why: the OKF bundle's log is a reserved file that cannot be retired, and hand-maintaining it drifted to 19
@@ -1193,7 +1197,9 @@ function runUpdate(root: string): never {
 
   if (!existsSync(join(dest, "bin", "tlc-exec.mjs"))) {
     console.error(`update: missing install at ${home}`);
-    console.error("update: install once with the curl/irm installer from the README, then retry.");
+    console.error(
+      `update: install once with \`npm i -g ${NPM_PACKAGE}\`, then \`tlc harness install\`, then retry.`,
+    );
     process.exit(1);
   }
 

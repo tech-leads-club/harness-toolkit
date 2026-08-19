@@ -49,10 +49,10 @@ test("a directory that is not a checkout fails", () => {
   assert.match(check.detail, /not a git checkout/);
 });
 
-test("a missing install fails and names the installer", () => {
+test("a missing install fails and names the command that puts the runtime in place", () => {
   const check = runtimeOwnershipCheck(join(newDir("tlc-doctor-gone-"), "absent"));
   assert.equal(check.level, "fail");
-  assert.match(check.detail, /README one-liner/);
+  assert.match(check.detail, /tlc harness install/);
 });
 
 // invariant: no doctor row hands the operator a command that could write to a path the harness does not own.

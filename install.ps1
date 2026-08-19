@@ -49,13 +49,13 @@ if ($scriptRoot -and (Test-Path (Join-Path $scriptRoot "bin\tlc-exec.mjs")) -and
   } elseif (Test-Path $Dest) {
     throw "install: $Dest exists and is not a git checkout — move it aside and re-run."
   } else {
-    # why: while the repository is private, an unauthenticated clone fails with git's own credential error, which
-    # says nothing about org membership. A refusal names the route that works (docs/decisions/ad-047.md).
+    # why: a clone can still fail against a fork that is private, or from a network that blocks GitHub. A refusal
+    # names the route that works rather than passing git's own error through (docs/decisions/ad-047.md).
     git clone $RepoUrl $Dest
     if ($LASTEXITCODE -ne 0) {
       Write-Host "install: could not clone $RepoUrl"
-      Write-Host "  While the repository is private this needs a GitHub credential: install the gh CLI and run"
-      Write-Host "  ``gh auth login`` then ``gh auth setup-git``, and confirm you are in the tech-leads-club org."
+      Write-Host "  The published package needs no clone: npm i -g @tech-leads-club/harness-toolkit"
+      Write-Host "  then ``tlc harness install``. For a private fork, run ``gh auth login`` and ``gh auth setup-git`` first."
       throw "install: clone failed"
     }
   }

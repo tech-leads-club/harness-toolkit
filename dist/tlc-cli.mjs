@@ -7268,17 +7268,17 @@ function linkedRuntimeMessage(dest, target) {
 function fetchFailureMessage(dest) {
   return [
     `update: git fetch failed in ${dest}.`,
-    "  If the repository is private, this needs a GitHub credential: `gh auth login`, then `gh auth setup-git`,",
-    "  and membership of the org that owns it.",
+    `  The published package needs no clone: npm i -g ${NPM_PACKAGE}@latest, then \`tlc harness install\`.`,
     "  If this runtime predates the move to tech-leads-club/harness-toolkit, it is still pointing at the old",
-    "  repository — re-run the installer from the README to move it."
+    "  repository, and that install is what the package replaces.",
+    "  For a private fork, this needs a GitHub credential: `gh auth login`, then `gh auth setup-git`."
   ].join(`
 `);
 }
 function unmanagedRuntimeMessage(dest) {
   return [
     `update: ${dest} is not a git checkout, so there is nothing to pull.`,
-    "Re-install with the curl/irm one-liner from the README to get a managed runtime."
+    `Install the package to get a runtime update can move: npm i -g ${NPM_PACKAGE}@latest, then \`tlc harness install\`.`
   ].join(`
 `);
 }
@@ -7298,7 +7298,7 @@ function resetFailureMessage(dest, mergeRef, gitOutput) {
     `  path: ${dest} (managed checkout)`,
     gitOutput.trim() ? `  git: ${gitOutput.trim().split(`
 `).slice(-3).join(" / ")}` : "",
-    "Nothing was changed. Re-install with the one-liner from the README if this persists."
+    `Nothing was changed. If this persists, install the package instead: npm i -g ${NPM_PACKAGE}@latest, then \`tlc harness install\`.`
   ].filter(Boolean).join(`
 `);
 }
@@ -7540,7 +7540,7 @@ function route(args) {
       }
       const leftover = unknownFlags(flags);
       if (leftover.length > 0) {
-        throw new UsageError(leftover[0] === "--force" ? "update takes no --force: a managed runtime is already reset to upstream, and a linked clone is never written to. If update cannot move it, re-run the installer one-liner from the README." : `unknown flag: ${leftover[0]}
+        throw new UsageError(leftover[0] === "--force" ? `update takes no --force: a managed runtime is already reset to upstream, and a linked clone is never written to. If update cannot move it, install the package instead: npm i -g ${NPM_PACKAGE}@latest.` : `unknown flag: ${leftover[0]}
 usage: tlc harness update [--check]`);
       }
       return { kind: "update" };
@@ -7659,6 +7659,7 @@ function buildTestSteps() {
     { label: "check-decisions", bin: "node", args: ["tools/dev/check-decisions.ts"] },
     { label: "check-screens", bin: "node", args: ["tools/dev/check-screens.ts"] },
     { label: "check-obs-contract", bin: "node", args: ["tools/dev/check-obs-contract.ts"] },
+    { label: "check-manifest", bin: "node", args: ["tools/dev/check-manifest.ts"] },
     { label: "capabilities in sync", bin: "node", args: ["tools/dev/render-capabilities.ts", "--check"] },
     { label: "changelog in sync", bin: "node", args: ["tools/dev/render-changelog.ts", "--check"] },
     { label: "log in sync", bin: "node", args: ["tools/dev/render-log.ts", "--check"] },
@@ -7727,7 +7728,7 @@ function runUpdate(root) {
   console.log(`update: runtime → ${dest}`);
   if (!existsSync25(join26(dest, "bin", "tlc-exec.mjs"))) {
     console.error(`update: missing install at ${home}`);
-    console.error("update: install once with the curl/irm installer from the README, then retry.");
+    console.error(`update: install once with \`npm i -g ${NPM_PACKAGE}\`, then \`tlc harness install\`, then retry.`);
     process.exit(1);
   }
   const kind = runtimePathKind(home);

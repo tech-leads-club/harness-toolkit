@@ -380,7 +380,7 @@ export function uninstallScreen(plan: UninstallPlan, result: UninstallResult | n
         },
         { title: "STILL YOURS TO DO", rows: manualRows(plan) },
       ],
-      footer: "already clean · re-run install with the one-liner in the README",
+      footer: `already clean · reinstall with npm i -g ${NPM_PACKAGE}, then \`tlc harness install\``,
     };
   }
 
@@ -429,7 +429,7 @@ export function uninstallScreen(plan: UninstallPlan, result: UninstallResult | n
     ],
     sections,
     footer: applied
-      ? "reinstall any time with the one-liner in the README"
+      ? `reinstall any time with npm i -g ${NPM_PACKAGE}, then \`tlc harness install\``
       : "nothing was changed · re-run with --yes to apply this plan",
   };
 }

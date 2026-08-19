@@ -7884,8 +7884,8 @@ function runtimeOwnershipCheck(home) {
     managed: "managed checkout — `tlc harness update` moves it to upstream and owns its contents",
     linked: "link to a working clone — update never writes here; pull that clone yourself",
     npm: "installed from npm — `tlc harness update` bumps the package and re-materialises this directory",
-    unmanaged: "not a git checkout — update cannot pull; re-install with the README one-liner",
-    absent: "missing — install with the README one-liner"
+    unmanaged: "not a git checkout — update cannot pull; install the package and run `tlc harness install`",
+    absent: "missing — install the package, then run `tlc harness install`"
   };
   return {
     level: kind === "managed" || kind === "linked" || kind === "npm" ? "ok" : "fail",

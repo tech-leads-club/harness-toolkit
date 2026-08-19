@@ -44,27 +44,19 @@ On Windows, Cursor hooks use `cmd /c node "…\tlc-exec.mjs" …`; Claude Code h
 
 ## `update` aborts on `dist/` and keeps aborting
 
-The one manual step, once, on Unix or Windows:
+The one manual step, once, on every platform:
 
 ```bash
-# while the repository is private
-gh api repos/tech-leads-club/harness-toolkit/contents/install.sh --jq .content | base64 -d | bash
-
-# once public
-curl -fsSL https://raw.githubusercontent.com/tech-leads-club/harness-toolkit/main/install.sh | bash
-```
-
-```powershell
-$s = gh api repos/tech-leads-club/harness-toolkit/contents/install.ps1 --jq .content
-[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($s)) | iex
+npm i -g @tech-leads-club/harness-toolkit@latest
+tlc harness install
 ```
 
 **Why it has to be that and not `update`.** `update` runs from the installed runtime, and the fix for `update` is in
-the revision `update` has to fetch — so a stuck install cannot deliver its own fix. The one-liner is fetched from
-upstream every time, which makes it the only route independent of what is installed
+the revision `update` has to fetch — so a stuck install cannot deliver its own fix. The registry serves the package
+independently of what is installed, which makes it the only route that does not depend on the thing that is stuck
 ([/decisions/ad-048.md](/decisions/ad-048.md)).
 
-The installer moves a managed checkout to `origin/main` with a hard reset. `config.json` and `state/` are gitignored,
+Installing over a managed checkout moves it to `origin/main` with a hard reset. `config.json` and `state/` are gitignored,
 so your policy, global lessons and obs history survive it. A **linked** runtime — a symlink to your own clone — is
 left completely alone.
 
@@ -85,7 +77,8 @@ Then reload/restart the provider session.
 | --- | --- |
 | `managed checkout` | fetches and moves it to upstream with a hard reset — the harness owns its contents, so a local change there is never yours |
 | `link to a working clone` | **nothing** in the clone. Refreshes only the CLI link, the skill link and provider hooks. Pull that clone yourself |
-| `not a git checkout` | nothing to pull — re-install with the README one-liner |
+| `installed from npm` | bumps the package to `@latest` and re-materialises the runtime. No git command runs against it |
+| `not a git checkout` | nothing to pull — install the package and run `tlc harness install` |
 
 Update never rebuilds `dist/` when every bundle is present. It used to, and because Bun and esbuild emit different
 bytes for the same source, the rebuild left the checkout permanently dirty and every later update failed. If you see
