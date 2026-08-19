@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { afterEach, describe, test } from "node:test";
 import {
   applyPlan,
@@ -9,10 +9,12 @@ import {
   claudeShimEntries,
   cursorShimEntries,
   detectProviders,
-  GITIGNORE_LINE,
+  GITIGNORE_STATE,
+  gitignoreEntries,
   launcherPath,
   main,
   mergeGitignore,
+  PROJECT_SHIMS,
   parseFlags,
   resolvePolicy,
   UsageError,
@@ -133,16 +135,53 @@ describe("mergeGitignore", () => {
     const root = newRoot();
     const result = mergeGitignore(root);
     assert.equal(result.changed, true);
-    assert.ok(result.text.includes(GITIGNORE_LINE));
+    assert.ok(result.text.includes(GITIGNORE_STATE));
   });
 
-  test("does not duplicate the line on a second run", () => {
+  /**
+   * hazard: `init` writes `.cursor/hooks.json` and `.claude/settings.json` containing an absolute path to the
+   * runtime on the machine that ran it, and used to ignore neither. A user committed a `settings.json` naming
+   * their own home directory, and the next developer's hook pointed at a path that does not exist. This
+   * repository has ignored both by hand since 2026-07-30 and never shipped that protection.
+   */
+  test("AC1 the shims init writes are ignored, not just the state directory", () => {
     const root = newRoot();
-    writeFileSync(join(root, ".gitignore"), `node_modules/\n${GITIGNORE_LINE}\n`);
+
     const result = mergeGitignore(root);
-    assert.equal(result.changed, false);
-    const occurrences = result.text.split("\n").filter((line) => line === GITIGNORE_LINE).length;
-    assert.equal(occurrences, 1);
+
+    for (const shim of PROJECT_SHIMS) {
+      assert.ok(result.text.includes(shim.split(sep).join("/")), `${shim} must be ignored`);
+    }
+  });
+
+  /** invariant: what is ignored is derived from what is written, so the two lists cannot drift apart. */
+  test("AC1 every entry comes from what init writes", () => {
+    assert.deepEqual(gitignoreEntries(), [
+      GITIGNORE_STATE,
+      ...PROJECT_SHIMS.map((path) => path.split(sep).join("/")),
+    ]);
+  });
+
+  /** why: posix separators. A `.gitignore` is read by git, not by the platform that generated it. */
+  test("AC1 entries use forward slashes on every platform", () => {
+    for (const entry of gitignoreEntries()) {
+      assert.doesNotMatch(entry, /\\/, entry);
+    }
+  });
+
+  test("adds only what is missing, and is idempotent once every entry is present", () => {
+    const root = newRoot();
+    writeFileSync(join(root, ".gitignore"), `node_modules/\n${GITIGNORE_STATE}\n`);
+
+    // the state line is there and the shims are not, so this run adds exactly the shims
+    const first = mergeGitignore(root);
+    assert.equal(first.changed, true);
+    assert.equal(first.text.split("\n").filter((line) => line === GITIGNORE_STATE).length, 1);
+
+    writeFileSync(join(root, ".gitignore"), first.text);
+    const second = mergeGitignore(root);
+    assert.equal(second.changed, false);
+    assert.equal(second.text, first.text);
   });
 
   test("preserves existing unrelated lines", () => {
@@ -151,7 +190,7 @@ describe("mergeGitignore", () => {
     const result = mergeGitignore(root);
     assert.ok(result.text.includes("node_modules/"));
     assert.ok(result.text.includes("dist/"));
-    assert.ok(result.text.includes(GITIGNORE_LINE));
+    assert.ok(result.text.includes(GITIGNORE_STATE));
   });
 });
 
@@ -224,7 +263,7 @@ describe("applyPlan", () => {
     const outcome = applyPlan(root, parseFlags(["--minimal"]), { cursor: false, claude: false }, null);
     assert.ok(existsSync(outcome.configPath));
     const gitignore = readFileSync(join(root, ".gitignore"), "utf8");
-    assert.ok(gitignore.includes(GITIGNORE_LINE));
+    assert.ok(gitignore.includes(GITIGNORE_STATE));
   });
 
   test("skips both providers when neither is present", () => {

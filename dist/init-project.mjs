@@ -3,7 +3,7 @@ var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
 // tools/init-project.ts
 import { existsSync as existsSync3, mkdirSync as mkdirSync3, readFileSync as readFileSync3, writeFileSync as writeFileSync3 } from "node:fs";
-import { dirname as dirname3, join as join4 } from "node:path";
+import { dirname as dirname3, join as join4, sep } from "node:path";
 
 // bin/write-user-hooks.mjs
 import { existsSync as existsSync2, mkdirSync as mkdirSync2, readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "node:fs";
@@ -858,19 +858,23 @@ function claudeShimEntries(launcher) {
     ...spec.loopLimit !== undefined ? { loopLimit: spec.loopLimit } : {}
   }));
 }
-var GITIGNORE_LINE = ".tlc/harness/state/";
+var PROJECT_SHIMS = [join4(".cursor", "hooks.json"), join4(".claude", "settings.json")];
+var GITIGNORE_STATE = ".tlc/harness/state/";
+function gitignoreEntries() {
+  return [GITIGNORE_STATE, ...PROJECT_SHIMS.map((path) => path.split(sep).join("/"))];
+}
 function mergeGitignore(root) {
   const path = join4(root, ".gitignore");
   const existing = existsSync3(path) ? readFileSync3(path, "utf8") : "";
   const lines = existing.split(`
 `);
-  const alreadyPresent = lines.includes(GITIGNORE_LINE);
-  if (alreadyPresent) {
+  const missing = gitignoreEntries().filter((entry) => !lines.includes(entry));
+  if (missing.length === 0) {
     return { text: existing.endsWith(`
 `) || existing === "" ? existing : `${existing}
 `, changed: false };
   }
-  lines.push(GITIGNORE_LINE);
+  lines.push(...missing);
   const withoutTrailingBlank = lines.filter((line, index, all) => line.length > 0 || index < all.length - 1);
   return { text: `${withoutTrailingBlank.join(`
 `).replace(/\n+$/, "")}
@@ -901,7 +905,7 @@ function buildPlan(root, flags, stdinText, presence) {
     policy,
     cursorHooksDocument: presence.cursor ? renderCursorHooksDocument(cursorShimEntries(launcher)) : null,
     claudeHooksPreview: presence.claude ? claudeShimEntries(launcher) : null,
-    gitignoreLine: GITIGNORE_LINE
+    gitignoreEntries: gitignoreEntries()
   };
 }
 function applyPlan(root, flags, presence, stdinText) {
@@ -983,11 +987,13 @@ export {
   mergeGitignore,
   main,
   launcherPath,
+  gitignoreEntries,
   detectProviders,
   cursorShimEntries,
   claudeShimEntries,
   buildPlan,
   applyPlan,
   UsageError,
-  GITIGNORE_LINE
+  PROJECT_SHIMS,
+  GITIGNORE_STATE
 };

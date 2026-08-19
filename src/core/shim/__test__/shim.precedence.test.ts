@@ -27,13 +27,13 @@ describe("coversHandler", () => {
    * ("if you define the same handler in more than one settings file, it runs once") misses them.
    */
   test("the same handler reached two ways is the same handler", () => {
-    const user = settings("node /home/a/.tlc/harness/bin/tlc-exec.mjs stop");
+    const user = settings("node /opt/tlc/harness/bin/tlc-exec.mjs stop");
 
     assert.equal(coversHandler(user, "stop"), true);
   });
 
   test("a different handler is not covered", () => {
-    const user = settings("node /home/a/.tlc/harness/bin/tlc-exec.mjs stop");
+    const user = settings("node /opt/tlc/harness/bin/tlc-exec.mjs stop");
 
     assert.equal(coversHandler(user, "session-start"), false);
   });
@@ -88,7 +88,7 @@ describe("decideShim", () => {
    * ran the handler on every overlapping event.
    */
   test("when a user-level hook already runs the handler the shim stands down", () => {
-    const user = settings("node /home/a/.tlc/harness/bin/tlc-exec.mjs stop");
+    const user = settings("node /opt/tlc/harness/bin/tlc-exec.mjs stop");
 
     const decision = decideShim(user, "stop");
 
@@ -97,7 +97,7 @@ describe("decideShim", () => {
   });
 
   test("a user-level install that does not cover this handler leaves the shim to run it", () => {
-    const user = settings("node /home/a/.tlc/harness/bin/tlc-exec.mjs session-start");
+    const user = settings("node /opt/tlc/harness/bin/tlc-exec.mjs session-start");
 
     assert.equal(decideShim(user, "stop").run, true);
   });

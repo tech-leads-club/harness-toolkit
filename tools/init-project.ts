@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { applyCursorWiring, renderCursorHooksDocument } from "../bin/write-user-hooks.mjs";
 import type { WiringEntry } from "../src/contracts/index.ts";
 import { DEFAULTS } from "../src/core/policy/policy.defaults.ts";
@@ -115,17 +115,37 @@ export function claudeShimEntries(launcher: string): WiringEntry[] {
   }));
 }
 
-export const GITIGNORE_LINE = ".tlc/harness/state/";
+/**
+ * The paths `init` writes into the project that must not be committed.
+ *
+ * hazard: this was one line, `.tlc/harness/state/`, while `init` also writes two shim documents containing an
+ * absolute path to the runtime on the machine that ran it. A user committed a `settings.json` naming their own
+ * home directory, and the next developer's hook pointed at a path that does not exist. This repository has
+ * ignored both files by hand since 2026-07-30 — commit 81c5830, "keep generated shims out of git", with the
+ * comment "per-machine artifacts rather than shared configuration" — so the protection existed here and was never
+ * delivered to anyone using the product ([/decisions/ad-095.md](/decisions/ad-095.md)).
+ *
+ * invariant: derived from what `init` writes. `PROJECT_SHIMS` is the same list the wiring below writes to, so a
+ * new shim cannot be added without appearing here.
+ */
+export const PROJECT_SHIMS = [join(".cursor", "hooks.json"), join(".claude", "settings.json")] as const;
+
+export const GITIGNORE_STATE = ".tlc/harness/state/";
+
+/** why: posix separators, because a `.gitignore` is read by git and not by the platform that wrote it. */
+export function gitignoreEntries(): string[] {
+  return [GITIGNORE_STATE, ...PROJECT_SHIMS.map((path) => path.split(sep).join("/"))];
+}
 
 export function mergeGitignore(root: string): { text: string; changed: boolean } {
   const path = join(root, ".gitignore");
   const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
   const lines = existing.split("\n");
-  const alreadyPresent = lines.includes(GITIGNORE_LINE);
-  if (alreadyPresent) {
+  const missing = gitignoreEntries().filter((entry) => !lines.includes(entry));
+  if (missing.length === 0) {
     return { text: existing.endsWith("\n") || existing === "" ? existing : `${existing}\n`, changed: false };
   }
-  lines.push(GITIGNORE_LINE);
+  lines.push(...missing);
   const withoutTrailingBlank = lines.filter((line, index, all) => line.length > 0 || index < all.length - 1);
   return { text: `${withoutTrailingBlank.join("\n").replace(/\n+$/, "")}\n`, changed: true };
 }
@@ -156,7 +176,7 @@ export type InitPlan = {
   policy: unknown;
   cursorHooksDocument: unknown | null;
   claudeHooksPreview: WiringEntry[] | null;
-  gitignoreLine: string;
+  gitignoreEntries: string[];
 };
 
 export function buildPlan(
@@ -171,7 +191,7 @@ export function buildPlan(
     policy,
     cursorHooksDocument: presence.cursor ? renderCursorHooksDocument(cursorShimEntries(launcher)) : null,
     claudeHooksPreview: presence.claude ? claudeShimEntries(launcher) : null,
-    gitignoreLine: GITIGNORE_LINE,
+    gitignoreEntries: gitignoreEntries(),
   };
 }
 
