@@ -1,7 +1,23 @@
-import { patchHandoff, readHandoffFile } from "./handoff.store.ts";
+import { divergedMessage, shouldInject, verifySeal } from "../integrity/state-seal.ts";
+import { handoffPath, patchHandoff, readHandoffFile } from "./handoff.store.ts";
 import type { ForeignSlice, HandoffProviderSlice, HandoffShared } from "./handoff.types.ts";
 
 export type ResolvedHandoff = HandoffShared & HandoffProviderSlice;
+
+/**
+ * Whether the handoff is safe to read aloud to the model.
+ *
+ * why: separate from `readHandoff`, because reading and injecting are different acts. `tlc harness handoff`
+ * displaying a diverged file is how an operator investigates it; a turn being *told* what it says is the moment
+ * worth withholding ([/decisions/ad-078.md](/decisions/ad-078.md)).
+ */
+export function handoffInjectable(root: string): { ok: boolean; note: string | null } {
+  const target = handoffPath(root);
+  const verdict = verifySeal(target);
+  return shouldInject(verdict)
+    ? { ok: true, note: null }
+    : { ok: false, note: divergedMessage(target, "The handoff") };
+}
 
 export function readHandoff(root: string, provider: string): ResolvedHandoff {
   const file = readHandoffFile(root);

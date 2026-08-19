@@ -304,11 +304,12 @@ async function withFileLock(lockPath, fn) {
   }
 }
 async function updateJsonAtomic(path, mutator, options) {
-  const { lockPath, ...atomicOptions } = options;
+  const { lockPath, afterWrite, ...atomicOptions } = options;
   return withFileLock(lockPath, async () => {
     const current = readJson(path);
     const next = mutator(current);
     await writeJsonAtomic(path, next, atomicOptions);
+    afterWrite?.(path);
     return next;
   });
 }
@@ -2395,9 +2396,62 @@ function gapsFromArtifact(args) {
   }));
 }
 
+// src/core/integrity/state-seal.ts
+import { createHash as createHash4 } from "node:crypto";
+import { existsSync as existsSync7, mkdirSync as mkdirSync5, readFileSync as readFileSync9, writeFileSync as writeFileSync4 } from "node:fs";
+import { basename as basename3, dirname as dirname5, join as join8 } from "node:path";
+var SCHEMA = "harness.seal.v1";
+function sealPath(target) {
+  return join8(dirname5(target), ".seal", `${basename3(target)}.json`);
+}
+function hashOf(target) {
+  try {
+    return createHash4("sha256").update(readFileSync9(target)).digest("hex");
+  } catch {
+    return null;
+  }
+}
+function seal(target) {
+  const hash = hashOf(target);
+  if (hash === null) {
+    return;
+  }
+  try {
+    mkdirSync5(dirname5(sealPath(target)), { recursive: true });
+    writeFileSync4(sealPath(target), JSON.stringify({ schema: SCHEMA, hash }));
+  } catch {}
+}
+function verifySeal(target) {
+  if (!existsSync7(target)) {
+    return "absent";
+  }
+  let recorded = null;
+  try {
+    const parsed = JSON.parse(readFileSync9(sealPath(target), "utf8"));
+    recorded = typeof parsed.hash === "string" ? parsed.hash : null;
+  } catch {
+    recorded = null;
+  }
+  if (recorded === null) {
+    return "unsealed";
+  }
+  return hashOf(target) === recorded ? "sealed" : "diverged";
+}
+function shouldInject(verdict) {
+  return verdict !== "diverged";
+}
+function divergedMessage(target, what) {
+  return [
+    `${what} at ${target} changed without a harness write behind it, so it was not injected into this turn.`,
+    "That file is read aloud to the model, so text placed in it reaches every later turn. Read it, and if the",
+    "contents are yours, the next harness write reseals it."
+  ].join(`
+`);
+}
+
 // src/core/handoff/handoff.store.ts
-import { existsSync as existsSync7, readFileSync as readFileSync9 } from "node:fs";
-import { join as join8 } from "node:path";
+import { existsSync as existsSync8, readFileSync as readFileSync10 } from "node:fs";
+import { join as join9 } from "node:path";
 
 // src/core/handoff/handoff.types.ts
 var HANDOFF_SCHEMA = "harness.handoff.v2";
@@ -2418,18 +2472,18 @@ function isHandoffFile(value) {
 
 // src/core/handoff/handoff.store.ts
 function handoffPath(root) {
-  return join8(projectStateDir(root), "handoff.json");
+  return join9(projectStateDir(root), "handoff.json");
 }
 function handoffLockPath(root) {
   return `${handoffPath(root)}.lock`;
 }
 function readHandoffFile(root) {
   const path = handoffPath(root);
-  if (!existsSync7(path)) {
+  if (!existsSync8(path)) {
     return defaultHandoffFile();
   }
   try {
-    const parsed = JSON.parse(readFileSync9(path, "utf8"));
+    const parsed = JSON.parse(readFileSync10(path, "utf8"));
     if (isHandoffFile(parsed)) {
       return parsed;
     }
@@ -2449,10 +2503,15 @@ function patchHandoff(root, provider, patch) {
         [provider]: { ...ownSlice, ...patch.slice, updated_at: now }
       }
     };
-  }, { lockPath: handoffLockPath(root) });
+  }, { lockPath: handoffLockPath(root), afterWrite: seal });
 }
 
 // src/core/handoff/handoff.service.ts
+function handoffInjectable(root) {
+  const target = handoffPath(root);
+  const verdict = verifySeal(target);
+  return shouldInject(verdict) ? { ok: true, note: null } : { ok: false, note: divergedMessage(target, "The handoff") };
+}
 function readHandoff(root, provider) {
   const file = readHandoffFile(root);
   const slice = file.by_provider[provider] ?? { updated_at: file.shared.updated_at };
@@ -2474,9 +2533,9 @@ function readForeignSlices(root, provider) {
 }
 
 // src/core/lesson/lesson.authored.ts
-import { createHash as createHash4 } from "node:crypto";
+import { createHash as createHash5 } from "node:crypto";
 function authoredLessonId(instruction) {
-  const digest = createHash4("sha256").update(instruction.trim().toLowerCase()).digest("hex").slice(0, 12);
+  const digest = createHash5("sha256").update(instruction.trim().toLowerCase()).digest("hex").slice(0, 12);
   return `manual:${digest}`;
 }
 var AUTHORED_GATE = "any";
@@ -2549,11 +2608,11 @@ function effectivenessLine(lesson) {
 }
 
 // src/core/lesson/lesson.garden.ts
-import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync4 } from "node:fs";
-import { dirname as dirname5, join as join10 } from "node:path";
+import { mkdirSync as mkdirSync6, writeFileSync as writeFileSync5 } from "node:fs";
+import { dirname as dirname6, join as join11 } from "node:path";
 
 // src/core/lesson/lesson.link.ts
-import { existsSync as existsSync8, readFileSync as readFileSync10 } from "node:fs";
+import { existsSync as existsSync9, readFileSync as readFileSync11 } from "node:fs";
 import { isAbsolute as isAbsolute3, resolve as resolve4 } from "node:path";
 var LINK_SEPARATOR = ":";
 function parseLessonLink(raw) {
@@ -2580,14 +2639,14 @@ function resolveLinkPath(root, link) {
 }
 function checkLessonLink(root, link) {
   const absolute = resolveLinkPath(root, link);
-  if (absolute === null || !existsSync8(absolute)) {
+  if (absolute === null || !existsSync9(absolute)) {
     return "path-missing";
   }
   if (!link.symbol) {
     return "present";
   }
   try {
-    return readFileSync10(absolute, "utf8").includes(link.symbol) ? "present" : "symbol-missing";
+    return readFileSync11(absolute, "utf8").includes(link.symbol) ? "present" : "symbol-missing";
   } catch {
     return "unreadable";
   }
@@ -2662,8 +2721,8 @@ function rankScore(lesson, args) {
 }
 
 // src/core/lesson/lesson.store.ts
-import { existsSync as existsSync9, readFileSync as readFileSync11 } from "node:fs";
-import { join as join9 } from "node:path";
+import { existsSync as existsSync10, readFileSync as readFileSync12 } from "node:fs";
+import { join as join10 } from "node:path";
 var EPOCH = "1970-01-01T00:00:00.000Z";
 function coreLesson(input) {
   return {
@@ -2756,10 +2815,10 @@ var CORE_LESSONS = [
   })
 ];
 function lessonsStorePath(root) {
-  return join9(projectStateDir(root), "lessons.json");
+  return join10(projectStateDir(root), "lessons.json");
 }
 function globalLessonsStorePath() {
-  return join9(runtimeStateDir(), "lessons.json");
+  return join10(runtimeStateDir(), "lessons.json");
 }
 function storePathFor(root, tier) {
   return tier === "global" ? globalLessonsStorePath() : lessonsStorePath(root);
@@ -2778,15 +2837,20 @@ function normalizeLesson(raw, tier) {
   };
 }
 function readStore(path, tier) {
-  if (!existsSync9(path)) {
+  if (!existsSync10(path)) {
     return [];
   }
   try {
-    const file = JSON.parse(readFileSync11(path, "utf8"));
+    const file = JSON.parse(readFileSync12(path, "utf8"));
     return Array.isArray(file.lessons) ? file.lessons.map((lesson) => normalizeLesson(lesson, tier)) : [];
   } catch {
     return [];
   }
+}
+function projectLessonsInjectable(root) {
+  const target = lessonsStorePath(root);
+  const verdict = verifySeal(target);
+  return shouldInject(verdict) ? { ok: true, note: null } : { ok: false, note: divergedMessage(target, "The project lesson store") };
 }
 function readProjectLessons(root) {
   return readStore(lessonsStorePath(root), "project");
@@ -2805,7 +2869,7 @@ async function mutateStore(path, tier, mutate) {
   const file = await updateJsonAtomic(path, (current) => {
     const lessons = current && Array.isArray(current.lessons) ? current.lessons : [];
     return { version: 1, lessons: mutate(lessons.map((lesson) => normalizeLesson(lesson, tier))) };
-  }, { lockPath: `${path}.lock` });
+  }, { lockPath: `${path}.lock`, afterWrite: seal });
   return file.lessons;
 }
 async function writeProjectLessons(root, lessons) {
@@ -2840,7 +2904,7 @@ async function mutateWritableTiers(root, ids, patch) {
   const idSet = new Set(ids);
   for (const tier of ["project", "global"]) {
     const path = storePathFor(root, tier);
-    if (!existsSync9(path)) {
+    if (!existsSync10(path)) {
       continue;
     }
     await mutateStore(path, tier, (current) => current.map((lesson) => idSet.has(lesson.id) ? patch(lesson) : lesson));
@@ -2871,7 +2935,7 @@ async function gardenProjectLessons(root, mutate) {
   return mutateStore(lessonsStorePath(root), "project", mutate);
 }
 async function gardenGlobalLessons(mutate) {
-  if (!existsSync9(globalLessonsStorePath())) {
+  if (!existsSync10(globalLessonsStorePath())) {
     return [];
   }
   return mutateStore(globalLessonsStorePath(), "global", mutate);
@@ -3162,7 +3226,7 @@ async function gardenLessons(root, config, now = new Date) {
 }
 var SYNC_TITLE = "Learned harness lessons (auto-synced; do not hand-edit):";
 function lessonsMarkdownPath(root) {
-  return join10(dirname5(projectConfigPath(root)), "lessons.md");
+  return join11(dirname6(projectConfigPath(root)), "lessons.md");
 }
 function emptySyncReason(lessons, config, now) {
   if (!config.enabled) {
@@ -3192,14 +3256,14 @@ function renderLessonsMarkdown(root, lessons, config) {
     title: SYNC_TITLE
   });
   const path = lessonsMarkdownPath(root);
-  mkdirSync5(dirname5(path), { recursive: true });
+  mkdirSync6(dirname6(path), { recursive: true });
   const content = `# Harness lessons
 
 Auto-synced from gate failures; do not hand-edit.
 
 ${body || emptySyncReason(lessons, config, now)}
 `;
-  writeFileSync4(path, content, "utf8");
+  writeFileSync5(path, content, "utf8");
   return path;
 }
 function gardenAndPersistLessons(root, config, options, now = new Date) {
@@ -3213,9 +3277,9 @@ function gardenAndPersistLessons(root, config, options, now = new Date) {
 }
 
 // src/core/lesson/lesson.service.ts
-import { createHash as createHash5 } from "node:crypto";
+import { createHash as createHash6 } from "node:crypto";
 function lessonId(gate, fingerprint) {
-  const digest = createHash5("sha256").update(`${gate}|${fingerprint}`).digest("hex").slice(0, 12);
+  const digest = createHash6("sha256").update(`${gate}|${fingerprint}`).digest("hex").slice(0, 12);
   return `project:${gate}:${digest}`;
 }
 function tokensFrom(gate, output, category) {
@@ -3657,21 +3721,21 @@ function sessionReportText(rollup, style = PLAIN) {
 }
 
 // src/core/observability/observability.service.ts
-import { createHash as createHash6, randomUUID } from "node:crypto";
+import { createHash as createHash7, randomUUID } from "node:crypto";
 
 // src/core/observability/observability.store.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync6, readdirSync, readFileSync as readFileSync12, unlinkSync as unlinkSync3, writeFileSync as writeFileSync5 } from "node:fs";
-import { basename as basename3, join as join11 } from "node:path";
+import { existsSync as existsSync11, mkdirSync as mkdirSync7, readdirSync, readFileSync as readFileSync13, unlinkSync as unlinkSync3, writeFileSync as writeFileSync6 } from "node:fs";
+import { basename as basename4, join as join12 } from "node:path";
 function safeMkdir(dir) {
   try {
-    mkdirSync6(dir, { recursive: true });
+    mkdirSync7(dir, { recursive: true });
     return true;
   } catch {
     return false;
   }
 }
 function spoolEnvelope(root, stream, record) {
-  return { repo: root, project: basename3(root), stream, record };
+  return { repo: root, project: basename4(root), stream, record };
 }
 function appendSpoolRecord(root, stream, record) {
   try {
@@ -3689,7 +3753,7 @@ function appendObsRecord(root, file, event, spool = false) {
     return false;
   }
   try {
-    appendRecord(join11(projectStateDir(root), file), event);
+    appendRecord(join12(projectStateDir(root), file), event);
   } catch {
     return false;
   }
@@ -3703,7 +3767,7 @@ function appendAuditRecord(root, record, spool = false) {
     return false;
   }
   try {
-    appendRecord(join11(projectStateDir(root), "audit.jsonl"), record);
+    appendRecord(join12(projectStateDir(root), "audit.jsonl"), record);
   } catch {
     return false;
   }
@@ -3724,13 +3788,13 @@ function spoolLineTimestamp(line) {
 }
 function pruneSpool(retentionDays, now = Date.now()) {
   const path = runtimeSpoolPath();
-  if (!existsSync10(path)) {
+  if (!existsSync11(path)) {
     return 0;
   }
   const cutoff = now - retentionDays * 24 * 60 * 60 * 1000;
   let lines = [];
   try {
-    lines = readFileSync12(path, "utf8").split(`
+    lines = readFileSync13(path, "utf8").split(`
 `).filter((line) => line.trim().length > 0);
   } catch {
     return 0;
@@ -3743,7 +3807,7 @@ function pruneSpool(retentionDays, now = Date.now()) {
     return 0;
   }
   try {
-    writeFileSync5(path, kept.length > 0 ? `${kept.join(`
+    writeFileSync6(path, kept.length > 0 ? `${kept.join(`
 `)}
 ` : "", "utf8");
   } catch {
@@ -3753,20 +3817,20 @@ function pruneSpool(retentionDays, now = Date.now()) {
 }
 function readSignalEvents(root, file, limit = 200) {
   try {
-    return readTail(join11(projectStateDir(root), file), limit);
+    return readTail(join12(projectStateDir(root), file), limit);
   } catch {
     return [];
   }
 }
 function rollupPath(root, sessionKey) {
-  return join11(projectStateDir(root), "sessions", `${sanitizeSegment(sessionKey)}.json`);
+  return join12(projectStateDir(root), "sessions", `${sanitizeSegment(sessionKey)}.json`);
 }
 function readJson4(path) {
-  if (!existsSync10(path)) {
+  if (!existsSync11(path)) {
     return null;
   }
   try {
-    return JSON.parse(readFileSync12(path, "utf8"));
+    return JSON.parse(readFileSync13(path, "utf8"));
   } catch {
     return null;
   }
@@ -3806,13 +3870,13 @@ function loadRollup(root, sessionKey, provider) {
   return readJson4(rollupPath(root, sessionKey)) ?? newRollup(sessionKey, provider);
 }
 function saveRollup(root, rollup) {
-  const dir = join11(projectStateDir(root), "sessions");
+  const dir = join12(projectStateDir(root), "sessions");
   if (!safeMkdir(dir)) {
     return false;
   }
   rollup.updated_at = new Date().toISOString();
   try {
-    writeFileSync5(rollupPath(root, rollup.session_id), `${JSON.stringify(rollup, null, 2)}
+    writeFileSync6(rollupPath(root, rollup.session_id), `${JSON.stringify(rollup, null, 2)}
 `, "utf8");
     return true;
   } catch {
@@ -3823,8 +3887,8 @@ function getRollup(root, sessionKey) {
   return readJson4(rollupPath(root, sessionKey));
 }
 function pruneObs(root, retentionDays) {
-  const dir = join11(projectStateDir(root), "sessions");
-  if (!existsSync10(dir)) {
+  const dir = join12(projectStateDir(root), "sessions");
+  if (!existsSync11(dir)) {
     return;
   }
   const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
@@ -3835,7 +3899,7 @@ function pruneObs(root, retentionDays) {
     return;
   }
   for (const name of names) {
-    const full = join11(dir, name);
+    const full = join12(dir, name);
     const data = readJson4(full);
     if (data && Date.parse(data.updated_at) < cutoff) {
       try {
@@ -3949,7 +4013,7 @@ function shortId() {
 }
 function deriveTraceId(sessionKey) {
   const seed = sessionKey || randomUUID();
-  return createHash6("sha256").update(seed).digest("hex").slice(0, 32);
+  return createHash7("sha256").update(seed).digest("hex").slice(0, 32);
 }
 function truncateAttrs(attrs, max) {
   const out = {};
@@ -4379,8 +4443,8 @@ function detectDeviations(text) {
 }
 
 // src/core/policy/policy.loader.ts
-import { existsSync as existsSync12, readFileSync as readFileSync14 } from "node:fs";
-import { join as join13 } from "node:path";
+import { existsSync as existsSync13, readFileSync as readFileSync15 } from "node:fs";
+import { join as join14 } from "node:path";
 
 // src/core/policy/policy.defaults.ts
 var DEFAULT_LESSONS_POLICY = {
@@ -4483,20 +4547,20 @@ var DEFAULTS = {
 };
 
 // src/core/policy/policy.posture.ts
-import { existsSync as existsSync11, readFileSync as readFileSync13 } from "node:fs";
-import { join as join12 } from "node:path";
+import { existsSync as existsSync12, readFileSync as readFileSync14 } from "node:fs";
+import { join as join13 } from "node:path";
 var OPERATOR_MODES = ["paired", "solo", "focus"];
 var DEFAULT_POSTURE = "solo";
 function isOperatorMode(value) {
   return typeof value === "string" && OPERATOR_MODES.includes(value);
 }
 function readModeFile(root) {
-  const path = join12(projectStateDir(root), "harness-mode");
-  if (!existsSync11(path)) {
+  const path = join13(projectStateDir(root), "harness-mode");
+  if (!existsSync12(path)) {
     return null;
   }
   try {
-    return readFileSync13(path, "utf8").trim().toLowerCase();
+    return readFileSync14(path, "utf8").trim().toLowerCase();
   } catch {
     return null;
   }
@@ -4507,7 +4571,7 @@ function resolvePosture(root, configured) {
     return { mode: fromFile, origin: "file" };
   }
   for (const mode of ["focus", "paired"]) {
-    if (existsSync11(join12(flagsDir(root), mode))) {
+    if (existsSync12(join13(flagsDir(root), mode))) {
       return { mode, origin: "flag" };
     }
   }
@@ -4522,11 +4586,11 @@ function resolvePosture(root, configured) {
 
 // src/core/policy/policy.loader.ts
 function readJsonFile(path) {
-  if (!existsSync12(path)) {
+  if (!existsSync13(path)) {
     return null;
   }
   try {
-    return JSON.parse(readFileSync14(path, "utf8"));
+    return JSON.parse(readFileSync15(path, "utf8"));
   } catch {
     return null;
   }
@@ -4561,11 +4625,11 @@ function deepMerge(base, patch) {
   };
 }
 function flagExists(root, flagName) {
-  return existsSync12(join13(flagsDir(root), flagName));
+  return existsSync13(join14(flagsDir(root), flagName));
 }
 function readConfigPair(root) {
   return {
-    fromUser: readJsonFile(join13(runtimeHome(), "config.json")) ?? {},
+    fromUser: readJsonFile(join14(runtimeHome(), "config.json")) ?? {},
     fromProject: readJsonFile(projectConfigPath(root)) ?? {}
   };
 }
@@ -4583,7 +4647,7 @@ function resolveProjectSyncMode(root) {
   if (resolution.coercedFrom === undefined) {
     return resolution;
   }
-  const path = fromProject === undefined ? join13(runtimeHome(), "config.json") : projectConfigPath(root);
+  const path = fromProject === undefined ? join14(runtimeHome(), "config.json") : projectConfigPath(root);
   return { ...resolution, coercedIn: path };
 }
 function loadPolicy(root) {
@@ -4602,10 +4666,10 @@ function isUnderCodePaths(relativePath, codePaths) {
 }
 
 // src/core/ship/ship.ledger.ts
-import { existsSync as existsSync13, readdirSync as readdirSync2, readFileSync as readFileSync15, statSync as statSync3 } from "node:fs";
-import { join as join14 } from "node:path";
+import { existsSync as existsSync14, readdirSync as readdirSync2, readFileSync as readFileSync16, statSync as statSync3 } from "node:fs";
+import { join as join15 } from "node:path";
 function shipLedgerPath(root) {
-  return join14(projectStateDir(root), "ship-ledger.jsonl");
+  return join15(projectStateDir(root), "ship-ledger.jsonl");
 }
 function appendShipLedger(root, row) {
   const full = { ...row, ts: row.ts ?? new Date().toISOString() };
@@ -4615,14 +4679,14 @@ function readShipLedger(root) {
   return readTail(shipLedgerPath(root), Number.MAX_SAFE_INTEGER);
 }
 function hasRecentEvidence(evidenceDir, maxAgeHours, notBeforeMs) {
-  if (!existsSync13(evidenceDir)) {
+  if (!existsSync14(evidenceDir)) {
     return false;
   }
   const maxAgeMs = maxAgeHours * 60 * 60 * 1000;
   const now = Date.now();
   for (const entry of readdirSync2(evidenceDir)) {
-    const verdictPath = join14(evidenceDir, entry, "90-verdict.txt");
-    if (!existsSync13(verdictPath)) {
+    const verdictPath = join15(evidenceDir, entry, "90-verdict.txt");
+    if (!existsSync14(verdictPath)) {
       continue;
     }
     try {
@@ -4633,7 +4697,7 @@ function hasRecentEvidence(evidenceDir, maxAgeHours, notBeforeMs) {
       if (now - writtenAt > maxAgeMs) {
         continue;
       }
-      if (/\bPASS\b/i.test(readFileSync15(verdictPath, "utf8"))) {
+      if (/\bPASS\b/i.test(readFileSync16(verdictPath, "utf8"))) {
         return true;
       }
     } catch {}
@@ -4644,7 +4708,7 @@ function newestChangeMs(root, relativePaths) {
   let newest;
   for (const relative3 of relativePaths) {
     try {
-      const at = statSync3(join14(root, relative3)).mtimeMs;
+      const at = statSync3(join15(root, relative3)).mtimeMs;
       if (newest === undefined || at > newest) {
         newest = at;
       }
@@ -4834,19 +4898,19 @@ function guardPolicySurface(args) {
 }
 
 // src/core/policy/policy.integrity.ts
-import { createHash as createHash7 } from "node:crypto";
-import { existsSync as existsSync14, mkdirSync as mkdirSync7, readdirSync as readdirSync3, readFileSync as readFileSync16, writeFileSync as writeFileSync6 } from "node:fs";
-import { join as join15 } from "node:path";
+import { createHash as createHash8 } from "node:crypto";
+import { existsSync as existsSync15, mkdirSync as mkdirSync8, readdirSync as readdirSync3, readFileSync as readFileSync17, writeFileSync as writeFileSync7 } from "node:fs";
+import { join as join16 } from "node:path";
 var ABSENT = "absent";
-var SCHEMA = "harness.policy-baseline.v1";
+var SCHEMA2 = "harness.policy-baseline.v1";
 var MODE_FILE = "harness-mode";
 var FLAG_FILES = ["grind-on", "skip-verify", "focus", "paired"];
-function hashOf(path) {
-  if (!existsSync14(path)) {
+function hashOf2(path) {
+  if (!existsSync15(path)) {
     return ABSENT;
   }
   try {
-    return createHash7("sha256").update(readFileSync16(path)).digest("hex");
+    return createHash8("sha256").update(readFileSync17(path)).digest("hex");
   } catch {
     return "unreadable";
   }
@@ -4854,29 +4918,29 @@ function hashOf(path) {
 function policySourceFingerprint(root) {
   const paths = [
     projectConfigPath(root),
-    join15(runtimeHome(), "config.json"),
-    join15(projectStateDir(root), MODE_FILE),
-    ...FLAG_FILES.map((flag) => join15(flagsDir(root), flag))
+    join16(runtimeHome(), "config.json"),
+    join16(projectStateDir(root), MODE_FILE),
+    ...FLAG_FILES.map((flag) => join16(flagsDir(root), flag))
   ];
-  return paths.map((path) => ({ path, hash: hashOf(path) }));
+  return paths.map((path) => ({ path, hash: hashOf2(path) }));
 }
 function baselinePath(root, sessionKey) {
-  return join15(policyBaselineDir(root), `${sanitizeSegment(sessionKey)}.json`);
+  return join16(policyBaselineDir(root), `${sanitizeSegment(sessionKey)}.json`);
 }
 function recordPolicyBaseline(root, sessionKey) {
   try {
-    mkdirSync7(policyBaselineDir(root), { recursive: true });
-    writeFileSync6(baselinePath(root, sessionKey), `${JSON.stringify({ schema: SCHEMA, sources: policySourceFingerprint(root) }, null, 2)}
+    mkdirSync8(policyBaselineDir(root), { recursive: true });
+    writeFileSync7(baselinePath(root, sessionKey), `${JSON.stringify({ schema: SCHEMA2, sources: policySourceFingerprint(root) }, null, 2)}
 `, "utf8");
   } catch {}
 }
 function readBaseline(root, sessionKey) {
   const path = baselinePath(root, sessionKey);
-  if (!existsSync14(path)) {
+  if (!existsSync15(path)) {
     return null;
   }
   try {
-    const parsed = JSON.parse(readFileSync16(path, "utf8"));
+    const parsed = JSON.parse(readFileSync17(path, "utf8"));
     return Array.isArray(parsed.sources) ? parsed.sources : null;
   } catch {
     return null;
@@ -4895,7 +4959,7 @@ function divergedPaths(root, sessionKey) {
 }
 function allDivergedPaths(root) {
   const dir = policyBaselineDir(root);
-  if (!existsSync14(dir)) {
+  if (!existsSync15(dir)) {
     return [];
   }
   const found = new Set;
@@ -4921,7 +4985,7 @@ function acceptPolicySources(root, paths) {
     return { kind: "not-a-source", paths: unknown, sources: current.map((source) => source.path) };
   }
   const dir = policyBaselineDir(root);
-  if (!existsSync14(dir) || paths.length === 0) {
+  if (!existsSync15(dir) || paths.length === 0) {
     return { kind: "nothing-to-accept" };
   }
   for (const entry of readdirSync3(dir)) {
@@ -4935,7 +4999,7 @@ function acceptPolicySources(root, paths) {
     }
     const updated = baseline.map((source) => paths.includes(source.path) ? { path: source.path, hash: known.get(source.path) } : source);
     try {
-      writeFileSync6(join15(dir, entry), `${JSON.stringify({ schema: SCHEMA, sources: updated }, null, 2)}
+      writeFileSync7(join16(dir, entry), `${JSON.stringify({ schema: SCHEMA2, sources: updated }, null, 2)}
 `, "utf8");
     } catch {}
   }
@@ -4968,7 +5032,7 @@ function checkPolicyBaseline(root, sessionKey) {
 }
 function refreshPolicyBaselines(root) {
   const dir = policyBaselineDir(root);
-  if (!existsSync14(dir)) {
+  if (!existsSync15(dir)) {
     return;
   }
   const sources = policySourceFingerprint(root);
@@ -4977,7 +5041,7 @@ function refreshPolicyBaselines(root) {
       continue;
     }
     try {
-      writeFileSync6(join15(dir, entry), `${JSON.stringify({ schema: SCHEMA, sources }, null, 2)}
+      writeFileSync7(join16(dir, entry), `${JSON.stringify({ schema: SCHEMA2, sources }, null, 2)}
 `, "utf8");
     } catch {}
   }
@@ -5076,29 +5140,29 @@ function forProvider(scoped, provider) {
 }
 
 // src/core/presence/presence.store.ts
-import { existsSync as existsSync15, mkdirSync as mkdirSync8, readdirSync as readdirSync4, readFileSync as readFileSync17, rmSync as rmSync2, writeFileSync as writeFileSync7 } from "node:fs";
-import { join as join16 } from "node:path";
+import { existsSync as existsSync16, mkdirSync as mkdirSync9, readdirSync as readdirSync4, readFileSync as readFileSync18, rmSync as rmSync2, writeFileSync as writeFileSync8 } from "node:fs";
+import { join as join17 } from "node:path";
 function presenceSessionKey(provider, session) {
   return `${provider}-${session}`;
 }
 function presencePath(root, provider, session) {
-  return join16(presenceDir(root), `${sanitizeSegment(presenceSessionKey(provider, session))}.json`);
+  return join17(presenceDir(root), `${sanitizeSegment(presenceSessionKey(provider, session))}.json`);
 }
 function readPresenceRecord(root, provider, session) {
   const path = presencePath(root, provider, session);
-  if (!existsSync15(path)) {
+  if (!existsSync16(path)) {
     return null;
   }
   try {
-    return JSON.parse(readFileSync17(path, "utf8"));
+    return JSON.parse(readFileSync18(path, "utf8"));
   } catch {
     return null;
   }
 }
 function writePresenceRecord(root, record) {
   try {
-    mkdirSync8(presenceDir(root), { recursive: true });
-    writeFileSync7(presencePath(root, record.provider, record.session), `${JSON.stringify(record, null, 2)}
+    mkdirSync9(presenceDir(root), { recursive: true });
+    writeFileSync8(presencePath(root, record.provider, record.session), `${JSON.stringify(record, null, 2)}
 `, "utf8");
   } catch {}
 }
@@ -5109,7 +5173,7 @@ function deletePresenceRecord(root, provider, session) {
 }
 function listPresenceRecords(root) {
   const dir = presenceDir(root);
-  if (!existsSync15(dir)) {
+  if (!existsSync16(dir)) {
     return [];
   }
   const records = [];
@@ -5118,7 +5182,7 @@ function listPresenceRecords(root) {
       continue;
     }
     try {
-      records.push(JSON.parse(readFileSync17(join16(dir, entry), "utf8")));
+      records.push(JSON.parse(readFileSync18(join17(dir, entry), "utf8")));
     } catch {}
   }
   return records;
@@ -5203,8 +5267,8 @@ function release(root, provider, session) {
 }
 
 // src/core/release/release.decisions.ts
-import { existsSync as existsSync16, readdirSync as readdirSync5, readFileSync as readFileSync18 } from "node:fs";
-import { join as join17 } from "node:path";
+import { existsSync as existsSync17, readdirSync as readdirSync5, readFileSync as readFileSync19 } from "node:fs";
+import { join as join18 } from "node:path";
 function frontmatterField(text, field) {
   const match = new RegExp(`^${field}:\\s*"?(.+?)"?\\s*$`, "m").exec(text);
   const value = match?.[1]?.trim();
@@ -5214,16 +5278,16 @@ function frontmatterField(text, field) {
   return value.replace(/\\(["'\\])/g, "$1");
 }
 function decisionsDir(repoRoot) {
-  return join17(repoRoot, "docs", "decisions");
+  return join18(repoRoot, "docs", "decisions");
 }
 function readDecision(repoRoot, file) {
-  const path = join17(decisionsDir(repoRoot), file);
-  if (!existsSync16(path)) {
+  const path = join18(decisionsDir(repoRoot), file);
+  if (!existsSync17(path)) {
     return null;
   }
   let text;
   try {
-    text = readFileSync18(path, "utf8");
+    text = readFileSync19(path, "utf8");
   } catch {
     return null;
   }
@@ -5250,14 +5314,14 @@ function allDecisionFiles(repoRoot) {
   const dir = decisionsDir(repoRoot);
   const found = [];
   for (const sub of ["", ARCHIVED_DIR]) {
-    const full = sub === "" ? dir : join17(dir, sub);
-    if (!existsSync16(full)) {
+    const full = sub === "" ? dir : join18(dir, sub);
+    if (!existsSync17(full)) {
       continue;
     }
     try {
       for (const file of readdirSync5(full)) {
         if (/^ad-\d+\.md$/.test(file)) {
-          found.push(sub === "" ? file : join17(sub, file));
+          found.push(sub === "" ? file : join18(sub, file));
         }
       }
     } catch {}
@@ -5295,18 +5359,18 @@ function formatDecisionDigest(decisions) {
 }
 
 // src/core/release/release.seen.ts
-import { existsSync as existsSync17, readFileSync as readFileSync19 } from "node:fs";
-import { join as join18 } from "node:path";
+import { existsSync as existsSync18, readFileSync as readFileSync20 } from "node:fs";
+import { join as join19 } from "node:path";
 function seenPath(projectDir) {
-  return join18(projectStateDir(projectDir), "release-seen.json");
+  return join19(projectStateDir(projectDir), "release-seen.json");
 }
 function readReleaseSeen(projectDir) {
   const path = seenPath(projectDir);
-  if (!existsSync17(path)) {
+  if (!existsSync18(path)) {
     return null;
   }
   try {
-    const parsed = JSON.parse(readFileSync19(path, "utf8"));
+    const parsed = JSON.parse(readFileSync20(path, "utf8"));
     return typeof parsed?.revision === "string" && parsed.revision !== "" ? parsed : null;
   } catch {
     return null;
@@ -5320,26 +5384,26 @@ async function writeReleaseSeen(projectDir, revision) {
 }
 
 // src/core/shell-policy/shell-policy.stall.ts
-import { existsSync as existsSync18, mkdirSync as mkdirSync9, readFileSync as readFileSync20, writeFileSync as writeFileSync8 } from "node:fs";
-import { join as join19 } from "node:path";
+import { existsSync as existsSync19, mkdirSync as mkdirSync10, readFileSync as readFileSync21, writeFileSync as writeFileSync9 } from "node:fs";
+import { join as join20 } from "node:path";
 function storePath(root) {
-  return join19(projectStateDir(root), "shell-stall.json");
+  return join20(projectStateDir(root), "shell-stall.json");
 }
 function readStore2(root) {
   const path = storePath(root);
-  if (!existsSync18(path)) {
+  if (!existsSync19(path)) {
     return {};
   }
   try {
-    return JSON.parse(readFileSync20(path, "utf8"));
+    return JSON.parse(readFileSync21(path, "utf8"));
   } catch {
     return {};
   }
 }
 function writeStore(root, store) {
   try {
-    mkdirSync9(projectStateDir(root), { recursive: true });
-    writeFileSync8(storePath(root), `${JSON.stringify(store, null, 2)}
+    mkdirSync10(projectStateDir(root), { recursive: true });
+    writeFileSync9(storePath(root), `${JSON.stringify(store, null, 2)}
 `, "utf8");
   } catch {}
 }
@@ -5506,20 +5570,20 @@ function evaluateShellCommand(args) {
 }
 
 // src/core/stagnation/stagnation.resolution.ts
-import { existsSync as existsSync19, mkdirSync as mkdirSync10, readFileSync as readFileSync21, writeFileSync as writeFileSync9 } from "node:fs";
-import { join as join20 } from "node:path";
+import { existsSync as existsSync20, mkdirSync as mkdirSync11, readFileSync as readFileSync22, writeFileSync as writeFileSync10 } from "node:fs";
+import { join as join21 } from "node:path";
 var MAX_RESOLUTIONS = 200;
 var MAX_FILES_PER_RESOLUTION = 8;
 function storePath2(root) {
-  return join20(projectStateDir(root), "fingerprint-resolutions.json");
+  return join21(projectStateDir(root), "fingerprint-resolutions.json");
 }
 function readResolutions(root) {
   const path = storePath2(root);
-  if (!existsSync19(path)) {
+  if (!existsSync20(path)) {
     return {};
   }
   try {
-    const parsed = JSON.parse(readFileSync21(path, "utf8"));
+    const parsed = JSON.parse(readFileSync22(path, "utf8"));
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
@@ -5541,8 +5605,8 @@ function recordResolution(root, fingerprint, resolution) {
   };
   const pruned = prune(store);
   try {
-    mkdirSync10(projectStateDir(root), { recursive: true });
-    writeFileSync9(storePath2(root), `${JSON.stringify(pruned, null, 2)}
+    mkdirSync11(projectStateDir(root), { recursive: true });
+    writeFileSync10(storePath2(root), `${JSON.stringify(pruned, null, 2)}
 `, "utf8");
   } catch {}
   return pruned;
@@ -5555,7 +5619,7 @@ function resolutionHistoryLine(resolution) {
 }
 
 // src/core/stagnation/stagnation.service.ts
-import { createHash as createHash8 } from "node:crypto";
+import { createHash as createHash9 } from "node:crypto";
 function computeFingerprint(parts) {
   const normalizedOutput = parts.output.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/g, "<ts>").replace(/\b\d{5,}\b/g, "<n>").slice(0, 1500);
   const raw = JSON.stringify({
@@ -5564,30 +5628,30 @@ function computeFingerprint(parts) {
     exitCode: parts.exitCode,
     output: normalizedOutput
   });
-  return createHash8("sha256").update(raw).digest("hex").slice(0, 16);
+  return createHash9("sha256").update(raw).digest("hex").slice(0, 16);
 }
 
 // src/core/stagnation/stagnation.store.ts
-import { existsSync as existsSync20, mkdirSync as mkdirSync11, readFileSync as readFileSync22, writeFileSync as writeFileSync10 } from "node:fs";
-import { join as join21 } from "node:path";
+import { existsSync as existsSync21, mkdirSync as mkdirSync12, readFileSync as readFileSync23, writeFileSync as writeFileSync11 } from "node:fs";
+import { join as join22 } from "node:path";
 function storePath3(root) {
-  return join21(projectStateDir(root), "fingerprint.json");
+  return join22(projectStateDir(root), "fingerprint.json");
 }
 function readStore3(root) {
   const path = storePath3(root);
-  if (!existsSync20(path)) {
+  if (!existsSync21(path)) {
     return {};
   }
   try {
-    return JSON.parse(readFileSync22(path, "utf8"));
+    return JSON.parse(readFileSync23(path, "utf8"));
   } catch {
     return {};
   }
 }
 function writeStore2(root, store) {
   try {
-    mkdirSync11(projectStateDir(root), { recursive: true });
-    writeFileSync10(storePath3(root), `${JSON.stringify(store, null, 2)}
+    mkdirSync12(projectStateDir(root), { recursive: true });
+    writeFileSync11(storePath3(root), `${JSON.stringify(store, null, 2)}
 `, "utf8");
   } catch {}
 }
@@ -5609,19 +5673,19 @@ function clearFingerprint(root, sessionKey) {
 }
 
 // src/core/subagent-policy/subagent-policy.parent-model.ts
-import { existsSync as existsSync21, mkdirSync as mkdirSync12, readFileSync as readFileSync23, writeFileSync as writeFileSync11 } from "node:fs";
-import { join as join22 } from "node:path";
+import { existsSync as existsSync22, mkdirSync as mkdirSync13, readFileSync as readFileSync24, writeFileSync as writeFileSync12 } from "node:fs";
+import { join as join23 } from "node:path";
 var PARENT_MODEL_SCHEMA = "harness.parent-model.v1";
 function parentModelPath(root) {
-  return join22(projectStateDir(root), "parent-model.json");
+  return join23(projectStateDir(root), "parent-model.json");
 }
 function readFile(root) {
   const path = parentModelPath(root);
-  if (!existsSync21(path)) {
+  if (!existsSync22(path)) {
     return { schema: PARENT_MODEL_SCHEMA, bySession: {} };
   }
   try {
-    const parsed = JSON.parse(readFileSync23(path, "utf8"));
+    const parsed = JSON.parse(readFileSync24(path, "utf8"));
     if (parsed?.schema === PARENT_MODEL_SCHEMA && parsed.bySession) {
       return parsed;
     }
@@ -5630,8 +5694,8 @@ function readFile(root) {
 }
 function writeFile(root, file) {
   try {
-    mkdirSync12(projectStateDir(root), { recursive: true });
-    writeFileSync11(parentModelPath(root), `${JSON.stringify(file, null, 2)}
+    mkdirSync13(projectStateDir(root), { recursive: true });
+    writeFileSync12(parentModelPath(root), `${JSON.stringify(file, null, 2)}
 `, "utf8");
   } catch {}
 }
@@ -6276,26 +6340,26 @@ function formatAutopilotBlock(plan) {
 }
 
 // src/core/turn/turn.loop-counter.ts
-import { existsSync as existsSync22, mkdirSync as mkdirSync13, readFileSync as readFileSync24, writeFileSync as writeFileSync12 } from "node:fs";
-import { join as join23 } from "node:path";
+import { existsSync as existsSync23, mkdirSync as mkdirSync14, readFileSync as readFileSync25, writeFileSync as writeFileSync13 } from "node:fs";
+import { join as join24 } from "node:path";
 function loopPath(root, sessionKey) {
-  return join23(loopsDir(root), `${sanitizeSegment(sessionKey)}.json`);
+  return join24(loopsDir(root), `${sanitizeSegment(sessionKey)}.json`);
 }
 function readLoopState(root, sessionKey) {
   const path = loopPath(root, sessionKey);
-  if (!existsSync22(path)) {
+  if (!existsSync23(path)) {
     return null;
   }
   try {
-    return JSON.parse(readFileSync24(path, "utf8"));
+    return JSON.parse(readFileSync25(path, "utf8"));
   } catch {
     return null;
   }
 }
 function writeLoopState(root, state) {
   try {
-    mkdirSync13(loopsDir(root), { recursive: true });
-    writeFileSync12(loopPath(root, state.session_key), `${JSON.stringify(state, null, 2)}
+    mkdirSync14(loopsDir(root), { recursive: true });
+    writeFileSync13(loopPath(root, state.session_key), `${JSON.stringify(state, null, 2)}
 `, "utf8");
   } catch {}
 }
@@ -6320,16 +6384,16 @@ function effectiveLoopCount(event, capabilities) {
   return currentLoopCount(event.projectDir, event.sessionKey);
 }
 function bootStampPath(root, sessionKey) {
-  return join23(bootDir(root), sanitizeSegment(sessionKey));
+  return join24(bootDir(root), sanitizeSegment(sessionKey));
 }
 function markBooted(root, sessionKey) {
   const path = bootStampPath(root, sessionKey);
-  if (existsSync22(path)) {
+  if (existsSync23(path)) {
     return { alreadyBooted: true };
   }
   try {
-    mkdirSync13(bootDir(root), { recursive: true });
-    writeFileSync12(path, new Date().toISOString(), "utf8");
+    mkdirSync14(bootDir(root), { recursive: true });
+    writeFileSync13(path, new Date().toISOString(), "utf8");
   } catch {}
   return { alreadyBooted: false };
 }
@@ -6423,21 +6487,21 @@ function detectUntrustedRead(input) {
 }
 
 // src/core/untrusted/untrusted.store.ts
-import { existsSync as existsSync23, mkdirSync as mkdirSync14, readFileSync as readFileSync25, rmSync as rmSync3, writeFileSync as writeFileSync13 } from "node:fs";
-import { join as join24 } from "node:path";
+import { existsSync as existsSync24, mkdirSync as mkdirSync15, readFileSync as readFileSync26, rmSync as rmSync3, writeFileSync as writeFileSync14 } from "node:fs";
+import { join as join25 } from "node:path";
 function markerDir(root) {
-  return join24(projectStateDir(root), "untrusted");
+  return join25(projectStateDir(root), "untrusted");
 }
 function markerPath(root, sessionKey) {
-  return join24(markerDir(root), `${sanitizeSegment(sessionKey)}.marker`);
+  return join25(markerDir(root), `${sanitizeSegment(sessionKey)}.marker`);
 }
 function wasFramingInjected(root, sessionKey) {
-  return existsSync23(markerPath(root, sessionKey));
+  return existsSync24(markerPath(root, sessionKey));
 }
 function markFramingInjected(root, sessionKey) {
   try {
-    mkdirSync14(markerDir(root), { recursive: true });
-    writeFileSync13(markerPath(root, sessionKey), new Date().toISOString());
+    mkdirSync15(markerDir(root), { recursive: true });
+    writeFileSync14(markerPath(root, sessionKey), new Date().toISOString());
   } catch {}
 }
 function clearFramingMarker(root, sessionKey) {
@@ -6446,11 +6510,11 @@ function clearFramingMarker(root, sessionKey) {
   } catch {}
 }
 function recallPath(root, sessionKey) {
-  return join24(markerDir(root), `${sanitizeSegment(sessionKey)}.recall.json`);
+  return join25(markerDir(root), `${sanitizeSegment(sessionKey)}.recall.json`);
 }
 function readRecall(root, sessionKey) {
   try {
-    const parsed = JSON.parse(readFileSync25(recallPath(root, sessionKey), "utf8"));
+    const parsed = JSON.parse(readFileSync26(recallPath(root, sessionKey), "utf8"));
     if (parsed === null || typeof parsed !== "object" || !Array.isArray(parsed.entries)) {
       return EMPTY_RECALL;
     }
@@ -6465,8 +6529,8 @@ function readRecall(root, sessionKey) {
 }
 function writeRecall(root, sessionKey, recall) {
   try {
-    mkdirSync14(markerDir(root), { recursive: true });
-    writeFileSync13(recallPath(root, sessionKey), JSON.stringify(recall));
+    mkdirSync15(markerDir(root), { recursive: true });
+    writeFileSync14(recallPath(root, sessionKey), JSON.stringify(recall));
   } catch {}
 }
 function clearRecall(root, sessionKey) {
@@ -6626,12 +6690,14 @@ var coreFacade = {
     resolutionHistoryLine
   },
   handoff: {
+    handoffInjectable,
     patchHandoff,
     readHandoff,
     readHandoffFile,
     readForeignSlices
   },
   lesson: {
+    projectLessonsInjectable,
     recordLessonFromFailure,
     buildAuthoredLesson,
     authoredLessonId,
@@ -6812,8 +6878,8 @@ var coreFacade = {
   }
 };
 // src/platform/pricing.ts
-import { existsSync as existsSync24, readFileSync as readFileSync26 } from "node:fs";
-import { join as join25 } from "node:path";
+import { existsSync as existsSync25, readFileSync as readFileSync27 } from "node:fs";
+import { join as join26 } from "node:path";
 var VENDOR_TO_NEUTRAL_POOL = {
   cursor_models: "provider_native",
   anthropic_models: "provider_native",
@@ -6825,11 +6891,11 @@ function mapPoolToNeutral(pool) {
   return VENDOR_TO_NEUTRAL_POOL[pool];
 }
 function readJsonFile2(path) {
-  if (!existsSync24(path)) {
+  if (!existsSync25(path)) {
     return null;
   }
   try {
-    return JSON.parse(readFileSync26(path, "utf8"));
+    return JSON.parse(readFileSync27(path, "utf8"));
   } catch {
     return null;
   }
@@ -6880,16 +6946,16 @@ function fuzzyFind(table, needle) {
   return;
 }
 function overridesPath() {
-  return join25(runtimeHome(), "model-prices.json");
+  return join26(runtimeHome(), "model-prices.json");
 }
 function providerNativePath(provider) {
-  return join25(runtimeHome(), `model-prices.${provider}.json`);
+  return join26(runtimeHome(), `model-prices.${provider}.json`);
 }
 function litellmPath() {
-  return join25(runtimeHome(), "model-prices.litellm.json");
+  return join26(runtimeHome(), "model-prices.litellm.json");
 }
 function aliasesPath() {
-  return join25(runtimeHome(), "model-aliases.json");
+  return join26(runtimeHome(), "model-aliases.json");
 }
 function resolveModelPrice(provider, model) {
   const trimmed = model.trim();
@@ -7428,7 +7494,7 @@ function claudePolicyDefaults() {
 }
 
 // src/providers/claude/claude.wiring.ts
-import { dirname as dirname6, join as join26 } from "node:path";
+import { dirname as dirname7, join as join27 } from "node:path";
 var ENTRY_SPECS = [
   { hookEvent: "SessionStart", handler: "session-start", timeoutSeconds: 10 },
   { hookEvent: "SessionEnd", handler: "session-end", timeoutSeconds: 10 },
@@ -7443,7 +7509,7 @@ var ENTRY_SPECS = [
   { hookEvent: "MessageDisplay", handler: "response-after", timeoutSeconds: 5 }
 ];
 function claudeSettingsPath() {
-  return join26(claudeConfigDir(), "settings.json");
+  return join27(claudeConfigDir(), "settings.json");
 }
 function claudeWiring(runtime) {
   const entries = ENTRY_SPECS.map((spec) => ({
@@ -7744,7 +7810,7 @@ function cursorPolicyDefaults() {
 }
 
 // src/providers/cursor/cursor.wiring.ts
-import { join as join27 } from "node:path";
+import { join as join28 } from "node:path";
 var ENTRY_SPECS2 = [
   { hookEvent: "sessionStart", handler: "session-start", timeoutSeconds: 10 },
   { hookEvent: "sessionEnd", handler: "session-end", timeoutSeconds: 10 },
@@ -7784,7 +7850,7 @@ function cursorWiring(runtime) {
     ...spec.loopLimit !== undefined ? { loopLimit: spec.loopLimit } : {}
   }));
   return {
-    target: join27(cursorConfigDir(), "hooks.json"),
+    target: join28(cursorConfigDir(), "hooks.json"),
     strategy: "replace",
     entries
   };
@@ -7815,7 +7881,7 @@ function resolveFromRegistry(raw, registry) {
   };
 }
 // src/entrypoints/run.ts
-import { join as join28 } from "node:path";
+import { join as join29 } from "node:path";
 
 // src/entrypoints/support.ts
 var OBS_CONFIG = coreFacade.observability.DEFAULT_OBS;
@@ -7846,7 +7912,7 @@ function errorMessage(error) {
 }
 function recordAdapterEvent(root, kind, attrs) {
   try {
-    appendRecord(join28(projectStateDir(root), "obs.jsonl"), {
+    appendRecord(join29(projectStateDir(root), "obs.jsonl"), {
       schema: "harness.observability.v1",
       provider: "unknown",
       kind,

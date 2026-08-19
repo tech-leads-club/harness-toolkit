@@ -87,3 +87,5 @@ doctor reports against your own configuration.
 - **AD-075** — A dependency a turn adds outlives the turn, so two mechanical failures are worth a stop
 - **AD-076** — Goal-hijack enforcement needs the tool's output, and the host does not deliver it
 - **AD-077** — A command that appears verbatim in fetched content is put to the operator
+- **AD-078** — The two files the harness reads aloud are sealed on write and verified on injection
+- **AD-079** — The coverage claim is a generated page with its gaps in it, not a badge in the README

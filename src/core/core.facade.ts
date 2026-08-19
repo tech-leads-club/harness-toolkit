@@ -46,7 +46,13 @@ import { filesFromOutput } from "./gate/gate.findings.ts";
 import { cachedVerdict, computeInputsHash, isCacheHit } from "./gate/gate.inputs.ts";
 import { describeHolder, GATE_LOCK_WAIT_MS, GateLockTimeoutError, withGateLock } from "./gate/gate.lock.ts";
 import { gapsFromArtifact } from "./gate/gate.service.ts";
-import { patchHandoff, readForeignSlices, readHandoff, readHandoffFile } from "./handoff/handoff.service.ts";
+import {
+  handoffInjectable,
+  patchHandoff,
+  readForeignSlices,
+  readHandoff,
+  readHandoffFile,
+} from "./handoff/handoff.service.ts";
 import { authoredLessonId, buildAuthoredLesson } from "./lesson/lesson.authored.ts";
 import type { LessonVerdict } from "./lesson/lesson.credit.ts";
 import { effectivenessLine, helpRate, lessonEffectiveness } from "./lesson/lesson.credit.ts";
@@ -64,6 +70,7 @@ import {
   creditLessons as creditLessonsInner,
   globalLessonsStorePath,
   markGradeable,
+  projectLessonsInjectable,
   readGlobalLessons,
   readProjectLessons,
   touchAccessed as touchAccessedInner,
@@ -258,12 +265,14 @@ export const coreFacade = {
     resolutionHistoryLine,
   },
   handoff: {
+    handoffInjectable,
     patchHandoff,
     readHandoff,
     readHandoffFile,
     readForeignSlices,
   },
   lesson: {
+    projectLessonsInjectable,
     recordLessonFromFailure,
     buildAuthoredLesson,
     authoredLessonId,

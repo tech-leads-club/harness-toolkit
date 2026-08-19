@@ -1098,6 +1098,9 @@ export function buildTestSteps(): TestStep[] {
     // why: the OKF bundle's log is a reserved file that cannot be retired, and hand-maintaining it drifted to 19
     // of 66 records before anyone noticed ([/decisions/ad-067.md](/decisions/ad-067.md)).
     { label: "log in sync", bin: "node", args: ["tools/dev/render-log.ts", "--check"] },
+    // why: the coverage page names floor rules and capability ids, and every hand-written list of this project's
+    // own rules has drifted ([/decisions/ad-079.md](/decisions/ad-079.md)).
+    { label: "coverage in sync", bin: "node", args: ["tools/dev/render-coverage.ts", "--check"] },
   ];
 }
 

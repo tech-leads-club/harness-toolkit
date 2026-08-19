@@ -116,18 +116,27 @@ async function withFileLock<T>(lockPath: string, fn: () => Promise<T>): Promise<
   }
 }
 
-export type UpdateJsonAtomicOptions = FsAtomicOptions & { lockPath: string };
+export type UpdateJsonAtomicOptions = FsAtomicOptions & {
+  lockPath: string /**
+   * Run inside the write lock, after the file lands. The platform does not care what it does — recording a
+   * content hash is core's business, and doing it here is what makes the record and the content one write.
+   */;
+  afterWrite?: (path: string) => void;
+};
 
 export async function updateJsonAtomic<T>(
   path: string,
   mutator: (current: T | null) => T,
   options: UpdateJsonAtomicOptions,
 ): Promise<T> {
-  const { lockPath, ...atomicOptions } = options;
+  const { lockPath, afterWrite, ...atomicOptions } = options;
   return withFileLock(lockPath, async () => {
     const current = readJson<T>(path);
     const next = mutator(current);
     await writeJsonAtomic(path, next, atomicOptions);
+    // why: inside the lock. A caller that sealed after the lock released would race the next writer, and the pair
+    // that lost would leave a record matching neither content ([/decisions/ad-078.md](/decisions/ad-078.md)).
+    afterWrite?.(path);
     return next;
   });
 }

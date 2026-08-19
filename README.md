@@ -193,6 +193,13 @@ Two limits worth stating. The harness records the decisions it made; it never le
 `ask`, so it reports a rate and its attribution, never a precision or an accuracy. And the attestation is
 chained, not signed: it detects a rewritten record and proves nothing about authorship.
 
+### What it covers, and what it does not
+
+[docs/coverage.md](docs/coverage.md) assesses the harness against a published agentic-risk taxonomy — four risks
+covered, five partial, one not applicable — and states what each row leaves open. It is a self-assessment, and the
+control names in it are generated from the same catalogs this README's tables come from, so a rail that is renamed
+or removed fails the build rather than leaving a claim standing.
+
 ## Providers
 
 Both providers share one runtime, one project policy file, and one on-disk state directory. Core steering

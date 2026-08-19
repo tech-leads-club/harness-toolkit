@@ -20,6 +20,8 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-075** — A dependency a turn adds outlives the turn, so two mechanical failures are worth a stop ([/decisions/ad-075.md](/decisions/ad-075.md))
 - **AD-076** — Goal-hijack enforcement needs the tool's output, and the host does not deliver it ([/decisions/ad-076.md](/decisions/ad-076.md))
 - **AD-077** — A command that appears verbatim in fetched content is put to the operator ([/decisions/ad-077.md](/decisions/ad-077.md))
+- **AD-078** — The two files the harness reads aloud are sealed on write and verified on injection ([/decisions/ad-078.md](/decisions/ad-078.md))
+- **AD-079** — The coverage claim is a generated page with its gaps in it, not a badge in the README ([/decisions/ad-079.md](/decisions/ad-079.md))
 
 ## 2026-08-13
 

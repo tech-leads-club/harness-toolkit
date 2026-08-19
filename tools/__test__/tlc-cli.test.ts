@@ -434,6 +434,7 @@ describe("harness test — step plan and runner", () => {
         "capabilities in sync",
         "changelog in sync",
         "log in sync",
+        "coverage in sync",
       ],
     );
     /**

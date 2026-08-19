@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { updateJsonAtomic } from "../../platform/fs-atomic.ts";
 import { projectStateDir, runtimeStateDir } from "../../platform/paths.ts";
+import { divergedMessage, seal, shouldInject, verifySeal } from "../integrity/state-seal.ts";
 import { creditLesson, type LessonVerdict } from "./lesson.credit.ts";
 import type { HarnessLesson, LessonStoreFile, LessonTier } from "./lesson.types.ts";
 
@@ -161,6 +162,18 @@ function readStore(path: string, tier: LessonTier): HarnessLesson[] {
   }
 }
 
+/**
+ * why: the project store only. The global store is written by sessions in other repositories, so a per-project
+ * seal would diverge on every legitimate cross-project write ([/decisions/ad-078.md](/decisions/ad-078.md)).
+ */
+export function projectLessonsInjectable(root: string): { ok: boolean; note: string | null } {
+  const target = lessonsStorePath(root);
+  const verdict = verifySeal(target);
+  return shouldInject(verdict)
+    ? { ok: true, note: null }
+    : { ok: false, note: divergedMessage(target, "The project lesson store") };
+}
+
 export function readProjectLessons(root: string): HarnessLesson[] {
   return readStore(lessonsStorePath(root), "project");
 }
@@ -190,7 +203,7 @@ async function mutateStore(
       const lessons = current && Array.isArray(current.lessons) ? current.lessons : [];
       return { version: 1, lessons: mutate(lessons.map((lesson) => normalizeLesson(lesson, tier))) };
     },
-    { lockPath: `${path}.lock` },
+    { lockPath: `${path}.lock`, afterWrite: seal },
   );
   return file.lessons;
 }

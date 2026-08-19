@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { updateJsonAtomic } from "../../platform/fs-atomic.ts";
 import { projectStateDir } from "../../platform/paths.ts";
+import { seal } from "../integrity/state-seal.ts";
 import {
   defaultHandoffFile,
   type HandoffFile,
@@ -53,6 +54,6 @@ export function patchHandoff(root: string, provider: string, patch: HandoffPatch
         },
       };
     },
-    { lockPath: handoffLockPath(root) },
+    { lockPath: handoffLockPath(root), afterWrite: seal },
   );
 }

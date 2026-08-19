@@ -58,10 +58,20 @@ export const sessionStartHandler: Handler = async (
     },
   });
 
-  const handoff = coreFacade.handoff.readHandoff(root, event.provider);
-  const foreign = coreFacade.handoff.readForeignSlices(root, event.provider);
+  /**
+   * why: the handoff and the lesson store are the two files the harness reads aloud to the model, so a write it
+   * did not make is text placed in front of every later turn. Withholding is the answer, not refusing the turn
+   * ([/decisions/ad-078.md](/decisions/ad-078.md)).
+   */
+  const handoffSeal = coreFacade.handoff.handoffInjectable(root);
+  const lessonSeal = coreFacade.lesson.projectLessonsInjectable(root);
+  const handoff = handoffSeal.ok
+    ? coreFacade.handoff.readHandoff(root, event.provider)
+    : ({} as ReturnType<typeof coreFacade.handoff.readHandoff>);
+  const foreign = handoffSeal.ok ? coreFacade.handoff.readForeignSlices(root, event.provider) : [];
 
   const lines = [
+    ...[handoffSeal.note, lessonSeal.note].filter((note): note is string => note !== null),
     ...coreFacade.policy.operatorBootstrapLines(policy, projectStateDir(root)),
     "",
     `Project root: ${root}`,
@@ -99,7 +109,7 @@ export const sessionStartHandler: Handler = async (
     }
   }
 
-  if (policy.intelligence.lessons.enabled) {
+  if (policy.intelligence.lessons.enabled && lessonSeal.ok) {
     const config = policy.intelligence.lessons;
     const selected = await coreFacade.lesson.selectLessons({
       projectDir: root,
