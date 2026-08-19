@@ -34,6 +34,14 @@ function sandbox(): { env: Record<string, string>; root: string } {
       // why: an unreachable repository is the probe. If the installer reaches `git clone`, it fails here and
       // nowhere else — which is exactly how each test tells the two branches apart without a network.
       TLC_REPO_URL: join(root, "no-such-repo"),
+      // hazard: these four tests are about the clone/link branch, and they only stayed on it because the package
+      // did not exist yet. The day it was published the installer took the npm branch instead and ran
+      // `npm i -g` against the real global prefix — a test that changes the machine it runs on
+      // ([/decisions/ad-082.md](/decisions/ad-082.md)).
+      TLC_INSTALL_FROM_NPM: "never",
+      // invariant: a belt on top of the switch. If a later edit drops `never`, an install lands in the sandbox
+      // rather than in whoever is running the suite.
+      npm_config_prefix: join(root, "npm-prefix"),
       CURSOR_CONFIG_DIR: join(root, "cursor"),
       CLAUDE_CONFIG_DIR: join(root, "claude"),
     } as Record<string, string>,
