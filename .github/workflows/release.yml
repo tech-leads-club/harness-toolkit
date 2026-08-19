@@ -7,14 +7,15 @@ name: Release
 #
 # ORDER, and why it is this order:
 #
-#   gate → decide → approve → bump + changelog + dist (local) → npm publish → push commit+tag → GitHub Release
+#   gate → decide → [approval] → assert → bump + changelog + dist (local) → npm publish → push commit+tag → release
 #
-# `decide` before `approve`, so an approval is only ever requested when there is a version to publish. `approve`
-# before anything that writes, so no publish, tag or push happens until a human says so. The publish BEFORE
-# anything reaches the remote: `v0.2.0`, `v0.2.2` and `v0.2.3` are all tagged and released on GitHub while npm sits
-# on `0.2.1`, because the old shape tagged first and published later behind an approval that never came. And the
-# push LAST because it is the only step that is reversible — npm is immutable after 72 hours, a branch and a tag
-# are not, so the irreversible step goes before the recoverable one.
+# `decide` reads and writes nothing, so the approval is requested only when there is a version to publish. The
+# approval is the `publish` environment on the one job that writes — structural, not a condition: GitHub does not
+# start that job until a reviewer approves, so there is no `if:` to get wrong. The publish comes BEFORE anything
+# reaches the remote: `v0.2.0`, `v0.2.2` and `v0.2.3` are all tagged and released on GitHub while npm sits on
+# `0.2.1`, because the old shape tagged first and published later behind an approval that never came. And the push
+# is LAST because it is the only reversible step — npm is immutable after 72 hours, a branch and a tag are not, so
+# the irreversible step goes before the recoverable one.
 #
 # hazard: nothing here reads `package.json` to decide the next version. The base is the last *tag*. A manifest
 # claiming a version no tag corresponds to is exactly what made the previous tool reprocess history and bump six
@@ -74,34 +75,20 @@ jobs:
           echo "### Nothing to release" >> "$GITHUB_STEP_SUMMARY"
           echo "Staying on ${{ steps.plan.outputs.current }}. Only \`feat\` and \`fix\` outside the inert scopes release." >> "$GITHUB_STEP_SUMMARY"
 
-  # why: the approval gates everything that writes, and its body is an echo — its whole purpose is to carry
-  # `environment: publish` so that no publish, no tag and no push happens until a human approves. This is the shape
-  # `agent-skills` uses, with the decision hoisted above it so it is never asked for nothing.
+  # why: the approval lives HERE, on the job that writes, and there is no separate gate job. A previous shape put
+  # `environment: publish` on an approval job carrying `if: github.actor != '…bot'` — so on the bot's own push that
+  # job was skipped, and the release job's `always()` condition let the publish through with no required reviewer at
+  # all. The barrier has to be structural: GitHub does not start a job whose environment is unapproved, so there is
+  # no condition left to get wrong ([/decisions/ad-087.md](/decisions/ad-087.md)).
   #
-  # invariant: the release bot's own push is exempt, so the `chore(release):` commit a release just made does not
-  # ask for a second approval. That commit releases nothing anyway.
-  approve:
-    needs: [gate, decide]
-    if: needs.decide.outputs.released == 'true' && github.actor != 'tech-leads-club-release-bot[bot]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    environment: publish
-    steps:
-      - name: Approved
-        run: echo "approved — the version may be computed, published and pushed"
-
+  # invariant: this is the only job that writes anywhere — npm, the branch, the tag, the release. Everything before
+  # it reads.
   release:
-    needs: [gate, decide, approve]
-    # invariant: `always()` with named results, because `approve` is skipped on the bot's own push. A plain `needs`
-    # would skip the release with it.
-    if: >-
-      always() &&
-      needs.gate.result == 'success' &&
-      needs.decide.outputs.released == 'true' &&
-      needs.approve.result != 'failure' &&
-      needs.approve.result != 'cancelled'
+    needs: [gate, decide]
+    if: needs.decide.outputs.released == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: publish
     permissions:
       contents: write
       # Trusted publishing: npm exchanges this OIDC token for a short-lived credential, so no npm token is stored
@@ -145,13 +132,36 @@ jobs:
           node-version: "24"
           registry-url: https://registry.npmjs.org
 
+      # invariant: an exact version, not `latest`. This job holds `id-token: write` — the npm publishing identity —
+      # so a mutable third-party payload here is the highest-value target in the repository, and it is the same
+      # shape this product's own supply-chain rail refuses in a user's manifest
+      # ([/decisions/ad-075.md](/decisions/ad-075.md)).
       - name: Install Bun (build toolchain)
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: latest
+          bun-version: "1.3.14"
 
       - name: npm ci
         run: npm ci
+
+      # invariant: the version about to be published must not already exist — not as a tag, not on the registry.
+      # The base is the last tag, so a collision means the plan was computed against a state that has since moved,
+      # and publishing over it is the one mistake that cannot be undone. Two reads, before anything is written.
+      - name: The version must not already exist
+        env:
+          VERSION: ${{ needs.decide.outputs.version }}
+          TAG: ${{ needs.decide.outputs.tag }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::${TAG} already exists. The plan was computed against a stale state; nothing was published."
+            exit 1
+          fi
+          name="$(node -p "require('./package.json').name")"
+          if npm view "${name}@${VERSION}" version >/dev/null 2>&1; then
+            echo "::error::${name}@${VERSION} is already on the registry. Nothing was published."
+            exit 1
+          fi
+          echo "${TAG} is free and ${name}@${VERSION} is not on the registry"
 
       # invariant: every step below is skipped when nothing releasable landed. `docs`, `chore`, `ci` and the inert
       # scopes (`fix(ci)`, `fix(gate)`, `fix(release)`) release nothing — three versions were published for exactly
@@ -178,8 +188,12 @@ jobs:
           TLC_HOME: ${{ github.workspace }}
 
       # Trusted publishing needs npm >= 11.5.1, which is newer than the npm bundled with Node 24.
+      #
+      # invariant: an exact version, for the same reason Bun is pinned above — `npm@latest` in the job that mints
+      # the publish credential is a mutable payload in the highest-value slot. It also removes a scheduled
+      # breakage: npm 12 defaults `allow-remote` to none, and `latest` walks into that on its own schedule.
       - name: Use an npm that speaks OIDC
-        run: npm install -g npm@latest
+        run: npm install -g npm@12.0.2
 
       # THE IRREVERSIBLE STEP. Nothing has reached the remote yet: the bump, the changelog and dist/ are local to
       # this runner. If this fails, the run stops here and the repository is untouched — no tag, no commit, no

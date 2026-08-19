@@ -3,7 +3,7 @@ name: Workflow Security Lint
 # why: the workflows hold the App token that can write to `main` and the OIDC identity that publishes to npm, so
 # they are the highest-value target in the repository and the one part no gate step could read. zizmor audits them
 # for unpinned actions, impostor commits, over-broad tokens and injectable expressions — a set this repository had
-# started to reimplement one rule at a time ([/decisions/ad-088.md](/decisions/ad-088.md)).
+# started to reimplement one rule at a time ([/decisions/ad-087.md](/decisions/ad-087.md)).
 on:
   push:
     branches: [main]

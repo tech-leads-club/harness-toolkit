@@ -4,7 +4,7 @@ name: CI
 # runs on every push. Larger runners would bill even here — keep the matrix on standard ones.
 # why: no `push` trigger. On `main` this matrix runs as the first job of `release.yml`, which calls this file — so a
 # push trigger here would run it a second time in parallel, which is the duplication that produced four live runs
-# for one release ([/decisions/ad-091.md](/decisions/ad-091.md)).
+# for one release ([/decisions/ad-087.md](/decisions/ad-087.md)).
 on:
   pull_request:
   workflow_call:
@@ -18,7 +18,7 @@ permissions:
 #
 # hazard: `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` is accepted without error and still
 # cancels runs on `main`. The working shape is a group that is *shared* per pull request and *unique* per commit
-# otherwise, so a main run can never collide with anything ([/decisions/ad-089.md](/decisions/ad-089.md)).
+# otherwise, so a main run can never collide with anything ([/decisions/ad-087.md](/decisions/ad-087.md)).
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
@@ -28,7 +28,7 @@ jobs:
     # why: the release bot's own pull request is a version bump, a lockfile and a rendered changelog — and the same
     # matrix runs again on `main` the moment it merges, as this workflow called from `release.yml`. Running it on
     # both is the third matrix for one release. Nothing is published behind a red `main`, because every release job
-    # needs that run ([/decisions/ad-094.md](/decisions/ad-094.md)).
+    # needs that run ([/decisions/ad-087.md](/decisions/ad-087.md)).
     #
     # invariant: `workflow_call` is exempt — that *is* the run on `main`, and `github.head_ref` is empty there.
     if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please--')

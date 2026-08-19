@@ -1,6 +1,6 @@
 # zizmor audits GitHub Actions workflows for supply-chain and permission defects. It replaces a checker this
 # repository had written by hand, which enforced one of these rules and none of the others
-# ([/decisions/ad-088.md](/decisions/ad-088.md)).
+# ([/decisions/ad-087.md](/decisions/ad-087.md)).
 rules:
   unpinned-uses:
     config:
