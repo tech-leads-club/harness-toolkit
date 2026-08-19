@@ -5,13 +5,16 @@ name: Release
 # `src/core/release/release.version.ts`, which is pure, tested, and reproduces every version this repository has
 # actually released ([/decisions/ad-087.md](/decisions/ad-087.md)).
 #
-# ORDER, and why it is this order: approve → gate → decide → build the release locally → npm publish → push the
-# commit and tag → GitHub Release.
+# ORDER, and why it is this order:
 #
-# The approval is FIRST, so nothing exists before a human says so. The publish comes BEFORE anything reaches the
-# remote: `v0.2.0`, `v0.2.2` and `v0.2.3` were all tagged and released on GitHub while npm stayed on `0.2.1`,
-# because the old shape tagged first and published later behind an approval that never came. And the push is LAST
-# because it is the only step that is reversible — npm is immutable after 72 hours, a branch and a tag are not.
+#   gate → decide → approve → bump + changelog + dist (local) → npm publish → push commit+tag → GitHub Release
+#
+# `decide` before `approve`, so an approval is only ever requested when there is a version to publish. `approve`
+# before anything that writes, so no publish, tag or push happens until a human says so. The publish BEFORE
+# anything reaches the remote: `v0.2.0`, `v0.2.2` and `v0.2.3` are all tagged and released on GitHub while npm sits
+# on `0.2.1`, because the old shape tagged first and published later behind an approval that never came. And the
+# push LAST because it is the only step that is reversible — npm is immutable after 72 hours, a branch and a tag
+# are not, so the irreversible step goes before the recoverable one.
 #
 # hazard: nothing here reads `package.json` to decide the next version. The base is the last *tag*. A manifest
 # claiming a version no tag corresponds to is exactly what made the previous tool reprocess history and bump six
@@ -36,15 +39,50 @@ jobs:
   gate:
     uses: ./.github/workflows/ci.yml
 
-  # why: the approval is the first thing, and its body is an echo. Its whole purpose is to carry
-  # `environment: publish` so that nothing — no tag, no publish, no push — starts until a human approves. This is
-  # the shape `agent-skills` uses.
-  #
-  # invariant: the release bot's own push is exempt, so a release does not ask for a second approval for the commit
-  # it just made. That commit is `chore(release):`, which releases nothing anyway.
-  approve:
+  # why: deciding BEFORE asking. The approval used to be the first job, which meant every push to `main` requested
+  # one — including the ones that release nothing, which is most of them. Reading the plan first costs a checkout
+  # and makes the approval mean something: it is only requested when there is a version to publish.
+  decide:
     needs: gate
-    if: github.actor != 'tech-leads-club-release-bot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      released: ${{ steps.plan.outputs.released }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      current: ${{ steps.plan.outputs.current }}
+    steps:
+      # why: full history and tags. The base version is the last tag and the bump comes from the range since it, so
+      # a shallow clone would read every commit as unreleased.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: What this release would be
+        id: plan
+        run: node tools/dev/next-version.ts >> "$GITHUB_OUTPUT"
+
+      - name: Nothing to release
+        if: steps.plan.outputs.released != 'true'
+        run: |
+          echo "no releasable commit since ${{ steps.plan.outputs.tag }} — staying on ${{ steps.plan.outputs.current }}"
+          echo "### Nothing to release" >> "$GITHUB_STEP_SUMMARY"
+          echo "Staying on ${{ steps.plan.outputs.current }}. Only \`feat\` and \`fix\` outside the inert scopes release." >> "$GITHUB_STEP_SUMMARY"
+
+  # why: the approval gates everything that writes, and its body is an echo — its whole purpose is to carry
+  # `environment: publish` so that no publish, no tag and no push happens until a human approves. This is the shape
+  # `agent-skills` uses, with the decision hoisted above it so it is never asked for nothing.
+  #
+  # invariant: the release bot's own push is exempt, so the `chore(release):` commit a release just made does not
+  # ask for a second approval. That commit releases nothing anyway.
+  approve:
+    needs: [gate, decide]
+    if: needs.decide.outputs.released == 'true' && github.actor != 'tech-leads-club-release-bot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: publish
@@ -53,12 +91,13 @@ jobs:
         run: echo "approved — the version may be computed, published and pushed"
 
   release:
-    needs: [gate, approve]
+    needs: [gate, decide, approve]
     # invariant: `always()` with named results, because `approve` is skipped on the bot's own push. A plain `needs`
     # would skip the release with it.
     if: >-
       always() &&
       needs.gate.result == 'success' &&
+      needs.decide.outputs.released == 'true' &&
       needs.approve.result != 'failure' &&
       needs.approve.result != 'cancelled'
     runs-on: ubuntu-latest
@@ -110,17 +149,12 @@ jobs:
       - name: npm ci
         run: npm ci
 
-      - name: What this release would be
-        id: plan
-        run: node tools/dev/next-version.ts >> "$GITHUB_OUTPUT"
-
       # invariant: every step below is skipped when nothing releasable landed. `docs`, `chore`, `ci` and the inert
       # scopes (`fix(ci)`, `fix(gate)`, `fix(release)`) release nothing — three versions were published for exactly
       # that kind of work before this rule existed.
       - name: Bump the version
-        if: steps.plan.outputs.released == 'true'
         env:
-          VERSION: ${{ steps.plan.outputs.version }}
+          VERSION: ${{ needs.decide.outputs.version }}
         # why: `npm version --no-git-tag-version` updates package.json and package-lock.json together. Writing the
         # version by hand leaves the lockfile behind and `npm ci` then fails on a mismatch nobody caused.
         run: npm version "$VERSION" --no-git-tag-version --allow-same-version
@@ -128,29 +162,25 @@ jobs:
       # why: CHANGELOG.md is generated from docs/decisions/, and `--release` names the version the pending section
       # becomes ([/decisions/ad-055.md](/decisions/ad-055.md)).
       - name: Render the changelog at this version
-        if: steps.plan.outputs.released == 'true'
         env:
-          VERSION: ${{ steps.plan.outputs.version }}
+          VERSION: ${{ needs.decide.outputs.version }}
         run: node tools/dev/render-changelog.ts --release "v${VERSION}"
 
       # invariant: the published dist/ is built here rather than trusted from the commit. `check-dist-fresh` proves
       # the committed bundles match src/, and a release is the one moment where building again costs nothing.
       - name: Build dist/
-        if: steps.plan.outputs.released == 'true'
         run: bash bin/tlc-build
         env:
           TLC_HOME: ${{ github.workspace }}
 
       # Trusted publishing needs npm >= 11.5.1, which is newer than the npm bundled with Node 24.
       - name: Use an npm that speaks OIDC
-        if: steps.plan.outputs.released == 'true'
         run: npm install -g npm@latest
 
       # THE IRREVERSIBLE STEP. Nothing has reached the remote yet: the bump, the changelog and dist/ are local to
       # this runner. If this fails, the run stops here and the repository is untouched — no tag, no commit, no
       # release to clean up.
       - name: Publish to npm
-        if: steps.plan.outputs.released == 'true'
         run: npm publish
 
       # why: after the publish, and atomically. `--atomic` means the branch and the tag land together or neither
@@ -161,10 +191,9 @@ jobs:
       # version, so re-running is not idempotent — the operator pushes the commit and tag by hand instead. That is
       # written in the failure message rather than left to be rediscovered.
       - name: Push the commit and the tag
-        if: steps.plan.outputs.released == 'true'
         env:
-          VERSION: ${{ steps.plan.outputs.version }}
-          TAG: ${{ steps.plan.outputs.tag }}
+          VERSION: ${{ needs.decide.outputs.version }}
+          TAG: ${{ needs.decide.outputs.tag }}
           AUTHOR: ${{ steps.app-token.outputs.app-slug || 'github-actions' }}
         run: |
           git config user.name "${AUTHOR}[bot]"
@@ -181,18 +210,13 @@ jobs:
           fi
 
       - name: Create the GitHub release
-        if: steps.plan.outputs.released == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
-          TAG: ${{ steps.plan.outputs.tag }}
-          VERSION: ${{ steps.plan.outputs.version }}
+          TAG: ${{ needs.decide.outputs.tag }}
+          VERSION: ${{ needs.decide.outputs.version }}
           REPO: ${{ github.repository }}
         run: |
           gh release create "$TAG" --repo "$REPO" \
             --title "v${VERSION}" \
             --notes "See [CHANGELOG.md](https://github.com/${REPO}/blob/${TAG}/CHANGELOG.md)."
 
-      - name: Nothing to release
-        if: steps.plan.outputs.released != 'true'
-        run: |
-          echo "no releasable commit since ${{ steps.plan.outputs.tag }} — staying on ${{ steps.plan.outputs.current }}"
