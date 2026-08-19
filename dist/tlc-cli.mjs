@@ -7667,7 +7667,6 @@ function buildTestSteps() {
     { label: "check-screens", bin: "node", args: ["tools/dev/check-screens.ts"] },
     { label: "check-obs-contract", bin: "node", args: ["tools/dev/check-obs-contract.ts"] },
     { label: "check-manifest", bin: "node", args: ["tools/dev/check-manifest.ts"] },
-    { label: "check-workflows", bin: "node", args: ["tools/dev/check-workflows.ts"] },
     { label: "capabilities in sync", bin: "node", args: ["tools/dev/render-capabilities.ts", "--check"] },
     { label: "changelog in sync", bin: "node", args: ["tools/dev/render-changelog.ts", "--check"] },
     { label: "log in sync", bin: "node", args: ["tools/dev/render-log.ts", "--check"] },

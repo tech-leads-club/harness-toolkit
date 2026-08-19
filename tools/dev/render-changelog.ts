@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { allDecisionFiles, readDecision } from "../../src/core/release/release.decisions.ts";
+import { tagPrefixFor, versionInTag } from "../../src/core/release/release.version.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -63,9 +64,32 @@ export function isShallow(root: string): boolean {
   }
 }
 
-/** Tags oldest first. A repository with no tags has released nothing, which is a valid state, not an error. */
+/**
+ * Tags oldest first. A repository with no tags has released nothing, which is a valid state, not an error.
+ *
+ * hazard: this listed `v*` while every tag this repository has ever created is `harness-toolkit-v…`. It matched
+ * none, so all 88 decision records sat under `## Unreleased` across three published releases — and `--check`
+ * passed the whole time, because the generated document and the committed one were wrong identically. The prefix is
+ * now derived from the package name, which is the same source the tag is written from
+ * ([/decisions/ad-088.md](/decisions/ad-088.md)).
+ */
+export function packageName(root: string): string | null {
+  try {
+    const parsed = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { name?: string };
+    return typeof parsed.name === "string" && parsed.name.length > 0 ? parsed.name : null;
+  } catch {
+    return null;
+  }
+}
+
 export function releaseTags(root: string): string[] {
-  const out = git(["tag", "--list", "v*", "--sort=v:refname"], root);
+  const name = packageName(root);
+  // invariant: no manifest means no package name, and a release tag is named after the package — so there are no
+  // releases to find. That is a different statement from the glob matching nothing, which was the defect.
+  if (name === null) {
+    return [];
+  }
+  const out = git(["tag", "--list", `${tagPrefixFor(name)}*`, "--sort=v:refname"], root);
   return out === "" ? [] : out.split("\n").map((tag) => tag.trim());
 }
 
@@ -79,9 +103,12 @@ export function collectReleases(root: string, pending?: string): ReleasedDecisio
   const tags = releaseTags(root);
   const releases: ReleasedDecisions[] = [];
   let previous: string | null = null;
+  const name = packageName(root);
   for (const tag of tags) {
     releases.push({
-      version: tag,
+      // why: the heading is the version a reader looks for, not the tag's package-prefixed spelling. The tag is
+      // still what bounds the range, because it is what git resolves.
+      version: `v${(name === null ? null : versionInTag(name, tag)) ?? tag}`,
       decisions: decisionFilesInRange(root, previous === null ? tag : `${previous}..${tag}`),
     });
     previous = tag;
@@ -134,9 +161,25 @@ export function renderChangelog(root: string, releases: readonly ReleasedDecisio
   return `${HEADER}${sections.join("\n")}`;
 }
 
-export function packageVersionTag(root: string): string {
+/** The heading the pending section carries: the version a reader looks for. */
+export function packageVersionLabel(root: string): string {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { version?: string };
   return `v${pkg.version ?? "0.0.0"}`;
+}
+
+/**
+ * The tag that version will get, which is what `releaseTags` can be compared against.
+ *
+ * hazard: this used to return the label — `v0.2.0` — and `acceptableRenderings` compared it against a tag list
+ * spelled `harness-toolkit-v0.2.0`. The comparison was therefore never true, so the one-state tolerance it guards
+ * never closed and `--check` permanently accepted two renderings, one of which is the stale one it exists to
+ * refuse. The same mismatch as the tag glob, in the same file, hidden the same way
+ * ([/decisions/ad-088.md](/decisions/ad-088.md)).
+ */
+export function packageVersionTag(root: string): string {
+  const name = packageName(root);
+  const label = packageVersionLabel(root);
+  return name === null ? label : `${tagPrefixFor(name)}${label.slice(1)}`;
 }
 
 /**
@@ -150,11 +193,12 @@ export function packageVersionTag(root: string): string {
  */
 export function acceptableRenderings(root: string): string[] {
   const plain = renderChangelog(root, collectReleases(root));
-  const pending = packageVersionTag(root);
-  if (releaseTags(root).includes(pending)) {
+  // invariant: the tag is what closes the tolerance and the label is what the heading says. Comparing one against
+  // the other is what kept it open for ever.
+  if (releaseTags(root).includes(packageVersionTag(root))) {
     return [plain];
   }
-  return [plain, renderChangelog(root, collectReleases(root, pending))];
+  return [plain, renderChangelog(root, collectReleases(root, packageVersionLabel(root)))];
 }
 
 export function currentChangelog(root: string): string {

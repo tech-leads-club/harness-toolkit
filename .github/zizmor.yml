@@ -1,0 +1,11 @@
+# zizmor audits GitHub Actions workflows for supply-chain and permission defects. It replaces a checker this
+# repository had written by hand, which enforced one of these rules and none of the others
+# ([/decisions/ad-088.md](/decisions/ad-088.md)).
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # why: everything third-party is pinned to a commit SHA. A tag resolves to whatever the publisher last
+        # pushed, which is the hazard the harness's own supply-chain rail refuses in a user's manifest
+        # ([/decisions/ad-075.md](/decisions/ad-075.md), [/decisions/ad-084.md](/decisions/ad-084.md)).
+        "*": hash-pin

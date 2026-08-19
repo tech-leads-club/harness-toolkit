@@ -432,7 +432,6 @@ describe("harness test — step plan and runner", () => {
         "check-screens",
         "check-obs-contract",
         "check-manifest",
-        "check-workflows",
         "capabilities in sync",
         "changelog in sync",
         "log in sync",
@@ -466,9 +465,8 @@ describe("harness test — step plan and runner", () => {
     assert.deepEqual(steps[9]?.args, ["tools/dev/check-screens.ts"]);
     assert.deepEqual(steps[10]?.args, ["tools/dev/check-obs-contract.ts"]);
     assert.deepEqual(steps[11]?.args, ["tools/dev/check-manifest.ts"]);
-    assert.deepEqual(steps[12]?.args, ["tools/dev/check-workflows.ts"]);
-    assert.deepEqual(steps[13]?.args, ["tools/dev/render-capabilities.ts", "--check"]);
-    assert.deepEqual(steps[14]?.args, ["tools/dev/render-changelog.ts", "--check"]);
+    assert.deepEqual(steps[12]?.args, ["tools/dev/render-capabilities.ts", "--check"]);
+    assert.deepEqual(steps[13]?.args, ["tools/dev/render-changelog.ts", "--check"]);
   });
 
   test("stops at the first failing step and does not run the rest", () => {

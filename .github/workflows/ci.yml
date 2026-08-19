@@ -28,6 +28,8 @@ jobs:
           # why: `changelog in sync` reads which release each decision landed in out of the tag ranges, and a
           # one-commit checkout can see neither the commits that added them nor the tags.
           fetch-depth: 0
+          # invariant: the gate reads and never pushes, so the credential does not stay in `.git/config`.
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

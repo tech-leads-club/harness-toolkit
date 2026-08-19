@@ -1,0 +1,38 @@
+name: Workflow Security Lint
+
+# why: the workflows hold the App token that can write to `main` and the OIDC identity that publishes to npm, so
+# they are the highest-value target in the repository and the one part no gate step could read. zizmor audits them
+# for unpinned actions, impostor commits, over-broad tokens and injectable expressions — a set this repository had
+# started to reimplement one rule at a time ([/decisions/ad-088.md](/decisions/ad-088.md)).
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - ".github/zizmor.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".github/zizmor.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # why: `online-audits: false` keeps this offline and deterministic — the online audits resolve actions against
+      # the GitHub API, which makes the verdict depend on rate limits. `min-severity: high` is what this repository
+      # can hold at zero today; lowering it is a separate change with findings to read first.
+      - uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
+        with:
+          online-audits: false
+          config: .github/zizmor.yml
+          advanced-security: false
+          min-severity: high

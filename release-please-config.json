@@ -7,7 +7,7 @@
       "skip-changelog": true,
       "include-v-in-tag": true,
       "bump-minor-pre-major": true,
-      "draft": false,
+      "draft": true,
       "prerelease": false
     }
   }

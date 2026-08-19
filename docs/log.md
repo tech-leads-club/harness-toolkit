@@ -21,6 +21,8 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-084** — The rule about unpinned dependencies is applied to this repository too, and the release gate stops being a copy ([/decisions/ad-084.md](/decisions/ad-084.md))
 - **AD-085** — The flake was a test measuring a file the whole machine writes to ([/decisions/ad-085.md](/decisions/ad-085.md))
 - **AD-086** — The write lock read the wrong error code on Windows, in a module that already listed the right ones ([/decisions/ad-086.md](/decisions/ad-086.md))
+- **AD-087** — The tag goes first because npm cannot be undone, and the release stays a draft until the package is real ([/decisions/ad-087.md](/decisions/ad-087.md))
+- **AD-088** — The release keeps its pull request and merges it with --admin, and a hand-written workflow linter is replaced by zizmor ([/decisions/ad-088.md](/decisions/ad-088.md))
 
 ## 2026-08-17
 

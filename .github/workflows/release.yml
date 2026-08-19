@@ -47,6 +47,13 @@ jobs:
         with:
           client-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # invariant: scoped to this repository and to the two permissions the release needs, rather than to
+          # everything the App is installed for. An App token defaults to the App's full grant across every
+          # repository it can see; naming the scope is what keeps a leaked token's reach to this one.
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
@@ -77,6 +84,13 @@ jobs:
         with:
           client-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # invariant: scoped to this repository and to the two permissions the release needs, rather than to
+          # everything the App is installed for. An App token defaults to the App's full grant across every
+          # repository it can see; naming the scope is what keeps a leaked token's reach to this one.
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -135,6 +149,13 @@ jobs:
         with:
           client-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # invariant: scoped to this repository and to the two permissions the release needs, rather than to
+          # everything the App is installed for. An App token defaults to the App's full grant across every
+          # repository it can see; naming the scope is what keeps a leaked token's reach to this one.
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Merge the release PR
         env:
@@ -147,23 +168,20 @@ jobs:
           # refused outright — measured as `the base branch policy prohibits the merge` on release 0.2.1, once the
           # repository went public and the ruleset started applying ([/decisions/ad-083.md](/decisions/ad-083.md)).
           #
-          # why: `--auto` first. It waits for the required checks, which is the whole reason the App token opens the
-          # PR — a PR opened with GITHUB_TOKEN triggers no workflows, so there would be nothing to wait for. A
-          # repository with auto-merge off rejects it, and the direct merge is the answer there; which one happened
-          # is printed, because "merged" and "merged without CI" are different facts.
-          if gh pr merge "$PR" --repo "$REPO" --rebase --auto; then
-            echo "release PR #$PR set to auto-merge — it lands when the required checks pass"
-            exit 0
-          fi
-          echo "auto-merge unavailable (disabled for this repository) — merging directly"
-          # hazard: this is also where a review requirement surfaces. The ruleset asks for one approval and an App
-          # is not a repository role, so it cannot bypass and cannot approve its own PR. The failure names that
-          # rather than looking like a transport error.
-          if ! gh pr merge "$PR" --repo "$REPO" --rebase; then
-            echo "::error::could not merge release PR #$PR. If the branch ruleset requires an approving review," \
-              "the release App has to be a bypass actor on that ruleset, or a human approves each release PR."
+          # why: `--admin`. The ruleset requires one approving review and an App cannot approve its own pull
+          # request, so `--auto` armed the merge and then waited for a human for ever — measured with the App on
+          # the bypass list, all three CI jobs green, still `REVIEW_REQUIRED`. `--admin` is what exercises the
+          # bypass instead of waiting on the rule, and it is how `BHubAI/platform` releases through the same
+          # ruleset shape ([/decisions/ad-088.md](/decisions/ad-088.md)).
+          #
+          # invariant: CI is not skipped by this. `verify` below runs the full matrix before the publish, so the
+          # thing `--admin` bypasses is the review, never the gate.
+          if ! gh pr merge "$PR" --repo "$REPO" --rebase --admin; then
+            echo "::error::could not merge release PR #$PR. --admin needs the release App to be a bypass actor" \
+              "on the branch ruleset; check Settings → Rules → Default → Bypass list."
             exit 1
           fi
+          echo "release PR #$PR merged"
 
   # why: the gate that decides whether to publish is the same gate that decides whether to merge, called rather
   # than copied. The publish job used to run `tlc harness test` inline on ubuntu only, so a release was verified
@@ -193,6 +211,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
+          # invariant: this job publishes to npm and pushes nothing, so the checkout credential has no business
+          # surviving in `.git/config` where any later step could read it.
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -221,3 +242,24 @@ jobs:
 
       - name: Publish
         run: npm publish
+
+  # why: the tag exists before the publish, because npm is irreversible after 72 hours and git is not — the
+  # recoverable half goes first. That leaves a window where the tag exists and the package does not, which is what
+  # happened to v0.2.2 when this job was cancelled waiting for its approval: a release announced on GitHub that
+  # nobody could install. `draft: true` in release-please-config.json closes it, and this promotes the draft once
+  # the package is real ([/decisions/ad-087.md](/decisions/ad-087.md)).
+  #
+  # invariant: a separate job, because promoting a release needs `contents: write` and the job holding the npm
+  # publishing identity keeps `contents: read`.
+  announce:
+    needs: [release-please, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+        run: gh release edit "$TAG" --repo "$REPO" --draft=false

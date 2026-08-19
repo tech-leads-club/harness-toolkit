@@ -8,6 +8,24 @@ doctor reports against your own configuration.
 
 ## Unreleased
 
+- **AD-084** — The rule about unpinned dependencies is applied to this repository too, and the release gate stops being a copy
+- **AD-085** — The flake was a test measuring a file the whole machine writes to
+- **AD-086** — The write lock read the wrong error code on Windows, in a module that already listed the right ones
+- **AD-087** — The tag goes first because npm cannot be undone, and the release stays a draft until the package is real
+- **AD-088** — The release keeps its pull request and merges it with --admin, and a hand-written workflow linter is replaced by zizmor
+
+## v0.2.2
+
+No decision records landed in this release.
+
+## v0.2.1
+
+- **AD-081** — The manifest npm publishes is checked here, because the release runner was the only thing reading it
+- **AD-082** — npm is the documented install, and the first version cannot come from CI
+- **AD-083** — Going public switched the branch ruleset on, and an unattended release needs the App to bypass it
+
+## v0.2.0
+
 - **AD-001** — Optional parent-Fast sticky deny for Task spawns
 - **AD-002** — Provider-neutral naming and layout
 - **AD-003** — No backward compatibility
@@ -90,9 +108,3 @@ doctor reports against your own configuration.
 - **AD-078** — The two files the harness reads aloud are sealed on write and verified on injection
 - **AD-079** — The coverage claim is a generated page with its gaps in it, not a badge in the README
 - **AD-080** — Every hand-written list of our own rules is now checked, including the one that drifted while writing this
-- **AD-081** — The manifest npm publishes is checked here, because the release runner was the only thing reading it
-- **AD-082** — npm is the documented install, and the first version cannot come from CI
-- **AD-083** — Going public switched the branch ruleset on, and an unattended release needs the App to bypass it
-- **AD-084** — The rule about unpinned dependencies is applied to this repository too, and the release gate stops being a copy
-- **AD-085** — The flake was a test measuring a file the whole machine writes to
-- **AD-086** — The write lock read the wrong error code on Windows, in a module that already listed the right ones

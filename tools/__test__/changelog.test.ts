@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { tagPrefixFor } from "../../src/core/release/release.version.ts";
 import {
   acceptableRenderings,
   collectReleases,
@@ -38,10 +39,16 @@ function decision(root: string, id: string, title: string, migration?: string): 
   writeFileSync(join(root, "docs", "decisions", `${id}.md`), lines.join("\n"), "utf8");
 }
 
+/**
+ * invariant: the fixture carries a `package.json` with a name, because the release tag is named after the package
+ * and a repository without one has no releases to find. Fixtures that omitted it were the reason the tag glob
+ * could be wrong and every test still pass ([/decisions/ad-088.md](/decisions/ad-088.md)).
+ */
 function repo(): string {
   const root = mkdtempSync(join(tmpdir(), "changelog-"));
   mkdirSync(join(root, "docs", "decisions"), { recursive: true });
   git(root, ["init", "-q", "-b", "main"]);
+  pkg(root, "0.0.0");
   return root;
 }
 
@@ -66,12 +73,12 @@ test("a decision belongs to the release that first contains it", () => {
     decision(root, "ad-001", "First");
     git(root, ["add", "-A"]);
     git(root, ["commit", "-qm", "feat: first"]);
-    git(root, ["tag", "v0.1.0"]);
+    git(root, ["tag", releaseTag("0.1.0")]);
 
     decision(root, "ad-002", "Second");
     git(root, ["add", "-A"]);
     git(root, ["commit", "-qm", "feat: second"]);
-    git(root, ["tag", "v0.2.0"]);
+    git(root, ["tag", releaseTag("0.2.0")]);
 
     decision(root, "ad-003", "Third");
     git(root, ["add", "-A"]);
@@ -97,7 +104,7 @@ test("naming the pending version equals what the tag produces", () => {
     git(root, ["commit", "-qm", "feat: first"]);
 
     const inPr = renderChangelog(root, collectReleases(root, "v0.2.0"));
-    git(root, ["tag", "v0.2.0"]);
+    git(root, ["tag", releaseTag("0.2.0")]);
     const afterTag = renderChangelog(root, collectReleases(root));
 
     assert.equal(inPr, afterTag);
@@ -184,7 +191,7 @@ test("a released decision does not reappear as unreleased", () => {
     decision(root, "ad-001", "Shipped");
     git(root, ["add", "-A"]);
     git(root, ["commit", "-qm", "feat: first"]);
-    git(root, ["tag", "v0.1.0"]);
+    git(root, ["tag", releaseTag("0.1.0")]);
     decision(root, "ad-002", "Fresh");
 
     assert.deepEqual(collectReleases(root), [
@@ -217,8 +224,20 @@ test("a shallow checkout is reported as unreadable, not as drift", () => {
   }
 });
 
+/**
+ * hazard: this used to write only `version`, and the tags below were bare `v0.1.0`. That is a tag scheme this
+ * repository has never used — every real tag is `harness-toolkit-v…` — so the fixtures agreed with the bug
+ * instead of catching it ([/decisions/ad-088.md](/decisions/ad-088.md)).
+ */
+const FIXTURE_PACKAGE = "@tech-leads-club/harness-toolkit";
+
 function pkg(root: string, version: string): void {
-  writeFileSync(join(root, "package.json"), JSON.stringify({ version }), "utf8");
+  writeFileSync(join(root, "package.json"), JSON.stringify({ name: FIXTURE_PACKAGE, version }), "utf8");
+}
+
+/** The tag a release actually gets, so a fixture cannot pass under a scheme the product does not write. */
+function releaseTag(version: string): string {
+  return `${tagPrefixFor(FIXTURE_PACKAGE)}${version}`;
 }
 
 // hazard: ci.yml and release.yml both fire on a push to main and run in parallel, so on the commit that merges a
@@ -231,7 +250,7 @@ test("the merge commit of a release PR passes before its tag exists", () => {
     pkg(root, "0.1.0");
     git(root, ["add", "-A"]);
     git(root, ["commit", "-qm", "feat: first"]);
-    git(root, ["tag", "v0.1.0"]);
+    git(root, ["tag", releaseTag("0.1.0")]);
 
     decision(root, "ad-002", "Next");
     // the release PR bumped the version; the tag does not exist yet
@@ -253,7 +272,7 @@ test("once the tag exists the same file still passes, and only that file does", 
     git(root, ["commit", "-qm", "feat: first"]);
 
     const inPr = renderChangelog(root, collectReleases(root, "v0.2.0"));
-    git(root, ["tag", "v0.2.0"]);
+    git(root, ["tag", releaseTag("0.2.0")]);
 
     const accepted = acceptableRenderings(root);
     assert.equal(accepted.length, 1, "the tolerance closes once the tag lands");
@@ -273,7 +292,7 @@ test("a stale changelog is rejected in both states", () => {
 
     const stale = "# Changelog\n\n## Unreleased\n\n- **AD-000** — something else\n";
     assert.ok(!acceptableRenderings(root).includes(stale), "before the tag");
-    git(root, ["tag", "v0.2.0"]);
+    git(root, ["tag", releaseTag("0.2.0")]);
     assert.ok(!acceptableRenderings(root).includes(stale), "after the tag");
   } finally {
     rmSync(root, { recursive: true, force: true });

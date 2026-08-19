@@ -101,6 +101,8 @@ Handoff section and a link back to this index.
 | [AD-084](/decisions/ad-084.md) | The rule about unpinned dependencies is applied to this repository too, and the release gate stops being a copy | active |
 | [AD-085](/decisions/ad-085.md) | The flake was a test measuring a file the whole machine writes to | active |
 | [AD-086](/decisions/ad-086.md) | The write lock read the wrong error code on Windows, in a module that already listed the right ones | active |
+| [AD-087](/decisions/ad-087.md) | The tag goes first because npm cannot be undone, and the release stays a draft until the package is real | active |
+| [AD-088](/decisions/ad-088.md) | The release keeps its pull request and merges it with --admin, and a hand-written workflow linter is replaced by zizmor | active |
 
 ## Archived
 
