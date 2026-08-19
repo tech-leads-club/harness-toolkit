@@ -91,6 +91,7 @@ Handoff section and a link back to this index.
 | [AD-074](/decisions/ad-074.md) | Code the gate cannot read is refused, and a credential is not always a file | active |
 | [AD-075](/decisions/ad-075.md) | A dependency a turn adds outlives the turn, so two mechanical failures are worth a stop | active |
 | [AD-076](/decisions/ad-076.md) | Goal-hijack enforcement needs the tool output, and the host does not deliver it | active |
+| [AD-077](/decisions/ad-077.md) | A command that appears verbatim in fetched content is put to the operator | active |
 
 ## Archived
 

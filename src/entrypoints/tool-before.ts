@@ -129,6 +129,20 @@ export const toolBeforeHandler: Handler = (
     return floor;
   }
 
+  /**
+   * why: after the floor, because the floor is unconditional and this is a rail. A command the floor already
+   * refuses never needs an operator's opinion ([/decisions/ad-077.md](/decisions/ad-077.md)).
+   */
+  const untrustedAsk = coreFacade.untrusted.askIfFromUntrusted({
+    root: event.projectDir,
+    sessionKey: event.sessionKey,
+    command: event.command,
+    config: ctx.policy.untrustedContent,
+  });
+  if (untrustedAsk.kind !== "abstain") {
+    return untrustedAsk;
+  }
+
   // invariant: unconditional, for the same reason the floor is. This detects a policy that changed without
   // a harness command, so reading a policy field to decide whether to look would let the mutation switch
   // off its own detector.

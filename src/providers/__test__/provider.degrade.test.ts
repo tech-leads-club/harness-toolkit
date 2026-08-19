@@ -15,6 +15,7 @@ const FULL_CAPS: ProviderCapabilities = {
   contextAtToolAfter: true,
   contextAtStop: true,
   sessionStartContextReliable: true,
+  toolOutputAtAfter: false,
   usageInPayload: true,
   effortSignal: true,
   thoughtEvent: true,

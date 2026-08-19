@@ -20,6 +20,7 @@ export function cursorCapabilities(): ProviderCapabilities {
     // 2026-08-02 with no changelog entry fixing it. `env` on the same payload arrives, because that is a different
     // code path ([/decisions/ad-050.md](/decisions/ad-050.md)).
     sessionStartContextReliable: false,
+    toolOutputAtAfter: true,
     usageInPayload: true,
     effortSignal: false,
     thoughtEvent: true,

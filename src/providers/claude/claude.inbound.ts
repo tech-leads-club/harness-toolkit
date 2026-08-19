@@ -199,6 +199,12 @@ export function claudeToEvent(raw: Record<string, unknown>): HarnessEvent | null
       if (toolName) {
         event.toolName = toolName;
       }
+      // why: an object here, unlike the two string fields Cursor uses. Serialising is the translation this layer
+      // exists to do, and core reads one shape ([/decisions/ad-004.md](/decisions/ad-004.md)).
+      const toolOutput = raw.tool_response;
+      if (toolOutput !== undefined && toolOutput !== null) {
+        event.toolOutput = typeof toolOutput === "string" ? toolOutput : JSON.stringify(toolOutput);
+      }
       if (toolInput) {
         event.toolInput = toolInput;
       }

@@ -138,10 +138,18 @@ export function cursorToEvent(raw: Record<string, unknown>): HarnessEvent | null
       if (command !== undefined) {
         event.command = command;
       }
+      const output = asString(raw.output);
+      if (output !== undefined) {
+        event.toolOutput = output;
+      }
       break;
     }
     case "mcp.before":
     case "mcp.after": {
+      const resultJson = asString(raw.result_json);
+      if (resultJson !== undefined) {
+        event.toolOutput = resultJson;
+      }
       const toolName = asString(raw.tool_name);
       if (toolName) {
         event.toolName = toolName;

@@ -58,6 +58,7 @@ Every refusal names one. The name is the pointer — the reasoning lives in the 
 | `machine-control` | `shutdown`, `reboot`, `halt`, `poweroff` |
 | `policy-surface-write` | any route an agent has to harness policy or state |
 | `policy-baseline-divergence` | a policy file changed mid-session with no `tlc harness` command behind it |
+| `untrusted-command` | a shell command that appears verbatim in content this session fetched — put to you before it runs |
 | `edit-collision` | another live session touched this file recently |
 | `shell-catastrophic` | a shell command that can destroy data outside the workspace |
 | `shell-posture-paired` | the `paired` posture asks before a command that leaves the machine or can overwrite a path |

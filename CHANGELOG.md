@@ -86,3 +86,4 @@ doctor reports against your own configuration.
 - **AD-074** — Code the gate cannot read is refused, and a credential is not always a file
 - **AD-075** — A dependency a turn adds outlives the turn, so two mechanical failures are worth a stop
 - **AD-076** — Goal-hijack enforcement needs the tool's output, and the host does not deliver it
+- **AD-077** — A command that appears verbatim in fetched content is put to the operator

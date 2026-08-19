@@ -18,6 +18,12 @@ export type ProviderCapabilities = {
    * ([/decisions/ad-050.md](/decisions/ad-050.md)).
    */
   sessionStartContextReliable: boolean;
+  /**
+   * Whether an after-event delivers what the tool returned. Measured as per-event rather than per-host: one host
+   * supplies it on its shell and MCP after-events and not on its generic tool after-event, so a rail that needs
+   * it asks the capability and then still checks the field ([/decisions/ad-077.md](/decisions/ad-077.md)).
+   */
+  toolOutputAtAfter: boolean;
   usageInPayload: boolean;
   effortSignal: boolean;
   thoughtEvent: boolean;

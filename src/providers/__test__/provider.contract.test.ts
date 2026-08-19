@@ -15,6 +15,7 @@ const BOOLEAN_CAPABILITY_FLAGS: readonly (keyof ProviderCapabilities)[] = [
   "contextAtToolBefore",
   "contextAtToolAfter",
   "contextAtStop",
+  "toolOutputAtAfter",
   "sessionStartContextReliable",
   "usageInPayload",
   "effortSignal",
@@ -71,7 +72,11 @@ function assertSatisfiesContract(provider: ProviderPort): void {
   );
 
   const capabilities = provider.capabilities();
-  assert.equal(Object.keys(capabilities).length, CAPABILITY_FLAG_COUNT, "exactly 12 capability flags");
+  assert.equal(
+    Object.keys(capabilities).length,
+    CAPABILITY_FLAG_COUNT,
+    `exactly ${CAPABILITY_FLAG_COUNT} capability flags`,
+  );
   for (const flag of BOOLEAN_CAPABILITY_FLAGS) {
     assert.equal(typeof capabilities[flag], "boolean", `${provider.name}.capabilities().${flag} is boolean`);
   }
@@ -112,6 +117,7 @@ function makeFixtureProvider(): ProviderPort {
     contextAtToolAfter: true,
     contextAtStop: true,
     sessionStartContextReliable: true,
+    toolOutputAtAfter: false,
     usageInPayload: true,
     effortSignal: true,
     thoughtEvent: true,

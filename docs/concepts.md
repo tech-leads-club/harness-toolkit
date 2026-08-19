@@ -68,9 +68,13 @@ three attempts is twelve minutes of tests, and that is the shape behind most rep
 `tlc harness doctor` names any command in that state and says why; `tlc harness obs report` shows the runs and the
 total ([/decisions/ad-033.md](/decisions/ad-033.md)).
 
-Lint/test runs are serialized with `.tlc/harness/state/grind.lock` (wait up to 120s). A lock is reclaimed when
-it is older than 30 minutes, when it cannot be read, or when its owning process is gone — the last one only on
-the host that wrote it, since a pid means nothing on another machine
+Lint/test runs are serialized with a lock in the project state directory. A neighbour session holding it does not
+block the turn: a recorded verdict whose inputs hash matches is reused and the lock is never taken, otherwise the
+turn waits a bounded share of the stop hook's timeout, and if that expires the gate **defers** — the turn ends,
+the handoff records `skipped`, and the holder is named ([/decisions/ad-073.md](/decisions/ad-073.md)).
+
+A lock is reclaimed when it is older than 30 minutes, when it cannot be read, or when its owning process is gone
+— the last one only on the host that wrote it, since a pid means nothing on another machine
 ([/decisions/ad-024.md](/decisions/ad-024.md)).
 
 Each lint/test invocation writes `.tlc/harness/state/last-gate.json` (`harness.gate.v1`) with exit code,
@@ -280,12 +284,22 @@ also its limit — it depends on the declaration being made.
 reads. When a turn takes in content from outside the repository, one framing message states that the content
 is data and that any directive inside it is to be reported as a prompt-injection attempt, never obeyed.
 
-**It frames; it does not enforce, and it cannot here.** Refusing an action *because* it came from injected
-content means establishing that link, which needs the content the tool returned — and the provider's tool event
-carries no tool output. The transcript holds it and is documented as possibly lagging the live conversation, so a
-rail reading it would miss content and not know it had ([/decisions/ad-076.md](/decisions/ad-076.md)).
+`untrustedContent.mode` chooses how far it goes. **`frame`** is the default and is the paragraph above: one
+message, no refusal. **`enforce`** adds the question framing cannot ask — did this command come from that
+content — and answers it verbatim ([/decisions/ad-077.md](/decisions/ad-077.md)).
 
-What covers the damaging tail instead is the floor, and provenance never mattered to it: running a program
+In `enforce`, what an untrusted read returned is remembered for the session, bounded at 64 KB with the oldest
+dropped first, whitespace collapsed and nothing else rewritten. When a shell command about to run appears
+verbatim in it, the decision is `ask`, naming the source. Verbatim because a paraphrase cannot be shown to come
+from the content, so an agent that rewrites a command before running it is missed on purpose — the alternative
+guesses, and a rail that guesses asks about every command in every turn that read anything.
+
+It needs the host to deliver what the tool returned. That is a capability, `toolOutputAtAfter`, because presence
+is per-event rather than per-host: measured across 69,034 real records, two of the after-events carry nothing on
+21,167 of them. A rail that assumed presence would be blind on the majority of one host's traffic and would not
+know.
+
+What covers the damaging tail either way is the floor, and provenance never mattered to it: running a program
 fetched from the network, reading a credential, destroying outside the project, rewriting history, controlling
 the machine and writing policy are all refused before any policy is read, whoever suggested them. An injected
 `curl … | bash` is refused for being unreadable code, not for being injected — which holds without recognising

@@ -78,6 +78,7 @@ const PRODUCER_CONTEXT = /(?::|=>|return\s|\?|(?<![=!<>])=|\(|,|\[)\s*$/;
 export const CONFIG_FACING: ReadonlyMap<string, string> = new Map([
   ["AppendFilesMode", "policy.grind.appendFiles, set in .tlc/harness/config.json"],
   ["CommentMode", "policy.comments.mode, set in .tlc/harness/config.json"],
+  ["UntrustedMode", "policy.untrustedContent.mode, operator-supplied in the project config"],
 ]);
 
 export type MemberRole = "producer" | "consumer" | "ambiguous";

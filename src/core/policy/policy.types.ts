@@ -8,6 +8,7 @@ export type CommentMode = "declared" | "strict" | "resolvable";
 import type { EffortLevel } from "../../contracts/effort.ts";
 import type { AppendFilesMode } from "../gate/gate.types.ts";
 import type { LessonsSyncMode } from "../lesson/lesson.sync.ts";
+import type { UntrustedMode } from "../untrusted/untrusted.types.ts";
 
 // invariant: one word per posture. A second spelling for any of them is what let `"mode": "focus"` reach
 // the loader unvalidated, match no branch, and silently produce a policy with no posture line.
@@ -97,6 +98,11 @@ export type Policy = {
   };
   untrustedContent: {
     enabled: boolean;
+    /**
+     * `frame` states once per turn that outside content is data. `enforce` adds the question framing cannot ask —
+     * did this command come from that content ([/decisions/ad-077.md](/decisions/ad-077.md))?
+     */
+    mode: UntrustedMode;
     extraTools: string[];
     extraCommandPatterns: string[];
   };

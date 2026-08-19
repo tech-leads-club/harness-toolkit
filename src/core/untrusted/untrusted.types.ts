@@ -13,8 +13,16 @@ export type UntrustedDetectInput = {
   commandPatterns: readonly string[];
 };
 
+/**
+ * `frame` states once per turn that outside content is data. `enforce` adds the question framing cannot ask —
+ * did this command come from that content — and answers it verbatim
+ * ([/decisions/ad-077.md](/decisions/ad-077.md)).
+ */
+export type UntrustedMode = "frame" | "enforce";
+
 export type UntrustedPolicyConfig = {
   enabled: boolean;
+  mode: UntrustedMode;
   extraTools: string[];
   extraCommandPatterns: string[];
 };

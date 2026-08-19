@@ -76,6 +76,7 @@ test("capabilities match the design table exactly", () => {
     toolOutputRewrite: true,
     contextAtToolBefore: false,
     contextAtToolAfter: true,
+    toolOutputAtAfter: true,
     contextAtStop: false,
     sessionStartContextReliable: false,
     usageInPayload: true,

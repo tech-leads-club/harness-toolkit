@@ -792,6 +792,7 @@ var DEFAULTS = {
     retentionDays: DEFAULT_OBS.retentionDays
   },
   untrustedContent: {
+    mode: "frame",
     enabled: false,
     extraTools: [],
     extraCommandPatterns: []

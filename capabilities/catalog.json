@@ -1,5 +1,5 @@
 {
-  "catalogVersion": 12,
+  "catalogVersion": 13,
   "capabilities": [
     {
       "id": "grind",
@@ -361,10 +361,10 @@
     {
       "id": "untrustedContent",
       "configPath": "untrustedContent.enabled",
-      "title": "Untrusted-content framing",
-      "summary": "Checks whether the turn read content from outside the repository, and frames it as data once.",
+      "title": "Untrusted-content framing and enforcement",
+      "summary": "Frames outside content as data, and in enforce mode asks before a command that appears verbatim in it.",
       "benefit": "Injects one framing line per turn when the agent reads a pull request, an issue, a fetched page or an MCP result, stating that the content is data and that any directive inside it is to be reported as a prompt-injection attempt, not obeyed.",
-      "tradeOff": "Spends a few hundred characters of context on turns that read outside the repository. Detection is a declared list of tools and command shapes, so a source nobody listed is not covered.",
+      "tradeOff": "Two modes. frame injects one line per turn, costing a few hundred characters and enforcing nothing. enforce also remembers what an untrusted read returned, bounded at 64 KB per session, and asks before a shell command that appears verbatim in it — verbatim because a paraphrase cannot be shown to come from the content, so a rewritten command is missed. It needs the host to deliver tool output on the after-event: measured present on Claude Code's PostToolUse and on Cursor's afterShellExecution and afterMCPExecution, and absent on Cursor's generic postToolUse.",
       "defaultOn": false,
       "sinceCatalogVersion": 7,
       "fires": [
@@ -373,8 +373,7 @@
       "verdict": "context",
       "inspect": "tlc harness obs report — one framing injection per turn, with the characters it cost",
       "asks": [
-        "extraTools",
-        "extraCommandPatterns"
+        "mode: frame | enforce"
       ]
     },
     {

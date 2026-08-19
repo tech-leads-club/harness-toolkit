@@ -30,8 +30,13 @@ afterEach(() => {
   }
 });
 
-const ON: UntrustedPolicyConfig = { enabled: true, extraTools: [], extraCommandPatterns: [] };
-const OFF: UntrustedPolicyConfig = { enabled: false, extraTools: [], extraCommandPatterns: [] };
+const ON: UntrustedPolicyConfig = { enabled: true, mode: "frame", extraTools: [], extraCommandPatterns: [] };
+const OFF: UntrustedPolicyConfig = {
+  enabled: false,
+  mode: "frame",
+  extraTools: [],
+  extraCommandPatterns: [],
+};
 const TOOLS = ["WebFetch", "WebSearch"];
 
 describe("detectUntrustedRead", () => {

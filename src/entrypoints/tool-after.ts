@@ -80,6 +80,21 @@ export const toolAfterHandler: Handler = (event: HarnessEvent, ctx: HandlerConte
     return { kind: "abstain" };
   }
 
+  // why: recorded before the framing is decided, because the framing fires once per turn and the content of every
+  // untrusted read still has to be remembered ([/decisions/ad-077.md](/decisions/ad-077.md)).
+  if (ctx.provider.capabilities().toolOutputAtAfter) {
+    coreFacade.untrusted.rememberUntrustedOutput({
+      root: event.projectDir,
+      sessionKey: event.sessionKey,
+      event: event.event,
+      toolName: event.toolName,
+      command: event.command,
+      toolOutput: event.toolOutput,
+      config: ctx.policy.untrustedContent,
+      providerTools: ctx.provider.policyDefaults().untrustedTools,
+    });
+  }
+
   return coreFacade.untrusted.evaluateUntrustedContent({
     root: event.projectDir,
     sessionKey: event.sessionKey,

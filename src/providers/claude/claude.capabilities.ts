@@ -17,6 +17,7 @@ export function claudeCapabilities(): ProviderCapabilities {
     // why: `SessionStart` delivers `hookSpecificOutput.additionalContext`, capped at 10,000 characters. Only that
     // field — a top-level `additional_context` is read as well and not deduplicated, so emitting both injects twice.
     sessionStartContextReliable: true,
+    toolOutputAtAfter: true,
     usageInPayload: false,
     effortSignal: true,
     thoughtEvent: false,
