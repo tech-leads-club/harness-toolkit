@@ -17,6 +17,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 
 - **AD-081** — The manifest npm publishes is checked here, because the release runner was the only thing reading it ([/decisions/ad-081.md](/decisions/ad-081.md))
 - **AD-082** — npm is the documented install, and the first version cannot come from CI ([/decisions/ad-082.md](/decisions/ad-082.md))
+- **AD-083** — Going public switched the branch ruleset on, and an unattended release needs the App to bypass it ([/decisions/ad-083.md](/decisions/ad-083.md))
 
 ## 2026-08-17
 

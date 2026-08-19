@@ -138,16 +138,27 @@ jobs:
           REPO: ${{ github.repository }}
         shell: bash
         run: |
-          # why: `--auto` waits for the required checks, which is the whole reason the App token opens the PR —
-          # a PR opened with GITHUB_TOKEN triggers no workflows, so there would be nothing to wait for. A
-          # repository with auto-merge off or no required checks rejects it, and the direct merge is the answer
-          # there; which one happened is printed, because "merged" and "merged without CI" are different facts.
-          if gh pr merge "$PR" --repo "$REPO" --squash --auto; then
+          # why: `--rebase`, because the branch ruleset sets `allowed_merge_methods: [rebase]` and squash is
+          # refused outright — measured as `the base branch policy prohibits the merge` on release 0.2.1, once the
+          # repository went public and the ruleset started applying ([/decisions/ad-083.md](/decisions/ad-083.md)).
+          #
+          # why: `--auto` first. It waits for the required checks, which is the whole reason the App token opens the
+          # PR — a PR opened with GITHUB_TOKEN triggers no workflows, so there would be nothing to wait for. A
+          # repository with auto-merge off rejects it, and the direct merge is the answer there; which one happened
+          # is printed, because "merged" and "merged without CI" are different facts.
+          if gh pr merge "$PR" --repo "$REPO" --rebase --auto; then
             echo "release PR #$PR set to auto-merge — it lands when the required checks pass"
             exit 0
           fi
-          echo "auto-merge unavailable (no required checks, or disabled for this repository) — merging directly"
-          gh pr merge "$PR" --repo "$REPO" --squash
+          echo "auto-merge unavailable (disabled for this repository) — merging directly"
+          # hazard: this is also where a review requirement surfaces. The ruleset asks for one approval and an App
+          # is not a repository role, so it cannot bypass and cannot approve its own PR. The failure names that
+          # rather than looking like a transport error.
+          if ! gh pr merge "$PR" --repo "$REPO" --rebase; then
+            echo "::error::could not merge release PR #$PR. If the branch ruleset requires an approving review," \
+              "the release App has to be a bypass actor on that ruleset, or a human approves each release PR."
+            exit 1
+          fi
 
   publish:
     needs: release-please
