@@ -1,4 +1,17 @@
-import { existsSync, readFileSync } from "node:fs";
+/**
+ * Where a model's price comes from, and how it is read.
+ *
+ * There is one catalogue file on the machine. It used to be four — a per-provider table, a ~1 MB fallback table,
+ * an overrides table and an alias table — three of them versioned in this repository and two of them holding the
+ * same models at different prices. That is not duplication to be collapsed: the same model genuinely has two
+ * prices depending on who bills the call, and a provider reselling a vendor's model charges its own rate. So the
+ * planes stay, and the file does not: one catalogue, one refresh, one read path, with each plane named by its
+ * provenance ([/decisions/ad-096.md](/decisions/ad-096.md)).
+ *
+ * invariant: nothing about prices is versioned. A rate published today has to reach an operator without a release,
+ * and a rate in the package is stale the moment it is packed.
+ */
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { runtimeHome } from "./paths.ts";
 
@@ -33,8 +46,40 @@ export type CostEstimate = {
   catalogKey?: string;
 };
 
-type PriceTable = Record<string, ModelPriceEntry>;
-type AliasTable = Record<string, string>;
+export type PriceTable = Record<string, ModelPriceEntry>;
+
+/**
+ * The catalogue on disk. `planes` is keyed by provenance: a provider's id for what that provider bills, and
+ * `litellm` for the vendors' own list prices.
+ *
+ * why: keyed rather than merged. `claude-sonnet-4-5` is sold by its vendor and resold by other providers at a
+ * different rate; merging the two rows would pick one at random and report the other's calls at the wrong price.
+ */
+export type PriceCatalogue = {
+  _meta?: { refreshedAt?: string; planes?: Record<string, PlaneMeta> };
+  planes?: Record<string, PriceTable>;
+};
+
+export type PlaneMeta = { source?: string; count?: number; refreshedAt?: string };
+
+/** The plane that holds the vendors' own list prices, used when the asking provider has no rate of its own. */
+export const FALLBACK_PLANE = "litellm";
+
+/**
+ * Model ids a host reports that are not the catalogue's key for them.
+ *
+ * why: in code, not in a versioned JSON file. This is a hand-curated mapping of what hosts call things — it changes
+ * when a host renames a model, which is a code change with a test, not machine state an operator maintains. The
+ * file it replaces held ten entries of which six were `"x": "x"` no-ops and two were already covered by the effort
+ * suffix stripped below ([/decisions/ad-096.md](/decisions/ad-096.md)).
+ *
+ * invariant: an operator who needs a mapping of their own writes the key straight into their overrides file. There
+ * is no second alias file to keep in sync.
+ */
+export const MODEL_ALIASES: Readonly<Record<string, string>> = {
+  "cursor-grok-4.5": "grok-4.5",
+  auto: "auto-cost",
+};
 
 const VENDOR_TO_NEUTRAL_POOL: Record<VendorPool, NeutralPool> = {
   cursor_models: "provider_native",
@@ -67,17 +112,30 @@ function stripMeta(table: PriceTable | null): PriceTable {
   return rest;
 }
 
+/**
+ * The one way a model name becomes a catalogue key. Both sides use it: the refresh that writes the catalogue and
+ * the lookup that reads it.
+ *
+ * hazard: there were two of these, and they disagreed about parentheses. This one erased them, so a lookup for
+ * `Model X (Fast)` asked for `model-x` — the standard model's price. The writer's copy erased them too, so the two
+ * rows collapsed onto one key and the second overwrote the first. Measured on the real catalogue: 51 rows on the
+ * upstream page became 44 stored keys, and every model with a `(Fast)` variant carried the wrong price — `$3/$15`
+ * where the page said `$0.5/$2.5` ([/decisions/ad-096.md](/decisions/ad-096.md)).
+ *
+ * invariant: a qualifier is part of the identity. A markdown link keeps its text and loses its URL; everything
+ * else that is not alphanumeric is a separator. Two names that differ produce two keys.
+ */
 export function slugifyModelName(name: string): string {
   return name
     .trim()
     .toLowerCase()
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
     .replace(/[[\]]/g, "")
-    .replace(/\(.*?\)/g, "")
     .replace(/[^a-z0-9.+]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
 
-function candidatesFor(model: string, aliases: AliasTable): string[] {
+function candidatesFor(model: string, aliases: Readonly<Record<string, string>>): string[] {
   const trimmed = model.trim();
   const out: string[] = [];
   const push = (v: string | undefined) => {
@@ -114,20 +172,20 @@ function fuzzyFind(table: PriceTable, needle: string): { key: string; entry: Mod
   return undefined;
 }
 
-function overridesPath(): string {
+/** The catalogue the refresh writes. Not versioned, not packaged, per machine. */
+export function cataloguePath(): string {
   return join(runtimeHome(), "model-prices.json");
 }
 
-function providerNativePath(provider: string): string {
-  return join(runtimeHome(), `model-prices.${provider}.json`);
-}
-
-function litellmPath(): string {
-  return join(runtimeHome(), "model-prices.litellm.json");
-}
-
-function aliasesPath(): string {
-  return join(runtimeHome(), "model-aliases.json");
+/**
+ * The operator's own rates, which win over everything fetched.
+ *
+ * hazard: this filename was in `.gitignore` and read by nothing. The overrides that were actually read lived in
+ * `model-prices.json` — the same name the refresh now writes — so an operator's edits sat in a file the next
+ * refresh would replace. The refresh moves such a file here rather than overwriting it.
+ */
+export function overridesPath(): string {
+  return join(runtimeHome(), "model-prices.local.json");
 }
 
 export type PriceResolution = {
@@ -136,18 +194,65 @@ export type PriceResolution = {
   source: "override" | "provider" | "litellm";
 };
 
+type CacheSlot = { mtimeMs: number; size: number; value: PriceCatalogue };
+const cache = new Map<string, CacheSlot>();
+
+/**
+ * why: the fallback plane is around a megabyte and a cost estimate happens on every tool result. This used to
+ * parse every catalogue file on every single lookup. The stat is the cheap part; the parse is not.
+ *
+ * invariant: keyed on mtime and size, so a refresh during a session is picked up on the next lookup without any
+ * invalidation call. Nothing has to remember to clear this.
+ */
+function readCatalogue<T>(path: string): T | null {
+  if (!existsSync(path)) {
+    cache.delete(path);
+    return null;
+  }
+  const stat = statSync(path);
+  const hit = cache.get(path);
+  if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) {
+    return hit.value as T;
+  }
+  const parsed = readJsonFile<PriceCatalogue>(path);
+  if (parsed === null) {
+    cache.delete(path);
+    return null;
+  }
+  cache.set(path, { mtimeMs: stat.mtimeMs, size: stat.size, value: parsed });
+  return parsed as T;
+}
+
+/** invariant: an absent or unparseable catalogue is an empty one. A missing price is never a thrown error. */
+export function loadCatalogue(): PriceCatalogue {
+  return readCatalogue<PriceCatalogue>(cataloguePath()) ?? {};
+}
+
+export function planeMeta(): Record<string, PlaneMeta> {
+  return loadCatalogue()._meta?.planes ?? {};
+}
+
+export function catalogueMeta(): { refreshedAt?: string } | null {
+  const parsed = readCatalogue<PriceCatalogue>(cataloguePath());
+  return parsed === null ? null : (parsed._meta ?? {});
+}
+
+function planeFor(catalogue: PriceCatalogue, plane: string): PriceTable {
+  return stripMeta(catalogue.planes?.[plane] ?? null);
+}
+
 export function resolveModelPrice(provider: string, model: string): PriceResolution | undefined {
   const trimmed = model.trim();
   if (!trimmed) {
     return undefined;
   }
 
-  const overrides = stripMeta(readJsonFile<PriceTable>(overridesPath()));
-  const native = stripMeta(readJsonFile<PriceTable>(providerNativePath(provider)));
-  const litellm = stripMeta(readJsonFile<PriceTable>(litellmPath()));
-  const aliases = readJsonFile<AliasTable>(aliasesPath()) ?? {};
+  const catalogue = loadCatalogue();
+  const overrides = stripMeta(readCatalogue<PriceTable>(overridesPath()));
+  const native = provider ? planeFor(catalogue, provider) : {};
+  const litellm = planeFor(catalogue, FALLBACK_PLANE);
 
-  const candidates = candidatesFor(trimmed, aliases);
+  const candidates = candidatesFor(trimmed, MODEL_ALIASES);
 
   for (const id of candidates) {
     const entry = overrides[id];

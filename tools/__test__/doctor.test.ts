@@ -15,6 +15,7 @@ import {
   checkHookRuntime,
   checkId,
   checkNodeVersion,
+  checkPrices,
   checkProjectPolicy,
   checkProviders,
   exitCodeFor,
@@ -685,4 +686,53 @@ test("the capability inventory row is ok, because not enabling something is not 
   assert.equal(rows.length, 1, "one inventory row, never one per capability");
   assert.equal(rows[0]?.level, "ok");
   assert.match(rows[0]?.detail ?? "", /2 available and not enabled/);
+});
+
+/**
+ * The catalogue's age was reported nowhere, while `docs/measure.md` claimed this command checked it. An operator
+ * whose prices are a month old, or absent, sees cost estimates of null — which reads exactly like a cheap turn
+ * ([/decisions/ad-096.md](/decisions/ad-096.md)).
+ */
+describe("checkPrices", () => {
+  const NOW = new Date("2026-08-19T12:00:00.000Z");
+  const read = (meta: { refreshedAt?: string } | null, planes = {}) => ({
+    meta: () => meta,
+    planes: () => planes,
+  });
+
+  test("AC an absent catalogue is a warning that names the command", () => {
+    const row = checkPrices(NOW, read(null))[0];
+
+    assert.equal(row?.level, "warn");
+    assert.match(row?.detail ?? "", /prices refresh/);
+  });
+
+  test("AC a stale catalogue is a warning that states its age", () => {
+    const row = checkPrices(NOW, read({ refreshedAt: "2026-07-27T14:51:17.065Z" }))[0];
+
+    assert.equal(row?.level, "warn");
+    assert.match(row?.detail ?? "", /23 days/);
+  });
+
+  /** invariant: a healthy install asks for nothing. A warning that always fires is not a warning
+   * ([/decisions/ad-034.md](/decisions/ad-034.md)). */
+  test("AC a fresh catalogue is ok and asks for nothing", () => {
+    const row = checkPrices(
+      NOW,
+      read({ refreshedAt: "2026-08-18T12:00:00.000Z" }, { cursor: { count: 47 }, litellm: { count: 1200 } }),
+    )[0];
+
+    assert.equal(row?.level, "ok");
+    assert.doesNotMatch(row?.detail ?? "", /refresh/);
+    assert.match(row?.detail ?? "", /cursor 47/);
+    assert.match(row?.detail ?? "", /litellm 1200/);
+  });
+
+  /** why: one row, not one per plane. The operator's question is whether prices are current. */
+  test("it is a single row however many planes the catalogue holds", () => {
+    assert.equal(
+      checkPrices(NOW, read({ refreshedAt: NOW.toISOString() }, { a: {}, b: {}, c: {} })).length,
+      1,
+    );
+  });
 });

@@ -130,6 +130,7 @@ import { isOperatorMode, OPERATOR_MODES } from "./policy/policy.posture.ts";
 import { activeRails } from "./policy/policy.rails.ts";
 import { forProvider } from "./policy/policy.types.ts";
 import { checkCollision, heartbeat, register, release, sweepStale } from "./presence/presence.service.ts";
+import { freshness, freshnessMessage, mayReplace, shouldRefetch } from "./pricing/pricing.freshness.ts";
 import {
   allDecisionFiles,
   formatDecisionDigest,
@@ -276,6 +277,12 @@ export const coreFacade = {
   shim: {
     coversHandler,
     decideShim,
+  },
+  pricing: {
+    freshness,
+    freshnessMessage,
+    mayReplace,
+    shouldRefetch,
   },
   skill: {
     linkHealth,

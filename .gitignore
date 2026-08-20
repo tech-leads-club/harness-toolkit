@@ -31,11 +31,11 @@
 .cursor/heads-down
 .cursor/paired
 
-# Regenerable LiteLLM fallback catalog (~1MB): tlc harness prices refresh litellm
-model-prices.litellm.json
-
-# Optional local price overrides
+# Prices are per machine, never versioned: tlc harness prices refresh
+# A rate in a commit is stale the moment it is packed, and reaches an operator only through a release.
+model-prices.json
 model-prices.local.json
+model-prices.*.json
 
 # Build tooling caches
 .cache/

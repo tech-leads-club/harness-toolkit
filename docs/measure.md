@@ -114,55 +114,59 @@ full mapping table.
 
 ## Prices
 
-Cost estimates use on-disk catalogs under `~/.tlc/harness/`, resolved provider-first:
+Fetched per machine, never versioned ([/decisions/ad-096.md](/decisions/ad-096.md)).
 
 ```bash
-tlc harness prices refresh
-tlc harness prices refresh all
-tlc harness prices refresh cursor
-tlc harness prices refresh litellm
+tlc harness prices refresh              # both planes, now
+tlc harness prices refresh cursor       # one plane
+tlc harness prices refresh --if-stale   # only past the TTL; what install and update run
 tlc harness prices lookup <model-id> [provider]
 ```
 
-| Command | Effect |
+| Trigger | Effect |
 |---------|--------|
-| `refresh` / `refresh all` | Update the Cursor catalog and the LiteLLM fallback |
-| `refresh cursor` | Write `model-prices.cursor.json` (commit when rates change) |
-| `refresh litellm` | Write `model-prices.litellm.json` (gitignored; regenerate locally) |
-| `lookup <model-id> [provider]` | Resolve catalog key, pool, and USD for 1M input + 1M output |
+| `tlc harness install` | first fetch; a network failure does not fail the install |
+| `tlc harness update` | `--if-stale`, TTL 7 days |
+| `tlc harness doctor` | reports the catalogue's age, or that it is absent |
 
-### Catalogs
+### Files
 
 | File | Role | In git |
 |------|------|--------|
-| `model-prices.<provider>.json` (e.g. `model-prices.cursor.json`) | Primary, per provider | Yes |
-| `model-prices.litellm.json` | Fallback (LiteLLM public JSON) | No |
-| `model-prices.json` | Local overrides | Empty `{}` template only |
-| `model-aliases.json` | Model id → catalog key | Yes |
+| `~/.tlc/harness/model-prices.json` | the catalogue | No |
+| `~/.tlc/harness/model-prices.local.json` | hand-written overrides | No |
+
+### Planes
+
+`planes` is keyed by who bills the call. They are not merged: the same model has one rate from its vendor and
+another from a provider reselling it.
+
+| Plane | Holds | Source |
+|-------|-------|--------|
+| `cursor` | what that provider charges | its pricing page |
+| `litellm` | vendor list prices | the LiteLLM public JSON |
+
+`_meta.planes[<plane>]` records the source, the model count and the fetch time.
 
 ### Resolution order
 
-1. `model-prices.json` (local overrides)
-2. `model-prices.<provider>.json` (this provider's own catalog)
-3. `model-prices.litellm.json`
+1. `model-prices.local.json`
+2. `planes[<asking provider>]`
+3. `planes.litellm`
 4. otherwise `cost_usd: null`
 
+Host ids that differ from a catalogue key are mapped in `MODEL_ALIASES` (`src/platform/pricing.ts`). Add your own
+by writing the key into the overrides file.
+
 Pools (neutral names in observability records; see [/decisions/ad-011.md](/decisions/ad-011.md) item 2):
-`provider_native` | `other` | `auto` | `unknown`. The on-disk catalog files still use vendor-named pool
-keys internally (`cursor_models`, `anthropic_models`, …) since pricing must name real vendors — those are
-mapped to the neutral names before they reach `core/`.
+`provider_native` | `other` | `auto` | `unknown`. The catalogue uses vendor-named pool keys internally
+(`cursor_models`, `anthropic_models`, …) since pricing must name real vendors — those are mapped to the neutral
+names before they reach `core/`.
 
-### When to refresh
+### Refusal
 
-| Situation | Command |
-|-----------|---------|
-| A provider published new rates or models | `tlc harness prices refresh cursor` (then commit) |
-| Missing LiteLLM file or obscure model | `tlc harness prices refresh litellm` |
-| Update both catalogs | `tlc harness prices refresh` |
-| Inspect one model | `tlc harness prices lookup <model-id> [provider]` |
-
-`tlc harness doctor` requires at least one provider catalog to be present. LiteLLM is optional until needed
-as fallback.
+A plane is replaced only if the incoming table keeps at least half of what is on disk. Below that the refresh
+refuses, names both counts, and leaves every plane untouched.
 
 ## Project state files
 

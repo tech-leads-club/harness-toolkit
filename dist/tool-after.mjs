@@ -5273,6 +5273,62 @@ function release(root, provider, session) {
   deletePresenceRecord(root, provider, session);
 }
 
+// src/core/pricing/pricing.freshness.ts
+var DEFAULT_TTL_DAYS = 7;
+var MS_PER_DAY = 86400000;
+function freshness(meta, now, ttlDays = DEFAULT_TTL_DAYS) {
+  if (meta === null) {
+    return { state: "absent" };
+  }
+  const stamp = meta.refreshedAt;
+  if (stamp === undefined || Number.isNaN(Date.parse(stamp))) {
+    return { state: "undated" };
+  }
+  const ageMs = now.getTime() - Date.parse(stamp);
+  const ageDays = Math.max(0, ageMs / MS_PER_DAY);
+  return ageDays > ttlDays ? { state: "stale", ageDays, refreshedAt: stamp } : { state: "fresh", ageDays, refreshedAt: stamp };
+}
+function shouldRefetch(state) {
+  return state.state === "absent" || state.state === "undated" || state.state === "stale";
+}
+function freshnessMessage(state, catalogue) {
+  switch (state.state) {
+    case "absent":
+      return `${catalogue}: not on this machine — run \`tlc harness prices refresh\``;
+    case "undated":
+      return `${catalogue}: present but carries no date — it will be refetched`;
+    case "fresh":
+      return `${catalogue}: ${describeAge(state.ageDays)} old`;
+    default:
+      return `${catalogue}: ${describeAge(state.ageDays)} old — run \`tlc harness prices refresh\``;
+  }
+}
+var MIN_RETAINED_RATIO = 0.5;
+function mayReplace(existingCount, incomingCount, minRatio = MIN_RETAINED_RATIO) {
+  if (incomingCount === 0) {
+    return { replace: false, reason: "parsed no entries at all — the upstream format has changed" };
+  }
+  if (existingCount === 0) {
+    return { replace: true, reason: `first catalogue, ${incomingCount} entries` };
+  }
+  if (incomingCount >= existingCount) {
+    return { replace: true, reason: `${existingCount} → ${incomingCount} entries` };
+  }
+  const retained = incomingCount / existingCount;
+  return retained >= minRatio ? { replace: true, reason: `${existingCount} → ${incomingCount} entries` } : {
+    replace: false,
+    reason: `would drop from ${existingCount} to ${incomingCount} entries, keeping the existing catalogue — the upstream format has probably changed`
+  };
+}
+function describeAge(ageDays) {
+  if (ageDays < 1) {
+    const hours = Math.max(1, Math.round(ageDays * 24));
+    return `${hours} hour${hours === 1 ? "" : "s"}`;
+  }
+  const days = Math.round(ageDays);
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
 // src/core/release/release.decisions.ts
 import { existsSync as existsSync17, readdirSync as readdirSync5, readFileSync as readFileSync19 } from "node:fs";
 import { join as join18 } from "node:path";
@@ -6770,6 +6826,12 @@ var coreFacade = {
     coversHandler,
     decideShim
   },
+  pricing: {
+    freshness,
+    freshnessMessage,
+    mayReplace,
+    shouldRefetch
+  },
   skill: {
     linkHealth,
     linkHealthMessage,
@@ -6957,8 +7019,13 @@ var coreFacade = {
   }
 };
 // src/platform/pricing.ts
-import { existsSync as existsSync25, readFileSync as readFileSync27 } from "node:fs";
+import { existsSync as existsSync25, readFileSync as readFileSync27, statSync as statSync4 } from "node:fs";
 import { join as join26 } from "node:path";
+var FALLBACK_PLANE = "litellm";
+var MODEL_ALIASES = {
+  "cursor-grok-4.5": "grok-4.5",
+  auto: "auto-cost"
+};
 var VENDOR_TO_NEUTRAL_POOL = {
   cursor_models: "provider_native",
   anthropic_models: "provider_native",
@@ -6987,7 +7054,7 @@ function stripMeta(table) {
   return rest;
 }
 function slugifyModelName(name) {
-  return name.trim().toLowerCase().replace(/[[\]]/g, "").replace(/\(.*?\)/g, "").replace(/[^a-z0-9.+]+/g, "-").replace(/^-+|-+$/g, "");
+  return name.trim().toLowerCase().replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[[\]]/g, "").replace(/[^a-z0-9.+]+/g, "-").replace(/^-+|-+$/g, "");
 }
 function candidatesFor(model, aliases) {
   const trimmed = model.trim();
@@ -7024,28 +7091,47 @@ function fuzzyFind(table, needle) {
   }
   return;
 }
-function overridesPath() {
+function cataloguePath() {
   return join26(runtimeHome(), "model-prices.json");
 }
-function providerNativePath(provider) {
-  return join26(runtimeHome(), `model-prices.${provider}.json`);
+function overridesPath() {
+  return join26(runtimeHome(), "model-prices.local.json");
 }
-function litellmPath() {
-  return join26(runtimeHome(), "model-prices.litellm.json");
+var cache = new Map;
+function readCatalogue(path) {
+  if (!existsSync25(path)) {
+    cache.delete(path);
+    return null;
+  }
+  const stat = statSync4(path);
+  const hit = cache.get(path);
+  if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) {
+    return hit.value;
+  }
+  const parsed = readJsonFile2(path);
+  if (parsed === null) {
+    cache.delete(path);
+    return null;
+  }
+  cache.set(path, { mtimeMs: stat.mtimeMs, size: stat.size, value: parsed });
+  return parsed;
 }
-function aliasesPath() {
-  return join26(runtimeHome(), "model-aliases.json");
+function loadCatalogue() {
+  return readCatalogue(cataloguePath()) ?? {};
+}
+function planeFor(catalogue, plane) {
+  return stripMeta(catalogue.planes?.[plane] ?? null);
 }
 function resolveModelPrice(provider, model) {
   const trimmed = model.trim();
   if (!trimmed) {
     return;
   }
-  const overrides = stripMeta(readJsonFile2(overridesPath()));
-  const native = stripMeta(readJsonFile2(providerNativePath(provider)));
-  const litellm = stripMeta(readJsonFile2(litellmPath()));
-  const aliases = readJsonFile2(aliasesPath()) ?? {};
-  const candidates = candidatesFor(trimmed, aliases);
+  const catalogue = loadCatalogue();
+  const overrides = stripMeta(readCatalogue(overridesPath()));
+  const native = provider ? planeFor(catalogue, provider) : {};
+  const litellm = planeFor(catalogue, FALLBACK_PLANE);
+  const candidates = candidatesFor(trimmed, MODEL_ALIASES);
   for (const id of candidates) {
     const entry = overrides[id];
     if (entry) {

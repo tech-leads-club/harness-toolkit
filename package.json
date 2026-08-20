@@ -33,9 +33,6 @@
     "!tools/test-env*",
     "!docs/decisions",
     "config.example.json",
-    "model-aliases.json",
-    "model-prices.cursor.json",
-    "model-prices.json",
     "NOTICE"
   ],
   "publishConfig": {

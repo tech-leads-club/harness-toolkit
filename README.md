@@ -373,7 +373,7 @@ See `tlc harness help architecture` or [`docs/architecture.md`](docs/architectur
 | `tlc harness attest` | Tamper-evident record of what each session ran under |
 | `tlc harness handoff` | Handoff state between turns and sessions — the sanctioned reader |
 | `tlc harness obs live` / `obs report` | Signal / session rollup |
-| `tlc harness prices refresh` / `lookup` | Cost catalogs |
+| `tlc harness prices refresh` / `lookup` | The machine's price catalogue |
 | `tlc harness lessons list` | Lessons across the three tiers, with staleness and effectiveness |
 | `tlc harness lessons add "…" [--ref path:symbol] [--global] [--pin]` | Write a lesson; `--ref` retires it when that stops resolving, `--pin` puts it ahead of ranking |
 | `tlc harness policy` / `policy accept <path>` | List a mid-session policy change; accept exactly those paths |
@@ -427,14 +427,17 @@ HARNESS_PLAN_DEVIATION: src/x.ts — the call site moved with the type
 Both are protocol lines on purpose. A gate that fires on free-English "done" fires on the word, not the
 claim.
 
-## Price catalogs
+## Prices
 
 ```bash
 tlc harness prices refresh
 tlc harness prices refresh cursor
-tlc harness prices refresh litellm
 tlc harness prices lookup <model-id> [provider]
 ```
+
+Catalogue: `~/.tlc/harness/model-prices.json`, one plane per billing origin. Overrides:
+`model-prices.local.json`. Neither is versioned. `install` fetches once, `update` refreshes past a 7-day TTL,
+`doctor` reports the age.
 
 See `tlc harness help prices` or [`docs/measure.md`](docs/measure.md).
 

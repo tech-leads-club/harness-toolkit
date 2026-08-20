@@ -14,6 +14,7 @@ import {
   providerConfigDirs,
   runtimeHome,
 } from "../src/platform/paths.ts";
+import { catalogueMeta, planeMeta } from "../src/platform/pricing.ts";
 import { type ColorName, createStyle, PLAIN, type Style, SYMBOLS } from "../src/platform/style.ts";
 import { mergeClaudeSettings } from "../src/providers/claude/claude.wiring.ts";
 import {
@@ -179,6 +180,38 @@ export function checkSkillLinks(
         detail: coreFacade.skill.linkHealthMessage(health),
       };
     });
+}
+
+/**
+ * How old the price catalogue on this machine is.
+ *
+ * hazard: nothing reported this. `docs/measure.md` claimed `doctor` "requires at least one provider catalog to be
+ * present" and no such check existed, while the catalogue this repository shipped was 23 days stale across three
+ * published versions. An absent catalogue is equally invisible: cost estimates simply come back null, which reads
+ * the same as a turn that spent nothing ([/decisions/ad-096.md](/decisions/ad-096.md)).
+ *
+ * invariant: a fresh catalogue is an `ok` row that states its age and asks for nothing. A warning that fires on a
+ * healthy install is not a warning ([/decisions/ad-034.md](/decisions/ad-034.md)).
+ */
+export function checkPrices(
+  now: Date = new Date(),
+  read = { meta: catalogueMeta, planes: planeMeta },
+): Check[] {
+  const state = coreFacade.pricing.freshness(read.meta(), now);
+  const planes = read.planes();
+  const named = Object.entries(planes)
+    .map(([plane, meta]) => `${plane} ${meta.count ?? 0}`)
+    .join(", ");
+  return [
+    {
+      level: state.state === "fresh" ? "ok" : "warn",
+      name: "prices",
+      detail:
+        state.state === "fresh"
+          ? `${coreFacade.pricing.freshnessMessage(state, "catalogue")}${named ? ` (${named})` : ""}`
+          : coreFacade.pricing.freshnessMessage(state, "catalogue"),
+    },
+  ];
 }
 
 export function checkRuntimePaths(home: string, platform: NodeJS.Platform): Check[] {
@@ -582,6 +615,7 @@ export function runChecks(ctx: DoctorContext): Check[] {
     ...checkProviders(ctx.registry, ctx.runtimeHome),
     ...checkProjectPolicy(ctx.root),
     ...checkCapabilities(ctx.root, ctx.runtimeHome),
+    ...checkPrices(),
     checkGlobalCommands(ctx.home),
   ];
 }

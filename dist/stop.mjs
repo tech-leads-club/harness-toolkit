@@ -5335,6 +5335,62 @@ function release(root, provider, session) {
   deletePresenceRecord(root, provider, session);
 }
 
+// src/core/pricing/pricing.freshness.ts
+var DEFAULT_TTL_DAYS = 7;
+var MS_PER_DAY = 86400000;
+function freshness(meta, now, ttlDays = DEFAULT_TTL_DAYS) {
+  if (meta === null) {
+    return { state: "absent" };
+  }
+  const stamp = meta.refreshedAt;
+  if (stamp === undefined || Number.isNaN(Date.parse(stamp))) {
+    return { state: "undated" };
+  }
+  const ageMs = now.getTime() - Date.parse(stamp);
+  const ageDays = Math.max(0, ageMs / MS_PER_DAY);
+  return ageDays > ttlDays ? { state: "stale", ageDays, refreshedAt: stamp } : { state: "fresh", ageDays, refreshedAt: stamp };
+}
+function shouldRefetch(state) {
+  return state.state === "absent" || state.state === "undated" || state.state === "stale";
+}
+function freshnessMessage(state, catalogue) {
+  switch (state.state) {
+    case "absent":
+      return `${catalogue}: not on this machine — run \`tlc harness prices refresh\``;
+    case "undated":
+      return `${catalogue}: present but carries no date — it will be refetched`;
+    case "fresh":
+      return `${catalogue}: ${describeAge(state.ageDays)} old`;
+    default:
+      return `${catalogue}: ${describeAge(state.ageDays)} old — run \`tlc harness prices refresh\``;
+  }
+}
+var MIN_RETAINED_RATIO = 0.5;
+function mayReplace(existingCount, incomingCount, minRatio = MIN_RETAINED_RATIO) {
+  if (incomingCount === 0) {
+    return { replace: false, reason: "parsed no entries at all — the upstream format has changed" };
+  }
+  if (existingCount === 0) {
+    return { replace: true, reason: `first catalogue, ${incomingCount} entries` };
+  }
+  if (incomingCount >= existingCount) {
+    return { replace: true, reason: `${existingCount} → ${incomingCount} entries` };
+  }
+  const retained = incomingCount / existingCount;
+  return retained >= minRatio ? { replace: true, reason: `${existingCount} → ${incomingCount} entries` } : {
+    replace: false,
+    reason: `would drop from ${existingCount} to ${incomingCount} entries, keeping the existing catalogue — the upstream format has probably changed`
+  };
+}
+function describeAge(ageDays) {
+  if (ageDays < 1) {
+    const hours = Math.max(1, Math.round(ageDays * 24));
+    return `${hours} hour${hours === 1 ? "" : "s"}`;
+  }
+  const days = Math.round(ageDays);
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
 // src/core/release/release.decisions.ts
 import { existsSync as existsSync17, readdirSync as readdirSync5, readFileSync as readFileSync19 } from "node:fs";
 import { join as join18 } from "node:path";
@@ -6831,6 +6887,12 @@ var coreFacade = {
   shim: {
     coversHandler,
     decideShim
+  },
+  pricing: {
+    freshness,
+    freshnessMessage,
+    mayReplace,
+    shouldRefetch
   },
   skill: {
     linkHealth,

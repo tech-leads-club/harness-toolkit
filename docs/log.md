@@ -23,6 +23,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-086** — The write lock read the wrong error code on Windows, in a module that already listed the right ones ([/decisions/ad-086.md](/decisions/ad-086.md))
 - **AD-087** — How the release works, and the six wrong shapes it took first ([/decisions/ad-087.md](/decisions/ad-087.md))
 - **AD-095** — Four defects about where things are written, and one of them made every hook run twice ([/decisions/ad-095.md](/decisions/ad-095.md))
+- **AD-096** — Prices are the machine's, in one file, and the parser that fills it was wrong twice ([/decisions/ad-096.md](/decisions/ad-096.md))
 
 ## 2026-08-17
 

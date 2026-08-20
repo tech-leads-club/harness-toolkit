@@ -103,6 +103,7 @@ Handoff section and a link back to this index.
 | [AD-086](/decisions/ad-086.md) | The write lock read the wrong error code on Windows, in a module that already listed the right ones | active |
 | [AD-087](/decisions/ad-087.md) | How the release works, and the six wrong shapes it took first | active |
 | [AD-095](/decisions/ad-095.md) | Four defects about where things are written, and one of them made every hook run twice | active |
+| [AD-096](/decisions/ad-096.md) | Prices are the machine's, in one file, and the parser that fills it was wrong twice | active |
 
 ## Archived
 

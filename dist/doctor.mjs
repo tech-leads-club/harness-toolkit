@@ -3,9 +3,9 @@ var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
 // tools/doctor.ts
 import { spawnSync } from "node:child_process";
-import { existsSync as existsSync29, lstatSync as lstatSync2, readFileSync as readFileSync31, readlinkSync, realpathSync as realpathSync4 } from "node:fs";
+import { existsSync as existsSync30, lstatSync as lstatSync2, readFileSync as readFileSync32, readlinkSync, realpathSync as realpathSync4 } from "node:fs";
 import { homedir as homedir3, platform as osPlatform } from "node:os";
-import { basename as basename5, dirname as dirname9, join as join30 } from "node:path";
+import { basename as basename5, dirname as dirname9, join as join31 } from "node:path";
 
 // bin/tlc-cli.ts
 import {
@@ -5288,6 +5288,62 @@ function release(root, provider, session) {
   deletePresenceRecord(root, provider, session);
 }
 
+// src/core/pricing/pricing.freshness.ts
+var DEFAULT_TTL_DAYS = 7;
+var MS_PER_DAY = 86400000;
+function freshness(meta, now, ttlDays = DEFAULT_TTL_DAYS) {
+  if (meta === null) {
+    return { state: "absent" };
+  }
+  const stamp = meta.refreshedAt;
+  if (stamp === undefined || Number.isNaN(Date.parse(stamp))) {
+    return { state: "undated" };
+  }
+  const ageMs = now.getTime() - Date.parse(stamp);
+  const ageDays = Math.max(0, ageMs / MS_PER_DAY);
+  return ageDays > ttlDays ? { state: "stale", ageDays, refreshedAt: stamp } : { state: "fresh", ageDays, refreshedAt: stamp };
+}
+function shouldRefetch(state) {
+  return state.state === "absent" || state.state === "undated" || state.state === "stale";
+}
+function freshnessMessage(state, catalogue) {
+  switch (state.state) {
+    case "absent":
+      return `${catalogue}: not on this machine — run \`tlc harness prices refresh\``;
+    case "undated":
+      return `${catalogue}: present but carries no date — it will be refetched`;
+    case "fresh":
+      return `${catalogue}: ${describeAge(state.ageDays)} old`;
+    default:
+      return `${catalogue}: ${describeAge(state.ageDays)} old — run \`tlc harness prices refresh\``;
+  }
+}
+var MIN_RETAINED_RATIO = 0.5;
+function mayReplace(existingCount, incomingCount, minRatio = MIN_RETAINED_RATIO) {
+  if (incomingCount === 0) {
+    return { replace: false, reason: "parsed no entries at all — the upstream format has changed" };
+  }
+  if (existingCount === 0) {
+    return { replace: true, reason: `first catalogue, ${incomingCount} entries` };
+  }
+  if (incomingCount >= existingCount) {
+    return { replace: true, reason: `${existingCount} → ${incomingCount} entries` };
+  }
+  const retained = incomingCount / existingCount;
+  return retained >= minRatio ? { replace: true, reason: `${existingCount} → ${incomingCount} entries` } : {
+    replace: false,
+    reason: `would drop from ${existingCount} to ${incomingCount} entries, keeping the existing catalogue — the upstream format has probably changed`
+  };
+}
+function describeAge(ageDays) {
+  if (ageDays < 1) {
+    const hours = Math.max(1, Math.round(ageDays * 24));
+    return `${hours} hour${hours === 1 ? "" : "s"}`;
+  }
+  const days = Math.round(ageDays);
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
 // src/core/release/release.decisions.ts
 import { existsSync as existsSync17, readdirSync as readdirSync5, readFileSync as readFileSync19 } from "node:fs";
 import { join as join18 } from "node:path";
@@ -6785,6 +6841,12 @@ var coreFacade = {
     coversHandler,
     decideShim
   },
+  pricing: {
+    freshness,
+    freshnessMessage,
+    mayReplace,
+    shouldRefetch
+  },
   skill: {
     linkHealth,
     linkHealthMessage,
@@ -7914,6 +7976,52 @@ function isCursorWired(targetPath) {
 }
 if (false) {}
 
+// src/platform/pricing.ts
+import { existsSync as existsSync29, readFileSync as readFileSync31, statSync as statSync4 } from "node:fs";
+import { join as join30 } from "node:path";
+function readJsonFile2(path) {
+  if (!existsSync29(path)) {
+    return null;
+  }
+  try {
+    return JSON.parse(readFileSync31(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+function cataloguePath() {
+  return join30(runtimeHome(), "model-prices.json");
+}
+var cache = new Map;
+function readCatalogue(path) {
+  if (!existsSync29(path)) {
+    cache.delete(path);
+    return null;
+  }
+  const stat = statSync4(path);
+  const hit = cache.get(path);
+  if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) {
+    return hit.value;
+  }
+  const parsed = readJsonFile2(path);
+  if (parsed === null) {
+    cache.delete(path);
+    return null;
+  }
+  cache.set(path, { mtimeMs: stat.mtimeMs, size: stat.size, value: parsed });
+  return parsed;
+}
+function loadCatalogue() {
+  return readCatalogue(cataloguePath()) ?? {};
+}
+function planeMeta() {
+  return loadCatalogue()._meta?.planes ?? {};
+}
+function catalogueMeta() {
+  const parsed = readCatalogue(cataloguePath());
+  return parsed === null ? null : parsed._meta ?? {};
+}
+
 // tools/doctor.ts
 function plural(count, word) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -7987,7 +8095,7 @@ function checkSkillLinks(home, providerDirs = providerConfigDirs(), probe = {
       }
     }
   },
-  exists: existsSync29,
+  exists: existsSync30,
   realpath: (path) => {
     try {
       return realpathSync4(path);
@@ -7996,8 +8104,8 @@ function checkSkillLinks(home, providerDirs = providerConfigDirs(), probe = {
     }
   }
 }) {
-  return providerDirs.filter((dir) => existsSync29(dir)).map((dir) => {
-    const health = coreFacade.skill.linkHealth(join30(dir, "skills", "harness-init"), home, probe);
+  return providerDirs.filter((dir) => existsSync30(dir)).map((dir) => {
+    const health = coreFacade.skill.linkHealth(join31(dir, "skills", "harness-init"), home, probe);
     return {
       level: health.state === "ok" ? "ok" : "fail",
       name: `init skill (${basename5(dir)})`,
@@ -8005,22 +8113,34 @@ function checkSkillLinks(home, providerDirs = providerConfigDirs(), probe = {
     };
   });
 }
+function checkPrices(now = new Date, read = { meta: catalogueMeta, planes: planeMeta }) {
+  const state = coreFacade.pricing.freshness(read.meta(), now);
+  const planes = read.planes();
+  const named = Object.entries(planes).map(([plane, meta]) => `${plane} ${meta.count ?? 0}`).join(", ");
+  return [
+    {
+      level: state.state === "fresh" ? "ok" : "warn",
+      name: "prices",
+      detail: state.state === "fresh" ? `${coreFacade.pricing.freshnessMessage(state, "catalogue")}${named ? ` (${named})` : ""}` : coreFacade.pricing.freshnessMessage(state, "catalogue")
+    }
+  ];
+}
 function checkRuntimePaths(home, platform) {
-  const launcher = join30(home, "bin", "tlc-exec.mjs");
-  const distSample = join30(home, "dist", "stop.mjs");
-  const cliLink = join30(homedir3(), ".local", "bin", platform === "win32" ? "tlc.cmd" : "tlc");
+  const launcher = join31(home, "bin", "tlc-exec.mjs");
+  const distSample = join31(home, "dist", "stop.mjs");
+  const cliLink = join31(homedir3(), ".local", "bin", platform === "win32" ? "tlc.cmd" : "tlc");
   return [
     { level: "ok", name: "platform", detail: platform },
-    { level: existsSync29(launcher) ? "ok" : "fail", name: "global runtime", detail: home },
+    { level: existsSync30(launcher) ? "ok" : "fail", name: "global runtime", detail: home },
     runtimeOwnershipCheck(home),
     {
-      level: existsSync29(distSample) ? "ok" : "fail",
+      level: existsSync30(distSample) ? "ok" : "fail",
       name: "dist bundles",
-      detail: existsSync29(distSample) ? join30(home, "dist") : "missing — run: tlc harness build"
+      detail: existsSync30(distSample) ? join31(home, "dist") : "missing — run: tlc harness build"
     },
-    { level: existsSync29(launcher) ? "ok" : "fail", name: "portable launcher", detail: launcher },
+    { level: existsSync30(launcher) ? "ok" : "fail", name: "portable launcher", detail: launcher },
     {
-      level: existsSync29(cliLink) || existsSync29(join30(home, "bin", platform === "win32" ? "tlc.cmd" : "tlc")) ? "ok" : "fail",
+      level: existsSync30(cliLink) || existsSync30(join31(home, "bin", platform === "win32" ? "tlc.cmd" : "tlc")) ? "ok" : "fail",
       name: "CLI on PATH",
       detail: cliLink
     }
@@ -8041,15 +8161,15 @@ function wiringProblems(wiring) {
   if (wiring.strategy !== "replace") {
     return [];
   }
-  const text = existsSync29(wiring.target) ? readFileSync31(wiring.target, "utf8") : null;
-  return cursorWiringProblems(text, { launcherPath: launcherPathOf(wiring) }, existsSync29);
+  const text = existsSync30(wiring.target) ? readFileSync32(wiring.target, "utf8") : null;
+  return cursorWiringProblems(text, { launcherPath: launcherPathOf(wiring) }, existsSync30);
 }
 function launcherPathOf(wiring) {
   const first = wiring.entries[0];
   return first?.args.find((arg) => arg.endsWith(".mjs")) ?? "";
 }
 function providerWiringStatus(wiring) {
-  if (!existsSync29(dirname9(wiring.target))) {
+  if (!existsSync30(dirname9(wiring.target))) {
     return "not-installed";
   }
   if (wiring.strategy === "replace") {
@@ -8058,12 +8178,12 @@ function providerWiringStatus(wiring) {
     }
     return wiringProblems(wiring).length === 0 ? "wired" : "detected-but-unwired";
   }
-  const existingText = existsSync29(wiring.target) ? readFileSync31(wiring.target, "utf8") : null;
+  const existingText = existsSync30(wiring.target) ? readFileSync32(wiring.target, "utf8") : null;
   const result = mergeClaudeSettings(existingText, wiring.entries);
   return result.ok && !result.changed ? "wired" : "detected-but-unwired";
 }
 function checkProviders(registry, home) {
-  const launcherPath = join30(home, "bin", "tlc-exec.mjs");
+  const launcherPath = join31(home, "bin", "tlc-exec.mjs");
   return registry.map((provider) => {
     const wiring = provider.wiring({ launcherPath });
     const status = providerWiringStatus(wiring);
@@ -8247,12 +8367,12 @@ function checkProjectPolicy(root) {
     {
       level: "ok",
       name: "project policy",
-      detail: existsSync29(configPath) ? configPath : "missing — run: tlc harness init"
+      detail: existsSync30(configPath) ? configPath : "missing — run: tlc harness init"
     },
     {
       level: "ok",
       name: "state dir",
-      detail: existsSync29(stateDir) ? stateDir : `${stateDir} (created on first session)`
+      detail: existsSync30(stateDir) ? stateDir : `${stateDir} (created on first session)`
     },
     checkPosture(root),
     ...checkObservedRails(root),
@@ -8263,8 +8383,8 @@ function checkProjectPolicy(root) {
   ];
 }
 function checkGlobalCommands(home) {
-  const globalCommands = join30(home, ".cursor", "commands");
-  if (!existsSync29(globalCommands)) {
+  const globalCommands = join31(home, ".cursor", "commands");
+  if (!existsSync30(globalCommands)) {
     return {
       level: "ok",
       name: "global commands dir",
@@ -8288,6 +8408,7 @@ function runChecks(ctx) {
     ...checkProviders(ctx.registry, ctx.runtimeHome),
     ...checkProjectPolicy(ctx.root),
     ...checkCapabilities(ctx.root, ctx.runtimeHome),
+    ...checkPrices(),
     checkGlobalCommands(ctx.home)
   ];
 }
@@ -8368,6 +8489,7 @@ export {
   checkRuntimePaths,
   checkProviders,
   checkProjectPolicy,
+  checkPrices,
   checkNodeVersion,
   checkLessonHealth,
   checkId,

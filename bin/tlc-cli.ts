@@ -867,22 +867,24 @@ export function helpText(style: Style = PLAIN): string {
 
 export function pricesHelpScreen(): Screen {
   return {
-    title: "price catalogs",
+    title: "prices",
     sections: [
       {
-        lines: `  tlc harness prices refresh [all|cursor|litellm]
+        lines: `  tlc harness prices refresh [all|cursor|litellm] [--if-stale]
   tlc harness prices lookup <model-id>
 
-  refresh / refresh all   Cursor catalog + LiteLLM fallback
-  refresh cursor          model-prices.cursor.json (tracked)
-  refresh litellm         model-prices.litellm.json (local)
+  refresh / refresh all   both planes of model-prices.json
+  refresh cursor          the provider's own rates
+  refresh litellm         the vendors' list prices
+  --if-stale              fetch only past the 7-day TTL
   lookup <model-id>       catalog key, pool, USD for 1M in + 1M out
 
-  Resolution: overrides → Cursor → LiteLLM → null
+  Catalogue: <runtime home>/model-prices.json — fetched per machine, never versioned
+  Overrides: <runtime home>/model-prices.local.json — yours, hand-written
   Documentation: tlc harness help prices`.split("\n"),
       },
     ],
-    footer: "resolution: local overrides → the provider's own catalog → LiteLLM → null",
+    footer: "resolution: your overrides → the asking provider's plane → the vendor plane → null",
   };
 }
 
@@ -1328,6 +1330,17 @@ function runUpdate(root: string): never {
 
   announceNewCapabilities(root, dest);
   announceLandedDecisions(root, dest, revisionBefore);
+
+  /**
+   * why: an update is the moment a machine is already reaching the network, so it is the natural place to notice
+   * that its prices are a week old. `--if-stale` is what keeps this from being a fetch on every update, and the
+   * failure is tolerated — a rate that could not be fetched is not a reason for a failed update
+   * ([/decisions/ad-096.md](/decisions/ad-096.md)).
+   */
+  spawnSync(execBinPath(), ["refresh-model-prices", "all", "--if-stale"], {
+    stdio: "inherit",
+    env: { ...process.env, TLC_PROJECT_DIR: root },
+  });
 
   console.log("update: running doctor…");
   const doctor = spawnSync(execBinPath(), ["doctor"], {

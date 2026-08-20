@@ -2,11 +2,36 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, test } from "node:test";
+import { after, afterEach, before, test } from "node:test";
 import { projectConfigPath } from "../../src/platform/paths.ts";
 import { checkSubagentAllowlist } from "../doctor.ts";
 
 const cleanup: string[] = [];
+
+/**
+ * hazard: the merged policy falls back to the runtime home's `config.json`, so this read the contributor's own
+ * settings. On a machine whose config names its own `subagents.allowedModels`, "an omitted allowlist under
+ * enforcement is the same fault" reported no fault — the list came from the operator, not from the fixture. Green
+ * in CI, where there is no such file, and red on the machine of whoever is working on it
+ * ([/decisions/ad-095.md](/decisions/ad-095.md)).
+ */
+let runtimeSandbox: string;
+let previousHome: string | undefined;
+
+before(() => {
+  runtimeSandbox = mkdtempSync(join(tmpdir(), "tlc-doctor-allow-home-"));
+  previousHome = process.env.TLC_HOME;
+  process.env.TLC_HOME = runtimeSandbox;
+});
+
+after(() => {
+  if (previousHome === undefined) {
+    delete process.env.TLC_HOME;
+  } else {
+    process.env.TLC_HOME = previousHome;
+  }
+  rmSync(runtimeSandbox, { recursive: true, force: true });
+});
 
 afterEach(() => {
   for (const dir of cleanup.splice(0)) {

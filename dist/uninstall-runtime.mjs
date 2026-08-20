@@ -979,9 +979,6 @@ var RUNTIME_PAYLOAD = [
   "src",
   "tools",
   "config.example.json",
-  "model-aliases.json",
-  "model-prices.cursor.json",
-  "model-prices.json",
   "package.json"
 ];
 var OPERATOR_OWNED = ["config.json", "state", "flags"];

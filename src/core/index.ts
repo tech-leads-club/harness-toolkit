@@ -44,6 +44,7 @@ export type {
   ProviderScoped,
 } from "./policy/policy.types.ts";
 export type { PresenceRecord } from "./presence/presence.types.ts";
+export type { CatalogueMeta, Freshness } from "./pricing/pricing.freshness.ts";
 export type { ShellEffectClass } from "./shell-policy/shell-policy.types.ts";
 export type { ProviderSettings } from "./shim/shim.precedence.ts";
 export type { ShipClaim, ShipClaimKind, ShipLedgerEvent, ShipLedgerRow } from "./ship/ship.types.ts";

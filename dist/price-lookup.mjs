@@ -24,7 +24,7 @@ function writeStdout(text) {
 }
 
 // src/platform/pricing.ts
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join as join2 } from "node:path";
 
 // src/platform/paths.ts
@@ -38,6 +38,11 @@ function runtimeHome(env = process.env) {
 }
 
 // src/platform/pricing.ts
+var FALLBACK_PLANE = "litellm";
+var MODEL_ALIASES = {
+  "cursor-grok-4.5": "grok-4.5",
+  auto: "auto-cost"
+};
 function readJsonFile(path) {
   if (!existsSync(path)) {
     return null;
@@ -56,7 +61,7 @@ function stripMeta(table) {
   return rest;
 }
 function slugifyModelName(name) {
-  return name.trim().toLowerCase().replace(/[[\]]/g, "").replace(/\(.*?\)/g, "").replace(/[^a-z0-9.+]+/g, "-").replace(/^-+|-+$/g, "");
+  return name.trim().toLowerCase().replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[[\]]/g, "").replace(/[^a-z0-9.+]+/g, "-").replace(/^-+|-+$/g, "");
 }
 function candidatesFor(model, aliases) {
   const trimmed = model.trim();
@@ -93,28 +98,47 @@ function fuzzyFind(table, needle) {
   }
   return;
 }
-function overridesPath() {
+function cataloguePath() {
   return join2(runtimeHome(), "model-prices.json");
 }
-function providerNativePath(provider) {
-  return join2(runtimeHome(), `model-prices.${provider}.json`);
+function overridesPath() {
+  return join2(runtimeHome(), "model-prices.local.json");
 }
-function litellmPath() {
-  return join2(runtimeHome(), "model-prices.litellm.json");
+var cache = new Map;
+function readCatalogue(path) {
+  if (!existsSync(path)) {
+    cache.delete(path);
+    return null;
+  }
+  const stat = statSync(path);
+  const hit = cache.get(path);
+  if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) {
+    return hit.value;
+  }
+  const parsed = readJsonFile(path);
+  if (parsed === null) {
+    cache.delete(path);
+    return null;
+  }
+  cache.set(path, { mtimeMs: stat.mtimeMs, size: stat.size, value: parsed });
+  return parsed;
 }
-function aliasesPath() {
-  return join2(runtimeHome(), "model-aliases.json");
+function loadCatalogue() {
+  return readCatalogue(cataloguePath()) ?? {};
+}
+function planeFor(catalogue, plane) {
+  return stripMeta(catalogue.planes?.[plane] ?? null);
 }
 function resolveModelPrice(provider, model) {
   const trimmed = model.trim();
   if (!trimmed) {
     return;
   }
-  const overrides = stripMeta(readJsonFile(overridesPath()));
-  const native = stripMeta(readJsonFile(providerNativePath(provider)));
-  const litellm = stripMeta(readJsonFile(litellmPath()));
-  const aliases = readJsonFile(aliasesPath()) ?? {};
-  const candidates = candidatesFor(trimmed, aliases);
+  const catalogue = loadCatalogue();
+  const overrides = stripMeta(readCatalogue(overridesPath()));
+  const native = provider ? planeFor(catalogue, provider) : {};
+  const litellm = planeFor(catalogue, FALLBACK_PLANE);
+  const candidates = candidatesFor(trimmed, MODEL_ALIASES);
   for (const id of candidates) {
     const entry = overrides[id];
     if (entry) {

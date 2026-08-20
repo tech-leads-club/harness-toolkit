@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
 
 // tools/install-runtime.ts
+import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join as join2, relative, resolve, sep } from "node:path";
 
@@ -864,9 +865,6 @@ var RUNTIME_PAYLOAD = [
   "src",
   "tools",
   "config.example.json",
-  "model-aliases.json",
-  "model-prices.cursor.json",
-  "model-prices.json",
   "package.json"
 ];
 var OPERATOR_OWNED = ["config.json", "state", "flags"];
@@ -949,11 +947,21 @@ function installDest(env = process.env) {
   }
   return runtimeHomeWasChosen(env) ? runtimeHome(env) : conventionalRuntimeHome();
 }
+function fetchPrices(dest, spawn = spawnSync) {
+  const result = spawn(process.execPath, [join2(dest, "bin", "tlc-exec.mjs"), "refresh-model-prices"], {
+    stdio: "inherit",
+    env: { ...process.env, TLC_HOME: dest }
+  });
+  if ((result.status ?? 1) !== 0) {
+    console.log("install: prices not fetched — cost estimates stay empty until `tlc harness prices refresh`");
+  }
+}
 if (__require.main == __require.module) {
   const source = originRoot();
   const dest = installDest();
   const report = installRuntime(source, dest);
   console.log(installReportText(report, createStyle()));
+  fetchPrices(dest);
   process.exit(report.missing.length > 0 ? 1 : 0);
 }
 export {
@@ -963,6 +971,7 @@ export {
   installRuntime,
   installReportText,
   installDest,
+  fetchPrices,
   RUNTIME_PAYLOAD,
   OPERATOR_OWNED,
   NOT_SHIPPED

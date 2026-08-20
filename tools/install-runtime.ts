@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { NPM_MARKER, NPM_PACKAGE } from "../bin/tlc-cli.ts";
@@ -23,9 +24,6 @@ export const RUNTIME_PAYLOAD = [
   "src",
   "tools",
   "config.example.json",
-  "model-aliases.json",
-  "model-prices.cursor.json",
-  "model-prices.json",
   "package.json",
 ] as const;
 
@@ -155,10 +153,30 @@ export function installDest(env: NodeJS.ProcessEnv = process.env): string {
   return runtimeHomeWasChosen(env) ? runtimeHome(env) : conventionalRuntimeHome();
 }
 
+/**
+ * The first price fetch, on the machine, at install time.
+ *
+ * why: prices are no longer in the package, so a fresh install has no catalogue at all until something fetches
+ * one. This is that something ([/decisions/ad-096.md](/decisions/ad-096.md)).
+ *
+ * invariant: never fails the install. An operator installing behind a proxy, on a plane, or against a page that
+ * moved still gets a working harness — they get no cost figures until the next refresh, which `doctor` reports.
+ */
+export function fetchPrices(dest: string, spawn = spawnSync): void {
+  const result = spawn(process.execPath, [join(dest, "bin", "tlc-exec.mjs"), "refresh-model-prices"], {
+    stdio: "inherit",
+    env: { ...process.env, TLC_HOME: dest },
+  });
+  if ((result.status ?? 1) !== 0) {
+    console.log("install: prices not fetched — cost estimates stay empty until `tlc harness prices refresh`");
+  }
+}
+
 if (import.meta.main) {
   const source = originRoot();
   const dest = installDest();
   const report = installRuntime(source, dest);
   console.log(installReportText(report, createStyle()));
+  fetchPrices(dest);
   process.exit(report.missing.length > 0 ? 1 : 0);
 }

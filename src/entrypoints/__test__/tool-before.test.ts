@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { test } from "node:test";
+import { after, before, test } from "node:test";
 import { coreFacade } from "../../core/index.ts";
 import { projectConfigPath } from "../../platform/paths.ts";
 import { runHandler } from "../run.ts";
@@ -11,6 +11,33 @@ import { toolBeforeHandler } from "../tool-before.ts";
 function tempRoot(): string {
   return mkdtempSync(join(tmpdir(), "tlc-tool-before-"));
 }
+
+/**
+ * hazard: these handlers read the runtime home's `config.json`, so the operator's own settings decided the
+ * outcome. Measured: a contributor whose config sets `subagents.enforceAllowlist` with their own model list saw
+ * "a Task spawn on an unblocked, allowlisted model is allowed" fail on a healthy tree, because the allowlist under
+ * test was theirs and not the default. It passes in CI, where no such file exists — which is the worst version of
+ * this: red for the contributor, green for the pipeline ([/decisions/ad-095.md](/decisions/ad-095.md)).
+ *
+ * invariant: the runtime home is a directory this file owns for the length of its run.
+ */
+let runtimeSandbox: string;
+let previousHome: string | undefined;
+
+before(() => {
+  runtimeSandbox = mkdtempSync(join(tmpdir(), "tlc-tool-before-home-"));
+  previousHome = process.env.TLC_HOME;
+  process.env.TLC_HOME = runtimeSandbox;
+});
+
+after(() => {
+  if (previousHome === undefined) {
+    delete process.env.TLC_HOME;
+  } else {
+    process.env.TLC_HOME = previousHome;
+  }
+  rmSync(runtimeSandbox, { recursive: true, force: true });
+});
 
 function stdinOf(text: string) {
   return { readStdin: () => Promise.resolve(text) };

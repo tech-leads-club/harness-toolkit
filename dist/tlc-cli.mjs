@@ -5284,6 +5284,62 @@ function release(root, provider, session) {
   deletePresenceRecord(root, provider, session);
 }
 
+// src/core/pricing/pricing.freshness.ts
+var DEFAULT_TTL_DAYS = 7;
+var MS_PER_DAY = 86400000;
+function freshness(meta, now, ttlDays = DEFAULT_TTL_DAYS) {
+  if (meta === null) {
+    return { state: "absent" };
+  }
+  const stamp = meta.refreshedAt;
+  if (stamp === undefined || Number.isNaN(Date.parse(stamp))) {
+    return { state: "undated" };
+  }
+  const ageMs = now.getTime() - Date.parse(stamp);
+  const ageDays = Math.max(0, ageMs / MS_PER_DAY);
+  return ageDays > ttlDays ? { state: "stale", ageDays, refreshedAt: stamp } : { state: "fresh", ageDays, refreshedAt: stamp };
+}
+function shouldRefetch(state) {
+  return state.state === "absent" || state.state === "undated" || state.state === "stale";
+}
+function freshnessMessage(state, catalogue) {
+  switch (state.state) {
+    case "absent":
+      return `${catalogue}: not on this machine — run \`tlc harness prices refresh\``;
+    case "undated":
+      return `${catalogue}: present but carries no date — it will be refetched`;
+    case "fresh":
+      return `${catalogue}: ${describeAge(state.ageDays)} old`;
+    default:
+      return `${catalogue}: ${describeAge(state.ageDays)} old — run \`tlc harness prices refresh\``;
+  }
+}
+var MIN_RETAINED_RATIO = 0.5;
+function mayReplace(existingCount, incomingCount, minRatio = MIN_RETAINED_RATIO) {
+  if (incomingCount === 0) {
+    return { replace: false, reason: "parsed no entries at all — the upstream format has changed" };
+  }
+  if (existingCount === 0) {
+    return { replace: true, reason: `first catalogue, ${incomingCount} entries` };
+  }
+  if (incomingCount >= existingCount) {
+    return { replace: true, reason: `${existingCount} → ${incomingCount} entries` };
+  }
+  const retained = incomingCount / existingCount;
+  return retained >= minRatio ? { replace: true, reason: `${existingCount} → ${incomingCount} entries` } : {
+    replace: false,
+    reason: `would drop from ${existingCount} to ${incomingCount} entries, keeping the existing catalogue — the upstream format has probably changed`
+  };
+}
+function describeAge(ageDays) {
+  if (ageDays < 1) {
+    const hours = Math.max(1, Math.round(ageDays * 24));
+    return `${hours} hour${hours === 1 ? "" : "s"}`;
+  }
+  const days = Math.round(ageDays);
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
 // src/core/release/release.decisions.ts
 import { existsSync as existsSync17, readdirSync as readdirSync5, readFileSync as readFileSync19 } from "node:fs";
 import { join as join18 } from "node:path";
@@ -6781,6 +6837,12 @@ var coreFacade = {
     coversHandler,
     decideShim
   },
+  pricing: {
+    freshness,
+    freshnessMessage,
+    mayReplace,
+    shouldRefetch
+  },
   skill: {
     linkHealth,
     linkHealthMessage,
@@ -7576,23 +7638,25 @@ function helpText(style = PLAIN) {
 }
 function pricesHelpScreen() {
   return {
-    title: "price catalogs",
+    title: "prices",
     sections: [
       {
-        lines: `  tlc harness prices refresh [all|cursor|litellm]
+        lines: `  tlc harness prices refresh [all|cursor|litellm] [--if-stale]
   tlc harness prices lookup <model-id>
 
-  refresh / refresh all   Cursor catalog + LiteLLM fallback
-  refresh cursor          model-prices.cursor.json (tracked)
-  refresh litellm         model-prices.litellm.json (local)
+  refresh / refresh all   both planes of model-prices.json
+  refresh cursor          the provider's own rates
+  refresh litellm         the vendors' list prices
+  --if-stale              fetch only past the 7-day TTL
   lookup <model-id>       catalog key, pool, USD for 1M in + 1M out
 
-  Resolution: overrides → Cursor → LiteLLM → null
+  Catalogue: <runtime home>/model-prices.json — fetched per machine, never versioned
+  Overrides: <runtime home>/model-prices.local.json — yours, hand-written
   Documentation: tlc harness help prices`.split(`
 `)
       }
     ],
-    footer: "resolution: local overrides → the provider's own catalog → LiteLLM → null"
+    footer: "resolution: your overrides → the asking provider's plane → the vendor plane → null"
   };
 }
 function pricesHelpText(style = PLAIN) {
@@ -7910,6 +7974,10 @@ function runUpdate(root) {
   }
   announceNewCapabilities(root, dest);
   announceLandedDecisions(root, dest, revisionBefore);
+  spawnSync(execBinPath(), ["refresh-model-prices", "all", "--if-stale"], {
+    stdio: "inherit",
+    env: { ...process.env, TLC_PROJECT_DIR: root }
+  });
   console.log("update: running doctor…");
   const doctor = spawnSync(execBinPath(), ["doctor"], {
     stdio: "inherit",

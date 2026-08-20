@@ -255,12 +255,18 @@ test("cost estimation resolves usage and cost from a Claude transcript at tool.a
     process.env.TLC_HOME = priceHome;
     writeFileSync(
       join(priceHome, "model-prices.json"),
+      // the one catalogue, with the vendor's own rates in the fallback plane
       JSON.stringify({
-        "claude-sonnet-5": {
-          promptPer1M: 3,
-          completionPer1M: 15,
-          pool: "provider_native",
-          billing: "metered",
+        _meta: { refreshedAt: "2026-08-19T00:00:00.000Z" },
+        planes: {
+          litellm: {
+            "claude-sonnet-5": {
+              promptPer1M: 3,
+              completionPer1M: 15,
+              pool: "provider_native",
+              billing: "metered",
+            },
+          },
         },
       }),
     );
