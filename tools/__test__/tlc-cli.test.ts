@@ -386,6 +386,12 @@ describe("route — dispatch table", () => {
     assert.deepEqual(route(["prices", "lookup", "gpt-5"]), {
       kind: "prices-lookup",
       modelId: "gpt-5",
+      provider: "",
+    });
+    assert.deepEqual(route(["prices", "lookup", "gpt-5", "cursor"]), {
+      kind: "prices-lookup",
+      modelId: "gpt-5",
+      provider: "cursor",
     });
     assert.throws(() => route(["prices", "lookup"]), UsageError);
   });
@@ -1152,5 +1158,32 @@ describe("install runs from the package, not from the runtime it replaces", () =
 
     assert.equal(action.kind, "install");
     assert.deepEqual(action.kind === "install" ? action.args : [], ["--link"]);
+  });
+});
+
+/**
+ * hazard: the tool parsed `[provider]` and this route dropped it, so every lookup ran with an empty provider —
+ * the one input that matches no provider plane. `prices lookup composer-2.5 cursor` answered `source: missing`
+ * for a model priced `$0.5/$2.5`, while calling the tool directly resolved it. The help and `docs/measure.md`
+ * documented the argument the whole time ([/decisions/ad-098.md](/decisions/ad-098.md)).
+ */
+describe("prices lookup carries the provider", () => {
+  test("AC the provider is routed when given", () => {
+    const action = route(["prices", "lookup", "composer-2.5", "cursor"]);
+
+    assert.equal(action.kind, "prices-lookup");
+    assert.equal(action.kind === "prices-lookup" ? action.provider : "?", "cursor");
+    assert.equal(action.kind === "prices-lookup" ? action.modelId : "?", "composer-2.5");
+  });
+
+  /** invariant: absent means the vendor plane, not a broken lookup. */
+  test("AC no provider is an empty provider, and still routes", () => {
+    const action = route(["prices", "lookup", "claude-sonnet-4-5"]);
+
+    assert.equal(action.kind === "prices-lookup" ? action.provider : "?", "");
+  });
+
+  test("AC the usage names the optional provider", () => {
+    assert.throws(() => route(["prices", "lookup"]), /<model-id> \[provider\]/);
   });
 });

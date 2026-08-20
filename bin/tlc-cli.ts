@@ -1048,7 +1048,7 @@ export type Action =
   | { kind: "policy"; accept: string[] }
   | { kind: "prices-help" }
   | { kind: "prices-refresh"; scope: string }
-  | { kind: "prices-lookup"; modelId: string }
+  | { kind: "prices-lookup"; modelId: string; provider: string }
   | { kind: "entry"; entry: string; args: string[] }
   | { kind: "install"; args: string[] }
   | { kind: "unknown"; cmd: string };
@@ -1146,10 +1146,17 @@ export function route(args: string[]): Action {
         const modelId = args[2];
         if (!modelId) {
           throw new UsageError(
-            "usage: tlc harness prices lookup <model-id>\ndetail: tlc harness help prices",
+            "usage: tlc harness prices lookup <model-id> [provider]\ndetail: tlc harness help prices",
           );
         }
-        return { kind: "prices-lookup", modelId };
+        /**
+         * hazard: the provider was parsed by the tool and dropped by this route, so every lookup ran with an empty
+         * provider — which is the one input that matches no provider plane. `prices lookup composer-2.5 cursor`
+         * answered `source: missing` for a model priced `$0.5/$2.5`, while the same call straight to the tool
+         * resolved it. The help and `docs/measure.md` had documented the argument all along
+         * ([/decisions/ad-098.md](/decisions/ad-098.md)).
+         */
+        return { kind: "prices-lookup", modelId, provider: args[3] ?? "" };
       }
       throw new UsageError(
         "usage: tlc harness prices refresh [all|cursor|litellm] | tlc harness prices lookup <model>\ndetail: tlc harness help prices",
@@ -1644,7 +1651,12 @@ function main(argv: string[]): void {
       runEntry("refresh-model-prices", [action.scope], root);
       break;
     case "prices-lookup":
-      runEntry("price-lookup", json ? [action.modelId, JSON_FLAG] : [action.modelId], root);
+      runEntry(
+        "price-lookup",
+        // invariant: the provider reaches the tool, or the lookup can only ever match the vendor plane.
+        [action.modelId, ...(action.provider ? [action.provider] : []), ...(json ? [JSON_FLAG] : [])],
+        root,
+      );
       break;
     case "install":
       runInstall(action.args, root);

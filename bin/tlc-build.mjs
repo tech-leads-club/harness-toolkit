@@ -49,10 +49,19 @@ function sourcesIn(dir) {
  * one program that is allowed to run it. Splitting can come back when no library module carries that guard, and
  * not before — the size win is real and it is not worth a CLI that cannot install.
  */
+/**
+ * why `--minify`: one bundle per entry means the core is inlined 24 times, and minifying is the part of that cost
+ * that can be removed without touching module identity. Measured: `dist/` 5.0 MB → 3.0 MB, `stop.mjs` 281,400 →
+ * 164,937 bytes. Splitting would take it to 548 KB and cannot be done until no library module self-executes
+ * ([/decisions/ad-098.md](/decisions/ad-098.md)).
+ *
+ * invariant: safe because nothing here reads a function or class name at runtime, and no stack trace reaches an
+ * operator — both checked before turning it on. Renaming locals is all this does.
+ */
 function buildOne(source, out) {
   const result = spawnSync(
     "bun",
-    ["build", "--target=node", "--format=esm", `--outfile=${out}`, source],
+    ["build", "--target=node", "--format=esm", "--minify", `--outfile=${out}`, source],
     { stdio: "inherit" },
   );
   if (result.error?.code === "ENOENT") {
