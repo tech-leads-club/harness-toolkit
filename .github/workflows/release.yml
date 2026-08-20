@@ -57,8 +57,14 @@ jobs:
   # why: deciding BEFORE asking. The approval used to be the first job, which meant every push to `main` requested
   # one — including the ones that release nothing, which is most of them. Reading the plan first costs a checkout
   # and makes the approval mean something: it is only requested when there is a version to publish.
+  #
+  # why no `needs: gate`: this job reads git history and writes nothing, so waiting for a four-leg matrix to learn
+  # that a `docs` commit releases nothing spends four minutes on an answer that takes twenty seconds. `release`
+  # still needs both, so nothing is published behind a red gate
+  # ([/decisions/ad-097.md](/decisions/ad-097.md)).
   decide:
-    needs: gate
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
