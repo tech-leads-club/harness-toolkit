@@ -6,6 +6,10 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## v0.3.3
+
+No decision records landed in this release.
+
 ## v0.3.2
 
 - **AD-098** — Splitting is reverted: a shared chunk ran the CLI's main
