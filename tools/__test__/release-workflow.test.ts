@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -79,5 +79,81 @@ describe("the release commit stages only paths git will accept", () => {
   test("AC a failed push names the recovery command", () => {
     assert.match(workflow, /npm has \$\{VERSION\} and main does not/);
     assert.match(workflow, /git push --atomic origin HEAD:main/);
+  });
+});
+
+/**
+ * The bundles the launcher runs.
+ *
+ * hazard: `--splitting` turns each entry into a small file plus shared chunks it imports by relative path. An
+ * entry that lost its chunk is a hook that dies on the machine it fires on, and nothing else in this repository
+ * would notice — the suite imports source, not `dist/`
+ * ([/decisions/ad-098.md](/decisions/ad-098.md)).
+ *
+ * invariant: one flat `dist/<entry>.mjs` per source entrypoint, because that is what the launcher resolves and
+ * what the hooks on every installed machine reach through it.
+ */
+describe("the built bundles", () => {
+  const dist = join(repoRoot, "dist");
+
+  function sources(): string[] {
+    const names = [
+      ...readdirSync(join(repoRoot, "src", "entrypoints")),
+      ...readdirSync(join(repoRoot, "tools")),
+    ]
+      .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
+      .map((name) => name.replace(/\.ts$/, ""));
+    return [...names, "tlc-cli"];
+  }
+
+  test("AC every entrypoint has a flat bundle the launcher can name", () => {
+    if (!existsSync(dist)) {
+      return; // a clone that has not built yet; CI builds before the gate
+    }
+    const missing = sources().filter((name) => !existsSync(join(dist, `${name}.mjs`)));
+
+    assert.deepEqual(missing, [], "a source entrypoint with no bundle is a hook that cannot run under Node");
+  });
+
+  /** invariant: every chunk an entry imports exists. A relative import that resolves nowhere is a dead hook. */
+  test("AC every chunk an entry imports is on disk", () => {
+    if (!existsSync(dist)) {
+      return;
+    }
+    const broken: string[] = [];
+    for (const name of readdirSync(dist).filter((file) => file.endsWith(".mjs"))) {
+      const text = readFileSync(join(dist, name), "utf8");
+      for (const match of text.matchAll(/from\s*"(\.\/[^"]+\.mjs)"/g)) {
+        const target = join(dist, match[1] as string);
+        if (!existsSync(target)) {
+          broken.push(`${name} → ${match[1]}`);
+        }
+      }
+    }
+
+    assert.deepEqual(broken, []);
+  });
+
+  /** why: hashed chunk names accumulate, so a stale one ships for ever unless the directory is replaced. */
+  test("AC no chunk is orphaned by the entries that should reference it", () => {
+    const chunks = join(dist, "chunks");
+    if (!existsSync(chunks)) {
+      return;
+    }
+    const referenced = new Set<string>();
+    for (const name of readdirSync(dist).filter((file) => file.endsWith(".mjs"))) {
+      for (const match of readFileSync(join(dist, name), "utf8").matchAll(/"\.\/chunks\/([^"]+)"/g)) {
+        referenced.add(match[1] as string);
+      }
+    }
+    for (const name of readdirSync(chunks).filter((file) => file.endsWith(".mjs"))) {
+      for (const match of readFileSync(join(chunks, name), "utf8").matchAll(/"\.\/([^"/]+\.mjs)"/g)) {
+        referenced.add(match[1] as string);
+      }
+    }
+
+    const orphans = readdirSync(chunks).filter((name) => name.endsWith(".mjs") && !referenced.has(name));
+
+    assert.deepEqual(orphans, [], "a chunk nothing imports is dead weight in every install");
   });
 });

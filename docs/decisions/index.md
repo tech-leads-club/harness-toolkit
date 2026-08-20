@@ -105,6 +105,7 @@ Handoff section and a link back to this index.
 | [AD-095](/decisions/ad-095.md) | Four defects about where things are written, and one of them made every hook run twice | active |
 | [AD-096](/decisions/ad-096.md) | Prices are the machine's, in one file, and the parser that fills it was wrong twice | active |
 | [AD-097](/decisions/ad-097.md) | The shell layer goes, and with it every platform branch that only existed because of it | active |
+| [AD-098](/decisions/ad-098.md) | One copy of the core, not twenty-four | active |
 
 ## Archived
 

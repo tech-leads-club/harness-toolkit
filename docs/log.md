@@ -13,6 +13,10 @@ Generated from `docs/decisions/` — do not edit by hand. Run `node tools/render
 A reserved file of the [OKF v0.1](/decisions/ad-013.md) bundle: entries grouped under ISO 8601 headings,
 newest first. For what landed in which npm release, see `CHANGELOG.md` at the repository root.
 
+## 2026-08-20
+
+- **AD-098** — One copy of the core, not twenty-four ([/decisions/ad-098.md](/decisions/ad-098.md))
+
 ## 2026-08-19
 
 - **AD-081** — The manifest npm publishes is checked here, because the release runner was the only thing reading it ([/decisions/ad-081.md](/decisions/ad-081.md))

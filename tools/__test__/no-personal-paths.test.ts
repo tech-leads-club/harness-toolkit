@@ -140,12 +140,23 @@ describe("the repository carries no personal identity", () => {
       // why: a clone that has not built yet is not a failure. The build step in CI runs before the gate.
       return;
     }
-    const bundles = readdirSync(dist).filter((name: string) => name.endsWith(".mjs"));
+    // invariant: the chunks too. Splitting moved most of the code out of the entries and into `dist/chunks/`, so a
+    // scan of the top level alone would read 5% of what ships ([/decisions/ad-098.md](/decisions/ad-098.md)).
+    const bundles = [
+      ...readdirSync(dist)
+        .filter((name: string) => name.endsWith(".mjs"))
+        .map((name: string) => join("dist", name)),
+      ...(existsSync(join(dist, "chunks"))
+        ? readdirSync(join(dist, "chunks"))
+            .filter((name: string) => name.endsWith(".mjs"))
+            .map((name: string) => join("dist", "chunks", name))
+        : []),
+    ];
     assert.ok(bundles.length > 0, "dist/ exists but holds no bundle — the build did not run");
 
     const leaks: Leak[] = [];
-    for (const name of bundles) {
-      leaks.push(...findPersonalPaths(readFileSync(join(dist, name), "utf8"), `dist/${name}`));
+    for (const relative of bundles) {
+      leaks.push(...findPersonalPaths(readFileSync(join(repoRoot, relative), "utf8"), relative));
     }
     assert.deepEqual(
       leaks.map((leak) => `${leak.file}: ${leak.match}`),

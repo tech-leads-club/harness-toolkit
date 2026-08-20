@@ -6,6 +6,10 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## Unreleased
+
+- **AD-098** — One copy of the core, not twenty-four
+
 ## v0.3.1
 
 No decision records landed in this release.
