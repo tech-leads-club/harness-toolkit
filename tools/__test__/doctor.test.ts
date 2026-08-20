@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { afterEach, describe, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import type { ProviderWiring } from "../../src/contracts/index.ts";
 import { coreFacade } from "../../src/core/index.ts";
 import { projectConfigPath } from "../../src/platform/paths.ts";
@@ -783,4 +784,24 @@ describe("resolveOnPath", () => {
       probed.join(", "),
     );
   });
+});
+
+/**
+ * hazard: the shipped `config.example.json` turned `subagents.enforceAllowlist` on and shipped no list — which is
+ * the exact combination [/decisions/ad-053.md](/decisions/ad-053.md) exists to refuse, and `install` copies that
+ * file to the runtime home. Every fresh install's first `doctor` therefore printed a red FAIL the operator did
+ * nothing to cause ([/decisions/ad-034.md](/decisions/ad-034.md), [/decisions/ad-097.md](/decisions/ad-097.md)).
+ *
+ * invariant: the config this product ships must produce no failure on the machine it is shipped to.
+ */
+test("AC the shipped config raises no fault on a fresh install", () => {
+  const shipped = JSON.parse(
+    readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "config.example.json"), "utf8"),
+  ) as { subagents?: { enforceAllowlist?: boolean; allowedModels?: unknown } };
+
+  assert.equal(
+    shipped.subagents?.enforceAllowlist === true && shipped.subagents?.allowedModels === undefined,
+    false,
+    "enforceAllowlist with no allowedModels is a rail declared on and enforcing nothing",
+  );
 });

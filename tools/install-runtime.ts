@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
-import { NPM_MARKER, NPM_PACKAGE } from "../bin/tlc-cli.ts";
+import { NPM_MARKER, NPM_PACKAGE, wireRuntime } from "../bin/tlc-cli.ts";
 import { linkDir } from "../src/platform/links.ts";
 import { conventionalRuntimeHome, runtimeHome, runtimeHomeWasChosen } from "../src/platform/paths.ts";
 import { type Row, render, type Screen } from "../src/platform/screen.ts";
@@ -242,6 +242,26 @@ if (import.meta.main) {
   if (report.kind === "refused") {
     process.exit(1);
   }
+
+  /**
+   * hazard: this command put the code in place and wired nothing. The provider hooks and the skill links came
+   * from the tail of `install.sh`, so deleting that script left a fresh `npm i -g` followed by
+   * `tlc harness install` with two empty provider directories and a harness that does nothing at all until
+   * `update` happens to run. Found by installing the published package on a clean machine and reading the output
+   * ([/decisions/ad-034.md](/decisions/ad-034.md), [/decisions/ad-097.md](/decisions/ad-097.md)).
+   *
+   * invariant: install and update wire through the same function. There is no third copy of this.
+   */
+  const wired = wireRuntime(dest, dest);
+  for (const line of wired.lines) {
+    console.log(`install: ${line}`);
+  }
+  if (wired.missingSkill) {
+    console.error(`install: missing skill at ${join(dest, "skills", "harness-init")}`);
+    process.exit(1);
+  }
+
   fetchPrices(dest);
+  console.log("install: ok — restart Cursor or Claude Code, then run `tlc harness doctor`");
   process.exit(report.missing.length > 0 ? 1 : 0);
 }

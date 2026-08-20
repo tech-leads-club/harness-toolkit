@@ -2,7 +2,7 @@
   "version": 1,
   "mode": "solo",
   "subagents": {
-    "enforceAllowlist": true,
+    "enforceAllowlist": false,
     "requireModel": true,
     "blockMode": "deny",
     "blockParentFast": false,

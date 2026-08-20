@@ -309,3 +309,23 @@ test("the refusal is what the operator reads, not a stack", () => {
 
   assert.match(installReportText(linkRuntime(fakePackage(), dest)), /refused/);
 });
+
+/**
+ * hazard: `install` put the code in place and wired nothing — the provider hooks and the skill links came from
+ * the tail of the shell installer, so deleting that script left `npm i -g` + `tlc harness install` with two empty
+ * provider directories and a harness that did nothing until `update` happened to run. Found by installing the
+ * published package on a clean machine ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ *
+ * invariant: the command that installs is the command that wires, through the same function `update` uses.
+ */
+test("AC install wires the providers, not only the runtime directory", () => {
+  const source = readFileSync(join(repoRoot, "tools", "install-runtime.ts"), "utf8");
+  const main = source.slice(source.indexOf("if (import.meta.main)"));
+
+  assert.match(main, /wireRuntime\(/, "install must wire, or a fresh machine gets no hooks and no skill");
+  assert.ok(
+    main.indexOf("installReportText") < main.indexOf("wireRuntime("),
+    "the runtime lands before it is wired",
+  );
+  assert.match(main, /fetchPrices\(/, "and the first price fetch stays");
+});
