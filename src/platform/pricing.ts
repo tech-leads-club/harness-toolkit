@@ -11,7 +11,7 @@
  * invariant: nothing about prices is versioned. A rate published today has to reach an operator without a release,
  * and a rate in the package is stale the moment it is packed.
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runtimeHome } from "./paths.ts";
 
@@ -91,17 +91,6 @@ const VENDOR_TO_NEUTRAL_POOL: Record<VendorPool, NeutralPool> = {
 
 export function mapPoolToNeutral(pool: VendorPool): NeutralPool {
   return VENDOR_TO_NEUTRAL_POOL[pool];
-}
-
-function readJsonFile<T>(path: string): T | null {
-  if (!existsSync(path)) {
-    return null;
-  }
-  try {
-    return JSON.parse(readFileSync(path, "utf8")) as T;
-  } catch {
-    return null;
-  }
 }
 
 function stripMeta(table: PriceTable | null): PriceTable {
@@ -194,32 +183,46 @@ export type PriceResolution = {
   source: "override" | "provider" | "litellm";
 };
 
-type CacheSlot = { mtimeMs: number; size: number; value: PriceCatalogue };
+type CacheSlot = { text: string; value: PriceCatalogue };
 const cache = new Map<string, CacheSlot>();
 
 /**
- * why: the fallback plane is around a megabyte and a cost estimate happens on every tool result. This used to
- * parse every catalogue file on every single lookup. The stat is the cheap part; the parse is not.
+ * why a cache at all: the fallback plane is around a megabyte and a cost estimate happens on every tool result.
+ * This used to parse every catalogue file on every single lookup.
  *
- * invariant: keyed on mtime and size, so a refresh during a session is picked up on the next lookup without any
- * invalidation call. Nothing has to remember to clear this.
+ * hazard: the first version keyed on mtime and size, and Windows CI caught it. Two writes of the same length
+ * inside one clock tick are indistinguishable that way — the system clock there advances about every 15 ms, so
+ * both writes carry the same timestamp however fine the filesystem's resolution is. A refresh mid-session would
+ * then serve the previous prices for the rest of the session, silently, because a price was still returned
+ * ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ *
+ * invariant: the content decides. Reading 1 MB is the cheap part and the parse is what this avoids, so the file is
+ * always read and only reparsed when its bytes differ. Nothing has to remember to invalidate anything.
  */
 function readCatalogue<T>(path: string): T | null {
   if (!existsSync(path)) {
     cache.delete(path);
     return null;
   }
-  const stat = statSync(path);
-  const hit = cache.get(path);
-  if (hit && hit.mtimeMs === stat.mtimeMs && hit.size === stat.size) {
-    return hit.value as T;
-  }
-  const parsed = readJsonFile<PriceCatalogue>(path);
-  if (parsed === null) {
+  let text: string;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch {
     cache.delete(path);
     return null;
   }
-  cache.set(path, { mtimeMs: stat.mtimeMs, size: stat.size, value: parsed });
+  const hit = cache.get(path);
+  if (hit && hit.text === text) {
+    return hit.value as T;
+  }
+  let parsed: PriceCatalogue;
+  try {
+    parsed = JSON.parse(text) as PriceCatalogue;
+  } catch {
+    cache.delete(path);
+    return null;
+  }
+  cache.set(path, { text, value: parsed });
   return parsed as T;
 }
 

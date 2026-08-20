@@ -261,3 +261,28 @@ test("AC a deleted catalogue stops answering from cache", () => {
 
   assert.equal(resolveModelPrice("testprov", "model-h"), undefined);
 });
+
+/**
+ * hazard: this is the shape Windows CI caught. The cache keyed on mtime and size, and two writes of the same
+ * length inside one clock tick carry the same timestamp — the system clock advances about every 15 ms there — so
+ * the second write was invisible and the session kept the first prices. It returned *a* price, which is why only
+ * an assertion could see it ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ */
+test("AC two writes of identical length in the same tick are both seen", () => {
+  const path = join(dir, "model-prices.json");
+  const before = JSON.stringify({
+    _meta: { refreshedAt: "2026-08-19T00:00:00.000Z" },
+    planes: { testprov: { "model-i": { promptPer1M: 1, completionPer1M: 1 } } },
+  });
+  const after = JSON.stringify({
+    _meta: { refreshedAt: "2026-08-20T00:00:00.000Z" },
+    planes: { testprov: { "model-i": { promptPer1M: 7, completionPer1M: 7 } } },
+  });
+  assert.equal(before.length, after.length, "the two writes must be the same size for this to test anything");
+
+  writeFileSync(path, before, "utf8");
+  assert.equal(resolveModelPrice("testprov", "model-i")?.entry.promptPer1M, 1);
+  writeFileSync(path, after, "utf8");
+
+  assert.equal(resolveModelPrice("testprov", "model-i")?.entry.promptPer1M, 7);
+});
