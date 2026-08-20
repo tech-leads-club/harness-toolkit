@@ -93,7 +93,7 @@ jobs:
         run: |
           echo "no releasable commit since ${{ steps.plan.outputs.tag }} — staying on ${{ steps.plan.outputs.current }}"
           echo "### Nothing to release" >> "$GITHUB_STEP_SUMMARY"
-          echo "Staying on ${{ steps.plan.outputs.current }}. Only \`feat\` and \`fix\` outside the inert scopes release." >> "$GITHUB_STEP_SUMMARY"
+          echo "Staying on ${{ steps.plan.outputs.current }}. Only \`feat\`, \`fix\` and \`perf\` outside the inert scopes release." >> "$GITHUB_STEP_SUMMARY"
 
   # why: the approval lives HERE, on the job that writes, and there is no separate gate job. A previous shape put
   # `environment: publish` on an approval job carrying `if: github.actor != '…bot'` — so on the bot's own push that

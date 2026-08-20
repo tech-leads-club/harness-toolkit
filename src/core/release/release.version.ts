@@ -54,12 +54,18 @@ const SUBJECT = /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<breaking>!)?:\s*(?<r
 const BREAKING_FOOTER = /^BREAKING[ -]CHANGE:/m;
 
 /**
- * invariant: `feat` and `fix` are the only types that release. Everything else — `docs`, `chore`, `refactor`,
- * `test`, `ci`, `build`, `perf`, `style` — lands without moving the version. That is what stops the release's own
- * commit from earning the next version and looping, which this pipeline did six times in nine minutes.
+ * invariant: `feat`, `fix` and `perf` release. Everything else — `docs`, `chore`, `refactor`, `test`, `ci`,
+ * `build`, `style` — lands without moving the version, which together with the inert scopes is what stops the
+ * release's own `chore(release):` commit from earning the next version and looping, as this pipeline did six times
+ * in nine minutes ([/decisions/ad-087.md](/decisions/ad-087.md)).
+ *
+ * hazard: `perf` was excluded with the loop as the stated reason, and the loop had nothing to do with it — `chore`
+ * and the inert scopes cover that on their own. The cost was measured: a change that cut the published package
+ * from 1.6 MB to 426 kB and about 4 ms from every hook sat on `main` unreleased, waiting for an unrelated `fix` to
+ * carry it to anybody ([/decisions/ad-098.md](/decisions/ad-098.md)).
  */
 export const MINOR_TYPES: ReadonlySet<string> = new Set(["feat"]);
-export const PATCH_TYPES: ReadonlySet<string> = new Set(["fix"]);
+export const PATCH_TYPES: ReadonlySet<string> = new Set(["fix", "perf"]);
 
 /**
  * invariant: a scope on this list never releases, whatever the type. `fix(ci)` and `fix(gate)` are repository

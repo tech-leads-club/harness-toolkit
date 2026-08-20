@@ -56,13 +56,26 @@ describe("bumpFor", () => {
   });
 
   /**
-   * invariant: the release's own commit is `chore(release):`. If it released, every release would earn the next
-   * one — which is the loop this pipeline actually ran, six versions in nine minutes.
+   * why `perf` releases: it is a user-facing improvement, and the ecosystem default treats it as a patch. It was
+   * excluded with the release loop as the reason, and the loop had nothing to do with it — the cost was a change
+   * that cut the package from 1.6 MB to 426 kB sitting on `main` unreleased
+   * ([/decisions/ad-098.md](/decisions/ad-098.md)).
    */
-  test("everything that is not feat or fix releases nothing", () => {
-    for (const type of ["docs", "chore", "refactor", "test", "ci", "build", "perf", "style"]) {
+  test("AC perf earns a patch, like fix", () => {
+    assert.equal(bumpFor({ subject: "perf: a thing" }), "patch");
+    assert.equal(bumpFor({ subject: "perf(build): a thing" }), "patch");
+  });
+
+  /**
+   * invariant: the release's own commit is `chore(release):`. If it released, every release would earn the next
+   * one — which is the loop this pipeline actually ran, six versions in nine minutes. `chore` and the inert scopes
+   * are what prevent it, and neither depends on `perf`.
+   */
+  test("everything that is not feat, fix or perf releases nothing", () => {
+    for (const type of ["docs", "chore", "refactor", "test", "ci", "build", "style"]) {
       assert.equal(bumpFor({ subject: `${type}: a thing` }), "none", type);
     }
+    assert.equal(bumpFor({ subject: "chore(release): 0.9.9" }), "none", "the release's own commit");
   });
 
   /**
