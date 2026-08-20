@@ -22,3 +22,11 @@ updates:
     groups:
       dev:
         patterns: ["*"]
+    ignore:
+      # why: `@types/node` is a compatibility contract, not a tool. `engines` declares `>=24`, and typing against
+      # 26 would let a Node-26-only API pass a gate that promises Node 24 works
+      # ([/decisions/ad-008.md](/decisions/ad-008.md)). The first bump to 26 broke `tsc` on all four legs, which
+      # is the contract doing its job — so the major is refused here rather than re-reviewed every week
+      # ([/decisions/ad-097.md](/decisions/ad-097.md)).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
