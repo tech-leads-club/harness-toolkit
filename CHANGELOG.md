@@ -6,6 +6,10 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## v0.3.1
+
+No decision records landed in this release.
+
 ## v0.3.0
 
 - **AD-096** — Prices are the machine's, in one file, and the parser that fills it was wrong twice
