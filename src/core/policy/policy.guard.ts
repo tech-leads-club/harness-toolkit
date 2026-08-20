@@ -1,16 +1,15 @@
 import type { Decision } from "../../contracts/decision.ts";
+import { isWriteTool } from "../../contracts/tool-names.ts";
 import { isPolicySurface } from "../floor/floor.paths.ts";
 
 export { isPolicySurface };
-
-const WRITE_TOOLS = new Set(["Edit", "Write", "Delete", "MultiEdit", "NotebookEdit"]);
 
 export function guardPolicySurface(args: {
   projectDir: string;
   toolName: string | undefined;
   filePath: string | undefined;
 }): Decision {
-  if (!args.toolName || !WRITE_TOOLS.has(args.toolName) || !args.filePath) {
+  if (!isWriteTool(args.toolName) || !args.filePath) {
     return { kind: "allow" };
   }
   if (!isPolicySurface(args.projectDir, args.filePath)) {

@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import type { Decision, HarnessEvent, ProviderCapabilities, Rendered } from "../contracts/index.ts";
+import { isWriteTool } from "../contracts/tool-names.ts";
 import { coreFacade, type Policy } from "../core/index.ts";
 import { appendRecord } from "../platform/fs-jsonl.ts";
 import { projectStateDir } from "../platform/paths.ts";
@@ -35,6 +36,25 @@ export type RunOutcome = {
 // invariant: this caps the whole injected context. Lessons carry their own, smaller budget
 // (lessons.maxCharsSession) — reusing that here truncated the operator posture and handoff.
 export const CONTEXT_BUDGET_CHARS = 6000;
+
+/**
+ * Whether this event may claim its file against other sessions.
+ *
+ * invariant: a claim exists so that two writers do not lose each other's work. A reader loses nothing, so a read
+ * carries no claim however many files it opens ([/decisions/ad-099.md](/decisions/ad-099.md)).
+ *
+ * why `edit.after` with no tool name still claims: the write already happened, and the host does not always name
+ * the tool on that event. An event that reports a completed edit is a writer by definition.
+ */
+export function claimsFile(event: HarnessEvent): boolean {
+  if (event.filePath === undefined) {
+    return false;
+  }
+  if (event.event === "edit.after") {
+    return true;
+  }
+  return isWriteTool(event.toolName);
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -144,10 +164,20 @@ export async function runHandler(handler: Handler, io: RunIo = {}): Promise<RunO
         effectiveBlockedPatterns(policy.subagents.blockedPatterns, provider),
       );
     }
+    /**
+     * hazard: this passed `event.filePath` for every event, and `read.before` carries one. So reading a file
+     * claimed it for ten minutes, and the next session to write it was refused — under a rule called
+     * `edit-collision`, with a message saying the file had been edited. Measured on a real machine: a review agent
+     * that only read blocked the operator's own writes to two files, while their `git status` showed a single
+     * modification, theirs ([/decisions/ad-099.md](/decisions/ad-099.md)).
+     *
+     * invariant: the heartbeat is unconditional — a reading session is still a live session, and staleness is what
+     * expires a claim. Only the *claim* is write-only, because only a writer can lose somebody's work.
+     */
     coreFacade.presence.heartbeat(event.projectDir, {
       provider: event.provider,
       session: sessionIdFromKey(event),
-      file: event.filePath,
+      ...(claimsFile(event) ? { file: event.filePath } : {}),
       now,
     });
     const context: HandlerContext = { policy, capabilities, provider, now };

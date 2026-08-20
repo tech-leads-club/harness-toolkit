@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { coreFacade } from "../../core/index.ts";
 import { projectStateDir } from "../../platform/paths.ts";
-import { CONTEXT_BUDGET_CHARS, runHandler } from "../run.ts";
+import { CONTEXT_BUDGET_CHARS, claimsFile, runHandler } from "../run.ts";
 
 function tempRoot(): string {
   return mkdtempSync(join(tmpdir(), "tlc-run-"));
@@ -243,7 +243,16 @@ test("presence heartbeat fires for a recognized event and refreshes heartbeat_at
   }
 });
 
-test("presence heartbeat records the touched file for a read.before event", async () => {
+/**
+ * hazard: this test asserted the opposite — that a `read.before` records the file — and that is the defect. A read
+ * claimed the file for ten minutes, so a second session was refused a write under a rule called `edit-collision`,
+ * with a message asserting an edit. Measured on a real machine: a review agent that only read blocked the
+ * operator's own writes to two files ([/decisions/ad-099.md](/decisions/ad-099.md)).
+ *
+ * invariant: a reader loses nothing, so it claims nothing. The heartbeat still moves, because a reading session is
+ * still alive and staleness is what expires a claim.
+ */
+test("AC1 a read claims no file, and AC3 still keeps the session alive", async () => {
   const root = tempRoot();
   try {
     coreFacade.presence.register(root, { provider: "cursor", session: "conv-1", pid: 1, branch: "main" });
@@ -252,15 +261,69 @@ test("presence heartbeat records the touched file for a read.before event", asyn
       workspace_roots: [root],
       conversation_id: "conv-1",
       session_id: "sess-1",
-      file_path: "src/touched.ts",
+      file_path: "src/read-only.ts",
     };
-    await runHandler(() => ({ kind: "allow" }), stdinOf(JSON.stringify(payload)));
+
+    await runHandler(() => ({ kind: "allow" }), {
+      ...stdinOf(JSON.stringify(payload)),
+      now: () => new Date("2026-08-20T10:05:00.000Z"),
+    });
+
     const { readPresenceRecord } = await import("../../core/presence/presence.service.ts");
     const updated = readPresenceRecord(root, "cursor", "conv-1");
-    assert.deepEqual(updated?.recent_files, ["src/touched.ts"]);
+    assert.deepEqual(updated?.recent_files, [], "reading is not claiming");
+    assert.equal(
+      updated?.heartbeat_at,
+      new Date("2026-08-20T10:05:00.000Z").toISOString(),
+      "the session is still live",
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("AC2 a write claims the file it wrote", async () => {
+  const root = tempRoot();
+  try {
+    coreFacade.presence.register(root, { provider: "cursor", session: "conv-1", pid: 1, branch: "main" });
+    const payload = {
+      hook_event_name: "afterFileEdit",
+      workspace_roots: [root],
+      conversation_id: "conv-1",
+      session_id: "sess-1",
+      file_path: "src/written.ts",
+    };
+
+    await runHandler(() => ({ kind: "allow" }), stdinOf(JSON.stringify(payload)));
+
+    const { readPresenceRecord } = await import("../../core/presence/presence.service.ts");
+    assert.deepEqual(readPresenceRecord(root, "cursor", "conv-1")?.recent_files, ["src/written.ts"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/** invariant: the decision is the tool, not the path. A read tool carrying a path is still a read. */
+test("AC1 a read tool that carries a path claims nothing, and a write tool claims", () => {
+  const base = {
+    provider: "claude",
+    sessionKey: "claude:sess-1",
+    projectDir: "/tmp/x",
+    filePath: "src/thing.ts",
+    raw: {},
+  } as const;
+
+  assert.equal(claimsFile({ ...base, event: "tool.before", toolName: "Read" }), false);
+  assert.equal(claimsFile({ ...base, event: "read.before" }), false);
+  assert.equal(claimsFile({ ...base, event: "tool.before", toolName: "Grep" }), false);
+  assert.equal(claimsFile({ ...base, event: "tool.before", toolName: "Edit" }), true);
+  assert.equal(claimsFile({ ...base, event: "tool.before", toolName: "Write" }), true);
+  assert.equal(claimsFile({ ...base, event: "edit.after" }), true, "a completed edit is a write");
+  assert.equal(
+    claimsFile({ provider: "claude", sessionKey: "k", projectDir: "/tmp/x", raw: {}, event: "edit.after" }),
+    false,
+    "no path, no claim",
+  );
 });
 
 test("a context decision over the session budget is truncated with the trailing marker", async () => {

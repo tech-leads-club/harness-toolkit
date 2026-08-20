@@ -30,8 +30,10 @@
       "--test",
       "--import",
       "./tools/test-env.mjs",
-      "src/**/__test__/*.test.ts"
-    ]
+      "src/**/__test__/*.test.ts",
+      "tools/__test__/*.test.ts"
+    ],
+    "appendFiles": "never"
   },
   "shipGate": {
     "enabled": false

@@ -16,6 +16,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 ## 2026-08-20
 
 - **AD-098** — Splitting is reverted: a shared chunk ran the CLI's main ([/decisions/ad-098.md](/decisions/ad-098.md))
+- **AD-099** — Reading a file claimed it, so a review agent locked the operator out of writing ([/decisions/ad-099.md](/decisions/ad-099.md))
 
 ## 2026-08-19
 

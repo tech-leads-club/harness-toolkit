@@ -81,10 +81,18 @@ export function checkCollision(
       continue;
     }
     const elapsed = elapsedLabel(record, nowMs);
+    /**
+     * hazard: this said "touched" and "edited this file" for a claim that a *read* could create, so the message
+     * asserted an edit that had not happened — and an operator checking `git status` found one modification, their
+     * own. Only a write claims now, and the words say so ([/decisions/ad-099.md](/decisions/ad-099.md)).
+     *
+     * invariant: the way out is named. `ask` becomes a refusal wherever no operator can answer the prompt, and a
+     * refusal with no exit is a lock-out.
+     */
     return {
       kind: "ask",
-      reason: `${record.provider} session ${record.session} touched ${file} ${elapsed}.`,
-      userNote: `Another agent (${record.provider}, session ${record.session}) edited this file ${elapsed}. Coordinate before proceeding.`,
+      reason: `${record.provider} session ${record.session} wrote ${file} ${elapsed}.`,
+      userNote: `Another agent (${record.provider}, session ${record.session}) wrote this file ${elapsed}. Coordinate before proceeding: end that session, or wait for its claim to go stale (10 minutes without a heartbeat). \`tlc harness status\` lists the live sessions.`,
       // why: this asks unconditionally, like the floor does, and carried no rule — so an operator reading a rate of
       // interruptions could see the count and not the cause.
       rule: "edit-collision",
