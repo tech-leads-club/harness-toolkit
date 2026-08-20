@@ -15,7 +15,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 
 ## 2026-08-20
 
-- **AD-098** — One copy of the core, not twenty-four ([/decisions/ad-098.md](/decisions/ad-098.md))
+- **AD-098** — Splitting is reverted: a shared chunk ran the CLI's main ([/decisions/ad-098.md](/decisions/ad-098.md))
 
 ## 2026-08-19
 

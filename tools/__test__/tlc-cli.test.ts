@@ -11,11 +11,14 @@ import {
   ensureFlagsDir,
   focusFlagPath,
   gatesPaused,
+  globalPackageRoot,
   grindFlagPath,
   grindOn,
   helpText,
   linkedRuntimeMessage,
   modeFilePath,
+  npmRootFailureMessage,
+  npmSyncPlan,
   pairedFlagPath,
   pendingText,
   pendingUpdate,
@@ -1080,5 +1083,50 @@ describe("wireRuntime", () => {
     mkdirSync(dest, { recursive: true });
 
     assert.equal(wireRuntime(dest, dest).missingSkill, true);
+  });
+});
+
+/**
+ * hazard: `update` on an npm install bumped the package and then materialised nothing. It spawned
+ * `install-runtime` through the runtime home's own launcher, so the tool's source and destination resolved to the
+ * same directory — "already at … — nothing to copy". Measured on a scratch machine: the package went 0.3.0 →
+ * 0.3.2 and the runtime the hooks execute stayed on 0.3.0, while `doctor` claimed update "re-materialises this
+ * directory" ([/decisions/ad-098.md](/decisions/ad-098.md)).
+ */
+describe("the npm update materialises the package it just installed", () => {
+  test("AC the source is the package and the destination is the runtime home, both named", () => {
+    const plan = npmSyncPlan(
+      "/npm/lib/node_modules/@tech-leads-club/harness-toolkit",
+      "/home/me/.tlc/harness",
+    );
+
+    assert.equal(plan.env.TLC_ORIGIN, "/npm/lib/node_modules/@tech-leads-club/harness-toolkit");
+    assert.equal(plan.env.TLC_INSTALL_DEST, "/home/me/.tlc/harness");
+    assert.notEqual(plan.env.TLC_ORIGIN, plan.env.TLC_INSTALL_DEST, "the same path both ends is the defect");
+  });
+
+  /** invariant: the package's own launcher runs it, or a release that fixes `install` cannot deliver that fix. */
+  test("AC the package's launcher runs the materialisation, not the runtime home's", () => {
+    const plan = npmSyncPlan("/npm/pkg", "/home/me/.tlc/harness");
+
+    assert.equal(plan.command, process.execPath);
+    assert.deepEqual(plan.args, [join("/npm/pkg", "bin", "tlc-exec.mjs"), "install-runtime"]);
+  });
+
+  test("AC the package root is asked of npm and checked on disk", () => {
+    const found = globalPackageRoot({ npmRoot: () => "/npm/lib/node_modules\n", exists: () => true });
+    assert.equal(found, join("/npm/lib/node_modules", "@tech-leads-club", "harness-toolkit"));
+
+    assert.equal(globalPackageRoot({ npmRoot: () => "/npm/lib/node_modules", exists: () => false }), null);
+    assert.equal(globalPackageRoot({ npmRoot: () => "", exists: () => true }), null);
+  });
+
+  /** invariant: when the root cannot be found, nothing is half-written and the message says so. */
+  test("AC the refusal says the runtime is untouched and names the manual route", () => {
+    const message = npmRootFailureMessage("/home/me/.tlc/harness");
+
+    assert.match(message, /unchanged — nothing was half-written/);
+    assert.match(message, /npm root -g/);
+    assert.match(message, /tlc harness install/);
   });
 });

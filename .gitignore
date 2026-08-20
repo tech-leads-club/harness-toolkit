@@ -41,6 +41,11 @@ model-prices.*.json
 # gone, and `prepack` builds the bundles into the published tarball ([/decisions/ad-097.md](/decisions/ad-097.md)).
 dist/
 
+# Pack artefacts and the install marker. The marker is written into whatever directory an install materialises
+# into, so a test or a mis-set TLC_INSTALL_DEST drops one in the checkout ([/decisions/ad-098.md](/decisions/ad-098.md)).
+*.tgz
+installed-from-npm
+
 # Build tooling caches
 .cache/
 node_modules/

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -115,45 +116,60 @@ describe("the built bundles", () => {
     assert.deepEqual(missing, [], "a source entrypoint with no bundle is a hook that cannot run under Node");
   });
 
-  /** invariant: every chunk an entry imports exists. A relative import that resolves nowhere is a dead hook. */
-  test("AC every chunk an entry imports is on disk", () => {
+  /**
+   * hazard: the check above this one asserted that every bundle *imports* — and a bundle can import fine while
+   * running somebody else's program. Splitting put `bin/tlc-cli.ts`'s module body in a shared chunk, its
+   * `import.meta.main` guard evaluated true inside that chunk, and every entry that reaches the CLI ran the CLI's
+   * `main`. `tlc harness install` printed `unknown:` and installed nothing, and it shipped as 0.3.2 because
+   * "it imports" was the whole test ([/decisions/ad-098.md](/decisions/ad-098.md)).
+   *
+   * invariant: exactly one bundle answers as the CLI. Any other one printing the CLI's usage means a guard fired
+   * in the wrong program.
+   */
+  test("AC only the CLI bundle behaves like the CLI", () => {
     if (!existsSync(dist)) {
       return;
     }
-    const broken: string[] = [];
-    for (const name of readdirSync(dist).filter((file) => file.endsWith(".mjs"))) {
-      const text = readFileSync(join(dist, name), "utf8");
-      for (const match of text.matchAll(/from\s*"(\.\/[^"]+\.mjs)"/g)) {
-        const target = join(dist, match[1] as string);
-        if (!existsSync(target)) {
-          broken.push(`${name} → ${match[1]}`);
+    const scratch = mkdtempSync(join(tmpdir(), "tlc-bundle-probe-"));
+    const impostors: string[] = [];
+    try {
+      for (const name of readdirSync(dist).filter((file) => file.endsWith(".mjs"))) {
+        if (name === "tlc-cli.mjs") {
+          continue;
+        }
+        const result = spawnSync(process.execPath, [join(dist, name)], {
+          encoding: "utf8",
+          input: "",
+          timeout: 20_000,
+          env: {
+            ...process.env,
+            TLC_HOME: scratch,
+            TLC_PROJECT_DIR: scratch,
+            CLAUDE_PROJECT_DIR: scratch,
+          },
+        });
+        const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+        if (output.includes("usage: tlc harness <status|")) {
+          impostors.push(name);
         }
       }
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
     }
 
-    assert.deepEqual(broken, []);
+    assert.deepEqual(impostors, [], "these bundles ran the CLI instead of themselves");
   });
 
-  /** why: hashed chunk names accumulate, so a stale one ships for ever unless the directory is replaced. */
-  test("AC no chunk is orphaned by the entries that should reference it", () => {
-    const chunks = join(dist, "chunks");
-    if (!existsSync(chunks)) {
+  /** invariant: and the CLI bundle does answer as the CLI, or the assertion above would pass on 24 dead files. */
+  test("AC the CLI bundle is the one that answers as the CLI", () => {
+    if (!existsSync(join(dist, "tlc-cli.mjs"))) {
       return;
     }
-    const referenced = new Set<string>();
-    for (const name of readdirSync(dist).filter((file) => file.endsWith(".mjs"))) {
-      for (const match of readFileSync(join(dist, name), "utf8").matchAll(/"\.\/chunks\/([^"]+)"/g)) {
-        referenced.add(match[1] as string);
-      }
-    }
-    for (const name of readdirSync(chunks).filter((file) => file.endsWith(".mjs"))) {
-      for (const match of readFileSync(join(chunks, name), "utf8").matchAll(/"\.\/([^"/]+\.mjs)"/g)) {
-        referenced.add(match[1] as string);
-      }
-    }
+    const result = spawnSync(process.execPath, [join(dist, "tlc-cli.mjs"), "harness", "help"], {
+      encoding: "utf8",
+      timeout: 20_000,
+    });
 
-    const orphans = readdirSync(chunks).filter((name) => name.endsWith(".mjs") && !referenced.has(name));
-
-    assert.deepEqual(orphans, [], "a chunk nothing imports is dead weight in every install");
+    assert.match(`${result.stdout ?? ""}${result.stderr ?? ""}`, /harness/);
   });
 });

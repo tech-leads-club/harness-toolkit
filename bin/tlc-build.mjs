@@ -38,32 +38,21 @@ function sourcesIn(dir) {
 }
 
 /**
- * why one invocation with every entry: `--splitting` can only share a chunk between entries it sees together.
- * Built one at a time, each bundle inlined the whole core — measured, 24 bundles of ~257 KB each where more than
- * half of every one was byte-identical to its neighbour: 5.0 MB of `dist/` to carry 548 KB of distinct code
+ * hazard: this built every entry in ONE invocation with `--splitting`, which cut `dist/` from 5.0 MB to 548 KB —
+ * and shipped a broken CLI. A shared chunk carries the module body of anything two entries both import, including
+ * `bin/tlc-cli.ts`, and its `if (import.meta.main)` guard evaluates **true** inside that chunk. So running
+ * `install-runtime`, which imports the CLI for `NPM_MARKER` and `wireRuntime`, ran the CLI's `main` instead:
+ * `tlc harness install` printed `unknown:` and installed nothing. Published as 0.3.2 and caught by installing it
  * ([/decisions/ad-098.md](/decisions/ad-098.md)).
  *
- * invariant: the entry names stay flat and keep `.mjs`, because the launcher resolves `dist/<entry>.mjs` and the
- * hooks on every installed machine name the launcher. Chunks go in a subdirectory, so pruning an orphan entry
- * never has to tell the two apart.
+ * invariant: one bundle per entry, so a module that self-executes behind `import.meta.main` is inlined into the
+ * one program that is allowed to run it. Splitting can come back when no library module carries that guard, and
+ * not before — the size win is real and it is not worth a CLI that cannot install.
  */
-const CHUNK_DIR = "chunks";
-
-function build(targets) {
+function buildOne(source, out) {
   const result = spawnSync(
     "bun",
-    [
-      "build",
-      "--target=node",
-      "--format=esm",
-      "--splitting",
-      `--outdir=${dist}`,
-      "--entry-naming",
-      "[name].mjs",
-      "--chunk-naming",
-      `${CHUNK_DIR}/[name]-[hash].mjs`,
-      ...targets.map((target) => target.source),
-    ],
+    ["build", "--target=node", "--format=esm", `--outfile=${out}`, source],
     { stdio: "inherit" },
   );
   if (result.error?.code === "ENOENT") {
@@ -85,14 +74,11 @@ const targets = [
 mkdirSync(dist, { recursive: true });
 console.log(`tlc-build → ${dist}`);
 
-/**
- * hazard: chunk names carry a content hash, so a rebuild after a source change writes new ones and leaves the old
- * ones behind. Nothing references them and they ship anyway, growing the package with every build.
- *
- * invariant: the chunk directory is derived, so it is replaced rather than merged.
- */
-rmSync(join(dist, CHUNK_DIR), { recursive: true, force: true });
-build(targets);
+// invariant: a leftover chunk directory from the split build would ship for ever, referenced by nothing.
+rmSync(join(dist, "chunks"), { recursive: true, force: true });
+for (const target of targets) {
+  buildOne(target.source, join(dist, `${target.name}.mjs`));
+}
 
 // invariant: the launcher stays executable on a filesystem that tracks the bit. A no-op where it does not.
 try {

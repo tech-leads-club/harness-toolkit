@@ -8,7 +8,7 @@ doctor reports against your own configuration.
 
 ## v0.3.2
 
-- **AD-098** — One copy of the core, not twenty-four
+- **AD-098** — Splitting is reverted: a shared chunk ran the CLI's main
 
 ## v0.3.1
 

@@ -905,6 +905,61 @@ export function resolveHarnessRoot(): string {
 }
 
 /**
+ * Where npm put the package this command was installed from.
+ *
+ * hazard: `update` spawned `install-runtime` through the **runtime home's** launcher, so the tool resolved its
+ * source and its destination to the same directory and reported "already at … — nothing to copy". Measured on a
+ * scratch machine: `npm i -g` moved the package from 0.3.0 to 0.3.2 and the runtime the hooks execute stayed on
+ * 0.3.0. Every npm install that ever ran `update` bumped a package and kept its old code, while `doctor` said
+ * update "re-materialises this directory" ([/decisions/ad-098.md](/decisions/ad-098.md)).
+ *
+ * invariant: asked of npm rather than derived from this process. The CLI can be running from the runtime home,
+ * from the package, or from a linked clone, and only npm knows where it installs globally.
+ */
+export function globalPackageRoot(
+  probe = {
+    npmRoot: () => spawnSync("npm", ["root", "-g"], { encoding: "utf8", shell: true }).stdout ?? "",
+    exists: existsSync,
+  },
+): string | null {
+  // invariant: trimmed here rather than in the probe. `npm root -g` ends in a newline, and a path with a newline
+  // in it fails as a directory while reading as a plausible string in an error message.
+  const root = probe.npmRoot().trim();
+  if (root.length === 0) {
+    return null;
+  }
+  const candidate = join(root, ...NPM_PACKAGE.split("/"));
+  return probe.exists(candidate) ? candidate : null;
+}
+
+/**
+ * invariant: the *package's* launcher runs the materialisation, not the runtime home's. A release that fixes
+ * `install` has to be able to deliver that fix, and the old code cannot do it.
+ *
+ * invariant: both ends are named explicitly — `TLC_ORIGIN` is where the code comes from and `TLC_INSTALL_DEST` is
+ * where it goes — because each of them defaults to the same conventional home when left unsaid, which is exactly
+ * how this became a no-op.
+ */
+export function npmSyncPlan(
+  packageRoot: string,
+  dest: string,
+): { command: string; args: string[]; env: Record<string, string> } {
+  return {
+    command: process.execPath,
+    args: [join(packageRoot, "bin", "tlc-exec.mjs"), "install-runtime"],
+    env: { TLC_ORIGIN: packageRoot, TLC_INSTALL_DEST: dest },
+  };
+}
+
+export function npmRootFailureMessage(home: string): string {
+  return [
+    `update: npm reported no global root, so the package it just installed cannot be found.`,
+    `  The runtime at ${home} is unchanged — nothing was half-written.`,
+    `  Run \`npm root -g\` yourself; then \`npm i -g ${NPM_PACKAGE}@latest\` and \`tlc harness install\`.`,
+  ].join("\n");
+}
+
+/**
  * Everything an install has to put in place outside the runtime directory itself: the init skill where each
  * provider reads it, the user-level hooks, and a seeded config.
  *
@@ -1293,9 +1348,15 @@ function runUpdate(root: string): never {
       console.error(npmUpdateFailureMessage());
       process.exit(bump.status ?? 1);
     }
-    const sync = spawnSync(process.execPath, [execBinPath(), "install-runtime"], {
+    const packageRoot = globalPackageRoot();
+    if (packageRoot === null) {
+      console.error(npmRootFailureMessage(home));
+      process.exit(1);
+    }
+    const plan = npmSyncPlan(packageRoot, home);
+    const sync = spawnSync(plan.command, plan.args, {
       stdio: "inherit",
-      env: process.env,
+      env: { ...process.env, ...plan.env },
     });
     if ((sync.status ?? 1) !== 0) {
       process.exit(sync.status ?? 1);
