@@ -52,7 +52,7 @@
   "homepage": "https://github.com/tech-leads-club/harness-toolkit#readme",
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",
-    "@types/node": "^24.13.3",
+    "@types/node": "^26.2.0",
     "typescript": "^7.0.2"
   }
 }
