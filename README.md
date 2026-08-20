@@ -1,9 +1,46 @@
-# harness-toolkit
+<p align="center">
+  <img src=".github/assets/logo.png" alt="Tech Leads Club" width="400" />
+</p>
 
-Steers Cursor and Claude Code agents with **gates → follow-up → handoff → policy**.
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@tech-leads-club/harness-toolkit?style=flat-square&color=blue" alt="npm version" />
+  <img src="https://img.shields.io/npm/dt/@tech-leads-club/harness-toolkit?style=flat-square&color=blue" alt="total downloads" />
+  <img src="https://img.shields.io/npm/dm/@tech-leads-club/harness-toolkit?style=flat-square&color=blue" alt="monthly downloads" />
+  <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue?style=flat-square" alt="license" />
+  <img src="https://img.shields.io/github/actions/workflow/status/tech-leads-club/harness-toolkit/release.yml?style=flat-square" alt="build status" />
+</p>
 
-Hooks fire on the editor's own events. The harness answers each one with a decision — allow, ask, deny, or
-text injected into the turn — and writes a record of what it decided and why.
+<p align="center">
+  <img src="https://img.shields.io/badge/Bun-recommended-black?style=flat-square&logo=bun" alt="bun" />
+  <img src="https://img.shields.io/badge/node-%3E%3D24-brightgreen?style=flat-square&logo=node.js" alt="node version" />
+  <img src="https://img.shields.io/badge/TypeScript-strict-blue?style=flat-square&logo=typescript" alt="typescript" />
+  <img src="https://img.shields.io/badge/provenance-SLSA%20v1-green?style=flat-square&logo=npm" alt="npm provenance" />
+  <img src="https://img.shields.io/badge/dependencies-0%20runtime-brightgreen?style=flat-square" alt="zero runtime dependencies" />
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Cursor-supported-black?style=flat-square" alt="cursor" />
+  <img src="https://img.shields.io/badge/Claude%20Code-supported-black?style=flat-square&logo=anthropic" alt="claude code" />
+  <img src="https://img.shields.io/badge/Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-tested%20in%20CI-informational?style=flat-square" alt="platforms" />
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/github/stars/tech-leads-club/harness-toolkit?style=flat-square&color=yellow" alt="github stars" />
+  <img src="https://img.shields.io/github/contributors/tech-leads-club/harness-toolkit?style=flat-square&color=orange" alt="contributors" />
+  <img src="https://img.shields.io/github/last-commit/tech-leads-club/harness-toolkit?style=flat-square" alt="last commit" />
+</p>
+
+<h1 align="center">🛡️ Harness Toolkit</h1>
+
+<p align="center">
+  <strong>Steers Cursor and Claude Code agents with gates → follow-up → handoff → policy</strong>
+</p>
+
+<p align="center">
+  Hooks fire on the editor's own events. The harness answers each one with a decision — <b>allow</b>, <b>ask</b>,
+  <b>deny</b>, or text injected into the turn — and writes a record of what it decided and why.
+  <b>7 floor rules</b> no configuration can reach, <b>3 always-on checks</b>, and <b>23 rails</b> you choose.
+</p>
 
 - **[Everything it validates](#everything-it-validates)** — the whole list, one row per check
 - **[How to see any of it](#how-to-see-any-of-it)** — the command behind each row
@@ -12,8 +49,7 @@ text injected into the turn — and writes a record of what it decided and why.
 ## Start here
 
 ```bash
-npm i -g @tech-leads-club/harness-toolkit
-tlc harness install
+npm i -g @tech-leads-club/harness-toolkit && tlc harness install
 ```
 
 Then restart Cursor or Claude Code. That is the whole setup — `install` finds which of the two you
@@ -222,11 +258,10 @@ three on every push; hooks firing inside an editor session on Windows are outsid
 
 ## Install
 
-The same two commands on every platform.
+One command, the same on every platform.
 
 ```bash
-npm i -g @tech-leads-club/harness-toolkit
-tlc harness install
+npm i -g @tech-leads-club/harness-toolkit && tlc harness install
 ```
 
 The package is the delivery vehicle and `tlc harness install` is what puts the runtime in place. They are

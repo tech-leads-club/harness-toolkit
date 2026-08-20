@@ -7,8 +7,7 @@ PolyForm Noncommercial 1.0.0 (`LICENSE`, `NOTICE`).
 ## Install
 
 ```bash
-npm i -g @tech-leads-club/harness-toolkit
-tlc harness install
+npm i -g @tech-leads-club/harness-toolkit && tlc harness install
 ```
 
 Target path: `~/.tlc/harness`.
