@@ -1094,20 +1094,22 @@ describe("wireRuntime", () => {
  * directory" ([/decisions/ad-098.md](/decisions/ad-098.md)).
  */
 describe("the npm update materialises the package it just installed", () => {
-  test("AC the source is the package and the destination is the runtime home, both named", () => {
-    const plan = npmSyncPlan(
-      "/npm/lib/node_modules/@tech-leads-club/harness-toolkit",
-      "/home/me/.tlc/harness",
-    );
+  /**
+   * hazard: the first version named the destination too, as `runtimeHome()`. On a clean machine that resolves to
+   * the package itself — the trap `installDest` exists for — so install wrote its config and its price catalogue
+   * into `node_modules`, copied nothing, and crashed writing hooks
+   * ([/decisions/ad-098.md](/decisions/ad-098.md)).
+   */
+  test("AC the plan names the source and leaves the destination to installDest", () => {
+    const plan = npmSyncPlan("/npm/lib/node_modules/@tech-leads-club/harness-toolkit");
 
     assert.equal(plan.env.TLC_ORIGIN, "/npm/lib/node_modules/@tech-leads-club/harness-toolkit");
-    assert.equal(plan.env.TLC_INSTALL_DEST, "/home/me/.tlc/harness");
-    assert.notEqual(plan.env.TLC_ORIGIN, plan.env.TLC_INSTALL_DEST, "the same path both ends is the defect");
+    assert.equal(plan.env.TLC_INSTALL_DEST, undefined, "naming the destination is how this broke");
   });
 
   /** invariant: the package's own launcher runs it, or a release that fixes `install` cannot deliver that fix. */
   test("AC the package's launcher runs the materialisation, not the runtime home's", () => {
-    const plan = npmSyncPlan("/npm/pkg", "/home/me/.tlc/harness");
+    const plan = npmSyncPlan("/npm/pkg");
 
     assert.equal(plan.command, process.execPath);
     assert.deepEqual(plan.args, [join("/npm/pkg", "bin", "tlc-exec.mjs"), "install-runtime"]);
@@ -1128,5 +1130,27 @@ describe("the npm update materialises the package it just installed", () => {
     assert.match(message, /unchanged — nothing was half-written/);
     assert.match(message, /npm root -g/);
     assert.match(message, /tlc harness install/);
+  });
+});
+
+/**
+ * hazard: `install` went through `runEntry`, so the runtime home's launcher ran the runtime home's own
+ * `install-runtime` — source and destination resolved to the same directory and the code never moved. Measured:
+ * package at 0.3.3, runtime left on 0.3.1, command reporting success. It is the recovery route the README and
+ * every failure message name ([/decisions/ad-098.md](/decisions/ad-098.md)).
+ */
+describe("install runs from the package, not from the runtime it replaces", () => {
+  test("AC install is its own action rather than a generic entry", () => {
+    const action = route(["install"]);
+
+    assert.equal(action.kind, "install");
+    assert.deepEqual(action.kind === "install" ? action.args : ["wrong"], []);
+  });
+
+  test("AC --link reaches the tool, and keeps install local", () => {
+    const action = route(["install", "--link"]);
+
+    assert.equal(action.kind, "install");
+    assert.deepEqual(action.kind === "install" ? action.args : [], ["--link"]);
   });
 });

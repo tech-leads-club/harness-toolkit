@@ -936,18 +936,24 @@ export function globalPackageRoot(
  * invariant: the *package's* launcher runs the materialisation, not the runtime home's. A release that fixes
  * `install` has to be able to deliver that fix, and the old code cannot do it.
  *
- * invariant: both ends are named explicitly — `TLC_ORIGIN` is where the code comes from and `TLC_INSTALL_DEST` is
- * where it goes — because each of them defaults to the same conventional home when left unsaid, which is exactly
- * how this became a no-op.
+ * invariant: only the **source** is named. `TLC_ORIGIN` is the one end this can know; the destination belongs to
+ * `installDest`, which exists because on a first npm run the *resolved* home is the package itself
+ * ([/decisions/ad-056.md](/decisions/ad-056.md)).
+ *
+ * hazard: the first version of this named the destination too, as `runtimeHome()`, and walked straight into that.
+ * On a clean machine it wrote `config.json` and the price catalogue into
+ * `node_modules/@tech-leads-club/harness-toolkit`, copied nothing, and then crashed writing hooks — Node refuses
+ * to strip types under `node_modules` ([/decisions/ad-098.md](/decisions/ad-098.md)).
  */
-export function npmSyncPlan(
-  packageRoot: string,
-  dest: string,
-): { command: string; args: string[]; env: Record<string, string> } {
+export function npmSyncPlan(packageRoot: string): {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+} {
   return {
     command: process.execPath,
     args: [join(packageRoot, "bin", "tlc-exec.mjs"), "install-runtime"],
-    env: { TLC_ORIGIN: packageRoot, TLC_INSTALL_DEST: dest },
+    env: { TLC_ORIGIN: packageRoot },
   };
 }
 
@@ -1044,6 +1050,7 @@ export type Action =
   | { kind: "prices-refresh"; scope: string }
   | { kind: "prices-lookup"; modelId: string }
   | { kind: "entry"; entry: string; args: string[] }
+  | { kind: "install"; args: string[] }
   | { kind: "unknown"; cmd: string };
 
 export function route(args: string[]): Action {
@@ -1162,7 +1169,7 @@ export function route(args: string[]): Action {
     case "init":
       return { kind: "entry", entry: "init-project", args: args.slice(1) };
     case "install":
-      return { kind: "entry", entry: "install-runtime", args: args.slice(1) };
+      return { kind: "install", args: args.slice(1) };
     // why: the exit has to be as easy to find as the entrance. An operator who cannot get the harness off their
     // machine without hand-editing settings.json will not try it on a second one
     // ([/decisions/ad-066.md](/decisions/ad-066.md)).
@@ -1353,7 +1360,7 @@ function runUpdate(root: string): never {
       console.error(npmRootFailureMessage(home));
       process.exit(1);
     }
-    const plan = npmSyncPlan(packageRoot, home);
+    const plan = npmSyncPlan(packageRoot);
     const sync = spawnSync(plan.command, plan.args, {
       stdio: "inherit",
       env: { ...process.env, ...plan.env },
@@ -1447,6 +1454,31 @@ function runEntry(entry: string, toolArgs: string[], root: string): never {
   const r = spawnSync(process.execPath, [execBinPath(), entry, ...toolArgs], {
     stdio: "inherit",
     env: { ...process.env, TLC_PROJECT_DIR: root },
+  });
+  process.exit(r.status ?? 1);
+}
+
+/**
+ * `install`, which is the only entry that must run from the *package* rather than from the runtime it is about to
+ * replace.
+ *
+ * hazard: it went through `runEntry`, so the runtime home's own launcher ran the runtime home's own
+ * `install-runtime`, whose source and destination then resolved to the same directory. Measured: package at 0.3.3,
+ * runtime left on 0.3.1, with the command reporting success — and this is the recovery route the README and every
+ * failure message name ([/decisions/ad-098.md](/decisions/ad-098.md)).
+ *
+ * invariant: `--link` stays local. It points the runtime at the checkout the operator is standing in, so its
+ * source is the working directory and never the package.
+ */
+function runInstall(toolArgs: string[], root: string): never {
+  const packageRoot = toolArgs.includes("--link") ? null : globalPackageRoot();
+  if (packageRoot === null) {
+    runEntry("install-runtime", toolArgs, root);
+  }
+  const plan = npmSyncPlan(packageRoot);
+  const r = spawnSync(plan.command, [...plan.args, ...toolArgs], {
+    stdio: "inherit",
+    env: { ...process.env, ...plan.env, TLC_PROJECT_DIR: root },
   });
   process.exit(r.status ?? 1);
 }
@@ -1613,6 +1645,9 @@ function main(argv: string[]): void {
       break;
     case "prices-lookup":
       runEntry("price-lookup", json ? [action.modelId, JSON_FLAG] : [action.modelId], root);
+      break;
+    case "install":
+      runInstall(action.args, root);
       break;
     case "entry":
       runEntry(action.entry, json ? [...action.args, JSON_FLAG] : action.args, root);
