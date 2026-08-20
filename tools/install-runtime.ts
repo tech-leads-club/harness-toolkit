@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { NPM_MARKER, NPM_PACKAGE } from "../bin/tlc-cli.ts";
+import { linkDir } from "../src/platform/links.ts";
 import { conventionalRuntimeHome, runtimeHome, runtimeHomeWasChosen } from "../src/platform/paths.ts";
 import { type Row, render, type Screen } from "../src/platform/screen.ts";
 import { createStyle, PLAIN, type Style } from "../src/platform/style.ts";
@@ -50,11 +51,12 @@ export function isShipped(relativePath: string): boolean {
 }
 
 export type InstallReport = {
-  kind: "copied" | "in-place";
+  kind: "copied" | "in-place" | "linked" | "relinked" | "refused";
   source: string;
   dest: string;
   entries: string[];
   missing: string[];
+  reason?: string;
 };
 
 /** The physical location of the copy that launched us, which is not the home once an npm shim is driving one. */
@@ -108,7 +110,62 @@ export function installRuntime(source: string, dest: string): InstallReport {
   return { kind: "copied", source, dest, entries, missing };
 }
 
+/**
+ * The contributor route: the runtime home points at a checkout, so an edit is live in the next hook with no
+ * install step.
+ *
+ * why it is here and not in a shell script: it was `ln -sfn` in bash and `mklink /J` in PowerShell, and the
+ * PowerShell one asked for Developer Mode. One `symlinkSync` covers all three platforms
+ * ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ *
+ * invariant: the checkout is never written to, and a destination that is not already a link is refused rather
+ * than removed ([/decisions/ad-046.md](/decisions/ad-046.md)).
+ */
+export function linkRuntime(source: string, dest: string): InstallReport {
+  if (resolve(source) === resolve(dest)) {
+    return { kind: "in-place", source, dest, entries: [], missing: [] };
+  }
+  const outcome = linkDir(resolve(source), dest);
+  if (outcome.kind === "refused") {
+    return { kind: "refused", source, dest, entries: [], missing: [], reason: outcome.reason };
+  }
+  const missing = RUNTIME_PAYLOAD.filter((entry) => !existsSync(join(dest, entry)));
+  return { kind: outcome.kind === "relinked" ? "relinked" : "linked", source, dest, entries: [], missing };
+}
+
 export function installScreen(report: InstallReport): Screen {
+  if (report.kind === "refused") {
+    return {
+      title: "harness install",
+      sections: [{ rows: [{ label: "refused", value: report.reason ?? "", level: "fail" }] }],
+    };
+  }
+  if (report.kind === "linked" || report.kind === "relinked") {
+    return {
+      title: "harness install",
+      sections: [
+        {
+          rows: [
+            {
+              label: report.kind === "linked" ? "linked" : "relinked",
+              value: `${report.dest} → ${report.source}`,
+              level: "ok",
+            },
+            ...(report.missing.length > 0
+              ? [
+                  {
+                    label: "incomplete",
+                    value: `the checkout has no ${report.missing.join(", ")} — run the build`,
+                    level: "fail" as const,
+                  },
+                ]
+              : []),
+          ],
+        },
+      ],
+      footer: "an edit in the checkout is live in the next hook  ·  `npm link` puts `tlc` on PATH",
+    };
+  }
   if (report.kind === "in-place") {
     return {
       title: "harness install",
@@ -173,10 +230,18 @@ export function fetchPrices(dest: string, spawn = spawnSync): void {
 }
 
 if (import.meta.main) {
-  const source = originRoot();
+  /**
+   * why a flag rather than a second command: install is install. The only difference is whether the runtime home
+   * holds a copy of the package or points at a checkout ([/decisions/ad-097.md](/decisions/ad-097.md)).
+   */
+  const link = process.argv.includes("--link");
+  const source = link ? process.cwd() : originRoot();
   const dest = installDest();
-  const report = installRuntime(source, dest);
+  const report = link ? linkRuntime(source, dest) : installRuntime(source, dest);
   console.log(installReportText(report, createStyle()));
+  if (report.kind === "refused") {
+    process.exit(1);
+  }
   fetchPrices(dest);
   process.exit(report.missing.length > 0 ? 1 : 0);
 }

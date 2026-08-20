@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, test } from "node:test";
+import { afterEach, beforeEach, describe, test } from "node:test";
 import {
   acceptPolicy,
   attestJson,
@@ -38,6 +38,7 @@ import {
   statusText,
   UsageError,
   unmanagedRuntimeMessage,
+  wireRuntime,
 } from "../../bin/tlc-cli.ts";
 import { coreFacade } from "../../src/core/index.ts";
 import { flagsDir, projectConfigPath, projectStateDir } from "../../src/platform/paths.ts";
@@ -690,7 +691,7 @@ describe("gate command", () => {
   test("resolveExecutable finds a name on PATH and rejects one that is absent", () => {
     assert.ok(resolveExecutable("node") !== null);
     assert.equal(resolveExecutable("definitely-not-a-real-binary-xyz"), null);
-    assert.equal(resolveExecutable("also-not-real", { PATH: "" }, "linux"), null);
+    assert.equal(resolveExecutable("also-not-real", { PATH: "" }), null);
   });
 
   test("writing a gate command refreshes the baseline, so the session is not blocked", () => {
@@ -979,5 +980,105 @@ describe("policy accept says where it applied", () => {
   test("it still refuses without a terminal, whichever form is used", () => {
     assert.throws(() => acceptPolicy("/x", ["--all"], false), /interactive terminal/);
     assert.throws(() => acceptPolicy("/x", ["/some/path"], false), /interactive terminal/);
+  });
+});
+
+/**
+ * The wiring an install puts outside the runtime directory. There were three implementations of this — bash,
+ * PowerShell and the POSIX branch of `update` — and the PowerShell one linked the init skill into
+ * `~/.tlc/skills/harness-init`, which no provider reads. So on Windows `update` refreshed a skill nothing could
+ * route to, which is the defect [/decisions/ad-095.md](/decisions/ad-095.md) fixed on the other side
+ * ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ *
+ * hazard: the provider directories are resolved from the environment, so a relocation variable inherited from the
+ * shell would send these links into the operator's real directory, pointing at a scratch tree. Both are named
+ * here for that reason.
+ */
+describe("wireRuntime", () => {
+  let scratch: string;
+  const saved: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    scratch = mkdtempSync(join(tmpdir(), "tlc-wire-"));
+    for (const key of ["CURSOR_CONFIG_DIR", "CLAUDE_CONFIG_DIR", "TLC_HOME"]) {
+      saved[key] = process.env[key];
+    }
+    process.env.CURSOR_CONFIG_DIR = join(scratch, "cursor");
+    process.env.CLAUDE_CONFIG_DIR = join(scratch, "claude");
+  });
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+    rmSync(scratch, { recursive: true, force: true });
+  });
+
+  function runtime(): string {
+    const dest = join(scratch, "harness");
+    mkdirSync(join(dest, "skills", "harness-init"), { recursive: true });
+    mkdirSync(join(dest, "bin"), { recursive: true });
+    writeFileSync(join(dest, "skills", "harness-init", "SKILL.md"), "# harness-init\n");
+    writeFileSync(join(dest, "config.example.json"), '{"version":1}');
+    return dest;
+  }
+
+  test("AC6 the skill is linked into every provider config dir that exists, and nowhere else", () => {
+    const dest = runtime();
+    mkdirSync(process.env.CURSOR_CONFIG_DIR as string, { recursive: true });
+    mkdirSync(process.env.CLAUDE_CONFIG_DIR as string, { recursive: true });
+
+    const result = wireRuntime(dest, dest);
+
+    for (const dir of [process.env.CURSOR_CONFIG_DIR, process.env.CLAUDE_CONFIG_DIR]) {
+      const link = join(dir as string, "skills", "harness-init");
+      assert.equal(lstatSync(link).isSymbolicLink(), true, link);
+      assert.equal(readFileSync(join(link, "SKILL.md"), "utf8"), "# harness-init\n");
+    }
+    // invariant: never the layout the PowerShell installer wrote, which no provider reads.
+    assert.equal(existsSync(join(scratch, ".tlc", "skills", "harness-init")), false);
+    assert.equal(result.missingSkill, false);
+  });
+
+  test("AC6 a provider that is not installed is skipped, not created", () => {
+    const dest = runtime();
+    mkdirSync(process.env.CURSOR_CONFIG_DIR as string, { recursive: true });
+
+    wireRuntime(dest, dest);
+
+    assert.equal(existsSync(join(process.env.CURSOR_CONFIG_DIR as string, "skills", "harness-init")), true);
+    assert.equal(existsSync(process.env.CLAUDE_CONFIG_DIR as string), false);
+  });
+
+  test("AC7 config.json is seeded from the example", () => {
+    const dest = runtime();
+
+    const result = wireRuntime(dest, dest);
+
+    assert.equal(readFileSync(join(dest, "config.json"), "utf8"), '{"version":1}');
+    assert.ok(result.lines.some((line) => line.includes("config seeded")));
+  });
+
+  /** invariant: relinking is what an update does every time, so it must not accumulate or fail. */
+  test("wiring twice leaves one link", () => {
+    const dest = runtime();
+    mkdirSync(process.env.CURSOR_CONFIG_DIR as string, { recursive: true });
+
+    wireRuntime(dest, dest);
+    wireRuntime(dest, dest);
+
+    const link = join(process.env.CURSOR_CONFIG_DIR as string, "skills", "harness-init");
+    assert.equal(lstatSync(link).isSymbolicLink(), true);
+  });
+
+  test("a runtime with no skill directory is reported rather than half-wired", () => {
+    const dest = join(scratch, "empty");
+    mkdirSync(dest, { recursive: true });
+
+    assert.equal(wireRuntime(dest, dest).missingSkill, true);
   });
 });

@@ -24,6 +24,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-087** — How the release works, and the six wrong shapes it took first ([/decisions/ad-087.md](/decisions/ad-087.md))
 - **AD-095** — Four defects about where things are written, and one of them made every hook run twice ([/decisions/ad-095.md](/decisions/ad-095.md))
 - **AD-096** — Prices are the machine's, in one file, and the parser that fills it was wrong twice ([/decisions/ad-096.md](/decisions/ad-096.md))
+- **AD-097** — The shell layer goes, and with it every platform branch that only existed because of it ([/decisions/ad-097.md](/decisions/ad-097.md))
 
 ## 2026-08-17
 

@@ -1,0 +1,24 @@
+version: 2
+
+# why: every third-party action is pinned to a commit SHA, which is the only pin that guarantees the same code
+# runs twice — and a SHA does not move when the action publishes a fix. Something has to walk them forward, or
+# pinning trades a supply-chain risk for a staleness one ([/decisions/ad-084.md](/decisions/ad-084.md),
+# [/decisions/ad-097.md](/decisions/ad-097.md)).
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # invariant: one pull request for the dev toolchain rather than one per package. There are no runtime
+    # dependencies to separate it from.
+    groups:
+      dev:
+        patterns: ["*"]

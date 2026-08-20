@@ -22,13 +22,16 @@ export type Violation = { rule: string; detail: string };
 export type Normaliser = (manifest: string) => string;
 
 /**
- * hazard: on Windows `npm` is `npm.cmd`, and execFile does not consult PATHEXT — the first version threw
- * `spawnSync npm ENOENT` on three tests, only in Windows CI. The same spelling as the npm bump in `runUpdate`, for
- * the same reason. Extracted so the platform branch has a test that does not need the platform
- * ([/decisions/ad-081.md](/decisions/ad-081.md)).
+ * hazard: on Windows `npm` is `npm.cmd`, and `execFile` does not consult PATHEXT — the first version threw
+ * `ENOENT` there while passing everywhere else.
+ *
+ * why `shell` unconditionally rather than only on Windows: a shell is how a `.cmd` is resolved, and on POSIX it
+ * costs one `/bin/sh`. The argv is fixed in this file and the only interpolated value is a directory this
+ * repository owns, so there is nothing for a shell to reinterpret — and one code path is one behaviour to test
+ * ([/decisions/ad-097.md](/decisions/ad-097.md)).
  */
-export function npmSpawnOptions(cwd: string, platform: NodeJS.Platform = process.platform) {
-  return { cwd, stdio: "ignore", shell: platform === "win32" } as const;
+export function npmSpawnOptions(cwd: string) {
+  return { cwd, stdio: "ignore", shell: true } as const;
 }
 
 /**

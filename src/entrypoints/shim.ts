@@ -49,7 +49,13 @@ if (!decision.run) {
 }
 
 const home = runtimeHome();
-const execBin = join(home, "bin", "tlc-exec");
+/**
+ * hazard: this was the extensionless bash wrapper, which Windows cannot execute — so the first branch simply
+ * never fired there and the shim fell through to the bundle. The launcher is a `.mjs` run by the interpreter
+ * already running this, which behaves the same on every platform
+ * ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ */
+const execBin = join(home, "bin", "tlc-exec.mjs");
 const distHandler = join(home, "dist", `${handler}.mjs`);
 const srcHandler = join(home, "src", "entrypoints", `${handler}.ts`);
 
@@ -67,7 +73,7 @@ function run(command: string, args: string[]): void {
 }
 
 if (existsSync(execBin)) {
-  run(execBin, [handler]);
+  run(process.execPath, [execBin, handler]);
 } else if (existsSync(distHandler)) {
   run(process.execPath, [distHandler]);
 } else if (existsSync(srcHandler)) {

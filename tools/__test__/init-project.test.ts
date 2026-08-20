@@ -226,9 +226,8 @@ describe("cursorShimEntries / claudeShimEntries", () => {
   test("cursor entries dispatch through the shim entry name", () => {
     const entries = cursorShimEntries("/launcher/tlc-exec.mjs");
     const stop = entries.find((entry) => entry.hookEvent === "stop");
-    // why: Cursor needs a cmd wrapper on Windows and bare node elsewhere, so the expectation follows
-    // the platform rather than pinning one of the two.
-    assert.equal(stop?.command, process.platform === "win32" ? "cmd" : "node");
+    // invariant: one command, on every platform ([/decisions/ad-097.md](/decisions/ad-097.md)).
+    assert.equal(stop?.command, "node");
     assert.deepEqual(stop?.args?.slice(-3), ["/launcher/tlc-exec.mjs", "shim", "stop"]);
   });
 

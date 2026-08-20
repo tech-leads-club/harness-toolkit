@@ -35,7 +35,7 @@ test("a real checkout with .git is managed", () => {
 });
 
 /**
- * hazard: `install.sh` links the runtime path to the clone it was run from, so on a contributor's machine
+ * hazard: `install --link` points the runtime path at the clone it was run from, so on a contributor's machine
  * `~/.tlc/harness` is a symlink to their working repository. The old message told them to run `git reset --hard`
  * there ([/decisions/ad-046.md](/decisions/ad-046.md)).
  *
@@ -124,7 +124,7 @@ test("no bundle is missing when every entrypoint has one", () => {
   assert.deepEqual(missingBundles(dest), []);
 });
 
-// why: derived from the entrypoints on disk the way `bin/tlc-build` derives them. A fixed list would stop naming a
+// why: derived from the entrypoints on disk the way `bin/tlc-build.mjs` derives them. A fixed list would stop naming a
 // new entrypoint and the absent bundle would only surface when a hook fired.
 test("an entrypoint with no bundle is reported", () => {
   const dest = newDir("tlc-bundles-");
@@ -178,7 +178,7 @@ test("a failed fetch names the package route and the move, not just the failure"
 });
 
 // invariant: no message may name `reset --hard` against a path the harness has not established it owns, and none
-// may offer re-running the installer as a way to replace the checkout — `install.sh` runs `git pull --ff-only`,
+// may offer re-installing as a way to replace the checkout — the old installer ran `git pull --ff-only`,
 // the command that just failed.
 test("no message offers a remedy the harness does not perform", () => {
   const messages = [

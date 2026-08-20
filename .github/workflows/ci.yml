@@ -10,8 +10,9 @@ on:
   workflow_call:
   workflow_dispatch:
 
-permissions:
-  contents: read
+# invariant: nothing at the workflow level, so a job that needs a scope has to name it. A job added later starts
+# with no token rather than inheriting one ([/decisions/ad-097.md](/decisions/ad-097.md)).
+permissions: {}
 
 # why: a push to a pull request used to leave the previous run going — two runs of a three-platform matrix for
 # one branch, and the older one answering about code nobody has any more. A run is superseded, not needed.
@@ -25,20 +26,24 @@ concurrency:
 
 jobs:
   test:
-    # why: the release bot's own pull request is a version bump, a lockfile and a rendered changelog — and the same
-    # matrix runs again on `main` the moment it merges, as this workflow called from `release.yml`. Running it on
-    # both is the third matrix for one release. Nothing is published behind a red `main`, because every release job
-    # needs that run ([/decisions/ad-087.md](/decisions/ad-087.md)).
-    #
-    # invariant: `workflow_call` is exempt — that *is* the run on `main`, and `github.head_ref` is empty there.
-    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please--')
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
+        # why these three: the harness writes files and links them on whatever the operator runs. The Node line is
+        # the one the package claims — `engines` is `>=24`, so 24 LTS is the floor and 26 Current is what a machine
+        # updated today has. The second Node runs on one OS: a version difference that only shows on one platform
+        # would be a Node bug, not ours.
         os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ["24"]
+        include:
+          - os: ubuntu-latest
+            node: "26"
     runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} · node ${{ matrix.node }}
     # why: the gate runs in about three minutes. Without a ceiling a hung job holds a runner for the six-hour
-    # default, which on a matrix of three is eighteen hours of nothing.
+    # default, which on a matrix of four is a day of nothing.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -51,35 +56,29 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: ${{ matrix.node }}
+          cache: npm
 
-      - name: Install Bun (build toolchain)
+      - name: Install Bun (the bundler)
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
 
-      - name: npm ci
-        shell: bash
-        run: npm ci
+      - run: npm ci
 
-      - name: Build dist/
-        shell: bash
-        run: bash bin/tlc-build
-        env:
-          TLC_HOME: ${{ github.workspace }}
+      # why: `dist/` is not committed, so this is where the bundler is proven on this platform. It is also what the
+      # published tarball contains, built by `prepack` from the same script
+      # ([/decisions/ad-097.md](/decisions/ad-097.md)).
+      - name: Build the bundles
+        run: node bin/tlc-build.mjs
 
+      # invariant: one command, the same one a contributor runs. No `shell: bash` — there is nothing left in the
+      # gate that needs a shell, which is what makes the Windows leg run the same code as the other two.
       - name: tlc harness test
-        shell: bash
-        run: bash bin/tlc harness test
+        run: node bin/tlc.mjs harness test
         env:
           TLC_HOME: ${{ github.workspace }}
+          # hazard: the suite writes provider config and skill links resolved from the environment. A scratch HOME
+          # keeps a test that forgets to sandbox from reaching the runner's real one
+          # ([/decisions/ad-095.md](/decisions/ad-095.md)).
           HOME: ${{ runner.temp }}
-
-      # Linux only: the bundles embed their own source paths, so a rebuild on another OS differs by
-      # separator and line ending. One platform is enough to catch a stale commit.
-      - name: dist/ matches src/
-        if: matrix.os == 'ubuntu-latest'
-        shell: bash
-        run: node tools/dev/check-dist-fresh.ts
-        env:
-          TLC_HOME: ${{ github.workspace }}

@@ -103,13 +103,14 @@ test("this repository's own manifest survives npm's normaliser unchanged", () =>
 /**
  * hazard: `npm` is `npm.cmd` on Windows and execFile does not consult PATHEXT, so the first version of this
  * checker threw `spawnSync npm ENOENT` on three tests — in Windows CI only, which is the one platform a
- * contributor here cannot run locally.
+ * contributor here cannot run locally. The second version branched on the platform, which meant the branch that
+ * mattered was the one nobody could run ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ *
+ * invariant: one path, taken everywhere, so the tested behaviour is the shipped behaviour.
  */
-test("the npm invocation goes through a shell on Windows and directly everywhere else", () => {
-  assert.equal(npmSpawnOptions("/tmp/x", "win32").shell, true);
-  assert.equal(npmSpawnOptions("/tmp/x", "linux").shell, false);
-  assert.equal(npmSpawnOptions("/tmp/x", "darwin").shell, false);
-  assert.equal(npmSpawnOptions("/tmp/x", "linux").cwd, "/tmp/x");
+test("the npm invocation goes through a shell on every platform", () => {
+  assert.equal(npmSpawnOptions("/tmp/x").shell, true);
+  assert.equal(npmSpawnOptions("/tmp/x").cwd, "/tmp/x");
 });
 
 test("report names every violation and says what held when there are none", () => {

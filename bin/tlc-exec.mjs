@@ -62,20 +62,23 @@ export function resolveHarnessHome(
   return candidate;
 }
 
-export function bunExecutableName(platform = process.platform) {
-  return platform === "win32" ? "bun.exe" : "bun";
-}
+/**
+ * why a list and not a branch: the only difference between platforms is which of these names exists on disk, and
+ * asking for both costs one extra `existsSync` per PATH entry. `bun.exe` never exists on Linux and `bun` never
+ * shadows it on Windows ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ */
+export const BUN_EXECUTABLE_NAMES = ["bun", "bun.exe"];
 
-export function findBunOnPath(env = process.env, platform = process.platform) {
-  const pathValue = env.PATH ?? "";
-  const bunName = bunExecutableName(platform);
-  for (const dir of pathValue.split(delimiter)) {
+export function findBunOnPath(env = process.env) {
+  for (const dir of (env.PATH ?? "").split(delimiter)) {
     if (!dir) {
       continue;
     }
-    const candidate = join(dir, bunName);
-    if (existsSync(candidate)) {
-      return candidate;
+    for (const name of BUN_EXECUTABLE_NAMES) {
+      const candidate = join(dir, name);
+      if (existsSync(candidate)) {
+        return candidate;
+      }
     }
   }
   return null;
@@ -122,12 +125,12 @@ export function writeRuntimeCache(harnessHome, bunPath) {
   return record;
 }
 
-export function resolveBunPath(harnessHome, env = process.env, platform = process.platform) {
+export function resolveBunPath(harnessHome, env = process.env) {
   const cached = readRuntimeCache(harnessHome);
   if (cached) {
     return cached.bunPath;
   }
-  const found = findBunOnPath(env, platform);
+  const found = findBunOnPath(env);
   writeRuntimeCache(harnessHome, found);
   return found;
 }
@@ -167,7 +170,7 @@ export function decideRuntime({ harnessHome, entry, bunPath, nodeMajor, distExis
       status: 1,
       message: [
         `tlc: Node ${process.version} found, but dist/${entry}.mjs is missing.`,
-        `  Run: ${join(harnessHome, "bin", "tlc-build")}`,
+        `  Run: node ${join(harnessHome, "bin", "tlc-build.mjs")}`,
       ].join("\n"),
     };
   }

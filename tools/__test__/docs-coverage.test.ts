@@ -292,7 +292,8 @@ test("CONTRIBUTING names every gate step, and states the right count", async () 
   const missing = tools.filter((path) => !guide.includes(path));
   assert.deepEqual(missing, [], "gate tools absent from CONTRIBUTING.md");
 
-  // invariant: the count includes check-dist-fresh, which CI owns and the local gate does not run.
+  // invariant: every step the gate runs is a row here, and there are no CI-only steps left — `check-dist-fresh`
+  // was the only one, and it went with the committed bundles ([/decisions/ad-097.md](/decisions/ad-097.md)).
   const declared = /\b(Fifteen|Sixteen|Seventeen|Eighteen|Nineteen|Twenty)\b steps/.exec(guide)?.[1];
   const words: Record<string, number> = {
     Fifteen: 15,
@@ -304,10 +305,10 @@ test("CONTRIBUTING names every gate step, and states the right count", async () 
   };
   assert.equal(
     declared === undefined ? -1 : words[declared],
-    steps.length + 1,
-    `CONTRIBUTING says ${declared}, the gate has ${steps.length} plus check-dist-fresh`,
+    steps.length,
+    `CONTRIBUTING says ${declared}, the gate has ${steps.length}`,
   );
 
   const rows = [...guide.matchAll(/^\| (\d+) \| /gm)].length;
-  assert.equal(rows, steps.length + 1, "one table row per step");
+  assert.equal(rows, steps.length, "one table row per step");
 });

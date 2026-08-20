@@ -37,6 +37,10 @@ model-prices.json
 model-prices.local.json
 model-prices.*.json
 
+# Build output. AD-012 tracked it because the installer was a git clone with no build step; that installer is
+# gone, and `prepack` builds the bundles into the published tarball ([/decisions/ad-097.md](/decisions/ad-097.md)).
+dist/
+
 # Build tooling caches
 .cache/
 node_modules/

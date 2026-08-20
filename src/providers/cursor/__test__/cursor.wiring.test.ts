@@ -92,20 +92,16 @@ test("afterFileEdit and afterAgentResponse keep their matchers", () => {
   assert.equal(afterAgentResponse?.matcher, "AgentResponse");
 });
 
-test("commands point at the launcher path — node on non-Windows, cmd /c on Windows", () => {
-  const posix = cursorWiring(HEALTH_RUNTIME).entries[0];
-  assert.equal(posix?.command, process.platform === "win32" ? "cmd" : "node");
+/**
+ * invariant: one command on every platform. The Windows `cmd /c node` form this replaced was in the first commit
+ * with no reason recorded, while the other provider's wiring wrote plain `node` everywhere — including Windows
+ * ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ */
+test("the command is node and the launcher is its first argument, on every platform", () => {
+  const entry = cursorWiring(HEALTH_RUNTIME).entries[0];
 
-  const originalPlatform = process.platform;
-  Object.defineProperty(process, "platform", { value: "win32" });
-  try {
-    const win = cursorWiring(HEALTH_RUNTIME).entries[0];
-    assert.equal(win?.command, "cmd");
-    assert.deepEqual(win?.args.slice(0, 2), ["/c", "node"]);
-    assert.ok(win?.args.includes(RUNTIME.launcherPath));
-  } finally {
-    Object.defineProperty(process, "platform", { value: originalPlatform });
-  }
+  assert.equal(entry?.command, "node");
+  assert.equal(entry?.args[0], RUNTIME.launcherPath);
 });
 
 // why: the exact shape from the incident. A `preToolUse` whose command was a bare `node` made Node read the hook

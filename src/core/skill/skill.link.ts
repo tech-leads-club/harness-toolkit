@@ -1,7 +1,7 @@
 /**
  * Where the init skill has to be linked, and what counts as a link that works.
  *
- * hazard: `install.sh` loops over every provider config directory that exists and links
+ * hazard: the installer looped over every provider config directory that exists and linked
  * `<provider>/skills/harness-init`, with the comment "Each provider only reads its own skills directory".
  * `tlc harness update` linked to `<runtime-home>/../skills/harness-init` instead — a directory no provider reads,
  * and which did not exist at all on the machine where this was found. So an update never refreshed the skill

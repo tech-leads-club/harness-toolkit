@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { homedir, platform as osPlatform } from "node:os";
-import { basename, dirname, join } from "node:path";
-import { runtimePathKind } from "../bin/tlc-cli.ts";
+import { basename, delimiter, dirname, join } from "node:path";
+import { NPM_PACKAGE, runtimePathKind } from "../bin/tlc-cli.ts";
 import { findBunOnPath, writeRuntimeCache } from "../bin/tlc-exec.mjs";
 import { isCursorWired } from "../bin/write-user-hooks.mjs";
 import type { ProviderWiring } from "../src/contracts/index.ts";
@@ -214,10 +214,40 @@ export function checkPrices(
   ];
 }
 
+/**
+ * Where a shell would find the `tlc` command, if anywhere.
+ *
+ * hazard: this row used to pass when `~/.local/bin/tlc` existed **or** `<runtime home>/bin/tlc` existed. The
+ * second is part of every install, so the check could not fail — and it printed the first path either way, so an
+ * operator whose command was not on PATH read a passing row naming a file they did not have
+ * ([/decisions/ad-034.md](/decisions/ad-034.md), [/decisions/ad-097.md](/decisions/ad-097.md)).
+ *
+ * why the four names: an npm global install writes the shims for its platform — bare on POSIX, `.cmd` and `.ps1`
+ * on Windows. Trying all four everywhere costs four `existsSync` calls and needs no platform branch.
+ */
+export function resolveOnPath(
+  command: string,
+  env: NodeJS.ProcessEnv = process.env,
+  exists = existsSync,
+): string | null {
+  for (const dir of (env.PATH ?? "").split(delimiter)) {
+    if (!dir) {
+      continue;
+    }
+    for (const name of [command, `${command}.cmd`, `${command}.exe`, `${command}.ps1`]) {
+      const candidate = join(dir, name);
+      if (exists(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
 export function checkRuntimePaths(home: string, platform: NodeJS.Platform): Check[] {
   const launcher = join(home, "bin", "tlc-exec.mjs");
   const distSample = join(home, "dist", "stop.mjs");
-  const cliLink = join(homedir(), ".local", "bin", platform === "win32" ? "tlc.cmd" : "tlc");
+  const onPath = resolveOnPath("tlc");
   return [
     { level: "ok", name: "platform", detail: platform },
     { level: existsSync(launcher) ? "ok" : "fail", name: "global runtime", detail: home },
@@ -230,12 +260,9 @@ export function checkRuntimePaths(home: string, platform: NodeJS.Platform): Chec
     },
     { level: existsSync(launcher) ? "ok" : "fail", name: "portable launcher", detail: launcher },
     {
-      level:
-        existsSync(cliLink) || existsSync(join(home, "bin", platform === "win32" ? "tlc.cmd" : "tlc"))
-          ? "ok"
-          : "fail",
+      level: onPath === null ? "fail" : "ok",
       name: "CLI on PATH",
-      detail: cliLink,
+      detail: onPath ?? `no \`tlc\` on PATH — npm i -g ${NPM_PACKAGE}, or \`npm link\` from a clone`,
     },
   ];
 }

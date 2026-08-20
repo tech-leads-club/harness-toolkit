@@ -41,7 +41,7 @@ To give one project its own rules, open it and say **"setup harness"** to the ag
 12. [Connect a project](#connect-a-project)
 13. [Paths and shared state](#paths-and-shared-state)
 14. [Ship claims](#ship-claims)
-15. [Price catalogs](#price-catalogs)
+15. [Prices](#prices)
 16. [Windows](#windows)
 17. [Troubleshooting](#troubleshooting)
 18. [Documentation](#documentation)
@@ -352,7 +352,8 @@ graph LR
 | Project shim (per provider) | `<repo>/.cursor/hooks.json`, `<repo>/.claude/settings.json` |
 
 Entrypoint: `bin/tlc-exec.mjs`.
-Wrappers: `bin/tlc`, `bin/tlc-exec` (Unix); `bin/tlc.cmd`, `bin/tlc-exec.cmd` (Windows).
+Wrappers: `bin/tlc` and `bin/tlc.cmd`, kept for installs made before the package existed. Everything else
+spawns `bin/tlc-exec.mjs` with the interpreter already running.
 
 See `tlc harness help architecture` or [`docs/architecture.md`](docs/architecture.md).
 
@@ -443,13 +444,13 @@ See `tlc harness help prices` or [`docs/measure.md`](docs/measure.md).
 
 ## Windows
 
-Path resolution goes through `os.homedir()` only, hooks use exec form, filenames are sanitized,
-atomic writes retry, and the CLI ships a `.cmd` shim alongside directory junctions
-([`docs/decisions/ad-006.md`](docs/decisions/ad-006.md)).
+Path resolution goes through `os.homedir()`, hooks use exec form, filenames are sanitized, atomic writes retry,
+directory links are junctions, and npm generates the PATH shims
+([`docs/decisions/ad-006.md`](docs/decisions/ad-006.md), [`docs/decisions/ad-097.md`](docs/decisions/ad-097.md)).
 
-CI runs the full suite and the `dist/` build on `windows-latest` on every push.
+CI runs the full suite and the bundle build on `windows-latest` on every push.
 
-Outside CI coverage: `install.ps1`, and hooks firing inside a Cursor or Claude Code session on Windows.
+Outside CI coverage: hooks firing inside a Cursor or Claude Code session on Windows.
 
 ## Troubleshooting
 

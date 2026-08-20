@@ -9,6 +9,7 @@ doctor reports against your own configuration.
 ## Unreleased
 
 - **AD-096** — Prices are the machine's, in one file, and the parser that fills it was wrong twice
+- **AD-097** — The shell layer goes, and with it every platform branch that only existed because of it
 
 ## v0.2.4
 

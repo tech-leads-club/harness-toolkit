@@ -19,6 +19,9 @@
     "tlc": "bin/tlc.mjs",
     "tlc-exec": "bin/tlc-exec.mjs"
   },
+  "scripts": {
+    "prepack": "node bin/tlc-build.mjs"
+  },
   "files": [
     "bin/",
     "capabilities/",

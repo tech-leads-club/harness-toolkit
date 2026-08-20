@@ -55,12 +55,12 @@ export function launcherPath(home = runtimeHome()): string {
   return join(home, "bin", "tlc-exec.mjs");
 }
 
-function shimCommand(platform = process.platform): { command: string; argsPrefix: string[] } {
-  if (platform === "win32") {
-    return { command: "cmd", argsPrefix: ["/c", "node"] };
-  }
-  return { command: "node", argsPrefix: [] };
-}
+/**
+ * invariant: the same command the provider wiring writes, on every platform — `node`, resolved by the host that
+ * spawns it. The Windows `cmd /c` wrapper this replaced existed on one of the two providers only
+ * ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ */
+const SHIM_COMMAND = { command: "node", argsPrefix: [] as string[] };
 
 type ShimSpec = {
   hookEvent: string;
@@ -92,7 +92,7 @@ const CLAUDE_SHIM_SPECS: readonly ShimSpec[] = [
 ];
 
 export function cursorShimEntries(launcher: string): WiringEntry[] {
-  const { command, argsPrefix } = shimCommand();
+  const { command, argsPrefix } = SHIM_COMMAND;
   return CURSOR_SHIM_SPECS.map((spec) => ({
     hookEvent: spec.hookEvent,
     handler: spec.handler,

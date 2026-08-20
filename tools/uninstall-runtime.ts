@@ -37,36 +37,38 @@ export type UninstallPlan = {
 
 export type UninstallTargets = {
   home: string;
-  binLink: string;
+  binLinks: string[];
   claudeSettings: string;
   cursorHooks: string;
   skillLinks: string[];
 };
 
 /**
- * hazard: `install.ps1` does not write the same artefacts as `install.sh`. It resolves the home from
- * `USERPROFILE`, **copies** `tlc.cmd` into the bin directory instead of linking it, and puts one skill junction
- * at `~/.tlc/skills/harness-init` rather than one inside each provider's directory. Reading the POSIX layout on
- * Windows finds none of them and reports a clean machine ([/decisions/ad-066.md](/decisions/ad-066.md)).
+ * Everything an install may have left outside the runtime directory, on any machine.
+ *
+ * hazard: this used to read one layout per platform, chosen by `process.platform` — and the two installers wrote
+ * different layouts, so reading the POSIX one on Windows found none of them and reported a clean machine
+ * ([/decisions/ad-066.md](/decisions/ad-066.md)).
+ *
+ * why every name and not a branch: an uninstall has to clean up what is *there*, which includes what an older
+ * version put there. `tlc.cmd` does not exist on Linux and the legacy `~/.tlc/skills` junction does not exist on
+ * a machine installed after it was retired — an absent path is reported as nothing, so listing them all is both
+ * simpler and more complete than deciding ([/decisions/ad-097.md](/decisions/ad-097.md)).
  */
-export function uninstallTargets(
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-): UninstallTargets {
-  const windows = platform === "win32";
-  const userHome = (windows ? env.USERPROFILE : env.HOME)?.trim() || homedir();
+export function uninstallTargets(env: NodeJS.ProcessEnv = process.env): UninstallTargets {
+  const userHome = homedir();
   const binDir = env.TLC_BIN_DIR?.trim() || join(userHome, ".local", "bin");
   return {
     home: runtimeHome(env),
-    binLink: join(binDir, windows ? "tlc.cmd" : "tlc"),
+    binLinks: [join(binDir, "tlc"), join(binDir, "tlc.cmd")],
     claudeSettings: join(claudeConfigDir(), "settings.json"),
     cursorHooks: join(cursorConfigDir(), "hooks.json"),
-    skillLinks: windows
-      ? [join(userHome, ".tlc", "skills", "harness-init")]
-      : [
-          join(claudeConfigDir(), "skills", "harness-init"),
-          join(cursorConfigDir(), "skills", "harness-init"),
-        ],
+    skillLinks: [
+      join(claudeConfigDir(), "skills", "harness-init"),
+      join(cursorConfigDir(), "skills", "harness-init"),
+      // the layout the PowerShell installer wrote: one junction no provider ever read
+      join(userHome, ".tlc", "skills", "harness-init"),
+    ],
   };
 }
 
@@ -312,7 +314,9 @@ export function planUninstall(targets: UninstallTargets, options: { purge?: bool
   for (const link of targets.skillLinks) {
     planLink(items, link, targets.home, "skill link", "location");
   }
-  planLink(items, targets.binLink, targets.home, "the tlc launcher on PATH", "target");
+  for (const link of targets.binLinks) {
+    planLink(items, link, targets.home, "the tlc launcher on PATH", "target");
+  }
   const homeIsLink = planRuntime(items, targets.home, purge);
   planManual(items, targets.home);
 

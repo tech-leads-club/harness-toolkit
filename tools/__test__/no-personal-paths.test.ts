@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -127,11 +127,29 @@ describe("the repository carries no personal identity", () => {
     );
   });
 
-  test("the generated bundles are covered, since they are tracked", () => {
-    const tracked = trackedFiles();
-    assert.ok(
-      tracked.some((file) => file.startsWith("dist/") && file.endsWith(".mjs")),
-      "expected tracked dist bundles for the gate to be meaningful",
+  /**
+   * hazard: the bundles are no longer tracked, so the sweep over `git ls-files` above cannot see them — and they
+   * are what ships in the tarball. A generated file is exactly where an operator's account name slips in
+   * unnoticed, so they are read from disk instead ([/decisions/ad-097.md](/decisions/ad-097.md)).
+   *
+   * invariant: the check covers what is published, not what is committed. Those are now different sets.
+   */
+  test("the generated bundles carry no personal path either", () => {
+    const dist = join(repoRoot, "dist");
+    if (!existsSync(dist)) {
+      // why: a clone that has not built yet is not a failure. The build step in CI runs before the gate.
+      return;
+    }
+    const bundles = readdirSync(dist).filter((name: string) => name.endsWith(".mjs"));
+    assert.ok(bundles.length > 0, "dist/ exists but holds no bundle — the build did not run");
+
+    const leaks: Leak[] = [];
+    for (const name of bundles) {
+      leaks.push(...findPersonalPaths(readFileSync(join(dist, name), "utf8"), `dist/${name}`));
+    }
+    assert.deepEqual(
+      leaks.map((leak) => `${leak.file}: ${leak.match}`),
+      [],
     );
   });
 

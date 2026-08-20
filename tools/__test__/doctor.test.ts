@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { afterEach, describe, test } from "node:test";
 import type { ProviderWiring } from "../../src/contracts/index.ts";
 import { coreFacade } from "../../src/core/index.ts";
@@ -23,6 +23,7 @@ import {
   measureRuntimeStart,
   medianMs,
   providerWiringStatus,
+  resolveOnPath,
   runChecks,
   toReport,
   wiringProblems,
@@ -733,6 +734,53 @@ describe("checkPrices", () => {
     assert.equal(
       checkPrices(NOW, read({ refreshedAt: NOW.toISOString() }, { a: {}, b: {}, c: {} })).length,
       1,
+    );
+  });
+});
+
+/**
+ * hazard: the "CLI on PATH" row passed when `~/.local/bin/tlc` existed **or** `<runtime home>/bin/tlc` existed.
+ * The second is part of every install, so the row could not fail — and it printed the first path either way
+ * ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ */
+describe("resolveOnPath", () => {
+  const PATH = ["/a", "/b"].join(delimiter);
+
+  test("AC5 finds the bare name a POSIX npm install writes", () => {
+    const found = resolveOnPath("tlc", { PATH }, (p) => p === join("/b", "tlc"));
+
+    assert.equal(found, join("/b", "tlc"));
+  });
+
+  /** why: the `.cmd` and `.ps1` shims npm writes on Windows are found without asking which platform this is. */
+  test("AC5 finds the shim names an npm install writes on Windows", () => {
+    assert.equal(
+      resolveOnPath("tlc", { PATH }, (p) => p === join("/a", "tlc.cmd")),
+      join("/a", "tlc.cmd"),
+    );
+    assert.equal(
+      resolveOnPath("tlc", { PATH }, (p) => p === join("/b", "tlc.ps1")),
+      join("/b", "tlc.ps1"),
+    );
+  });
+
+  test("AC5 nothing on PATH is null, not a guess", () => {
+    assert.equal(
+      resolveOnPath("tlc", { PATH }, () => false),
+      null,
+    );
+  });
+
+  test("an empty PATH entry is skipped rather than probing the working directory", () => {
+    const probed: string[] = [];
+    resolveOnPath("tlc", { PATH: `${delimiter}/a` }, (p) => {
+      probed.push(String(p));
+      return false;
+    });
+
+    assert.ok(
+      probed.every((path) => path.startsWith(join("/a", ""))),
+      probed.join(", "),
     );
   });
 });

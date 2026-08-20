@@ -15,18 +15,19 @@ Target path: `~/.tlc/harness`.
 
 ## Contribute from a clone
 
-A contributor install **links** the runtime path at your clone instead of materialising a copy, so an edit is live
-in the next hook without any install step. `tlc harness doctor` reports it as `link to a working clone`, and
-`update` never writes there.
+`--link` points the runtime path at your clone instead of materialising a copy, so an edit is live in the next hook
+with no install step. `tlc harness doctor` reports it as `link to a working clone`, and `update` never writes there.
 
 ```bash
 git clone https://github.com/tech-leads-club/harness-toolkit.git
 cd harness-toolkit
-./install.sh      # run from the checkout, it links rather than clones
-./bin/tlc-build
+npm ci
+node bin/tlc-build.mjs                    # dist/ is not committed
+node bin/tlc.mjs harness install --link
+npm link                                  # optional: puts `tlc` on PATH from this clone
 ```
 
-Windows: `.\install.ps1`, which needs Developer Mode or an elevated shell for the symlink.
+Same commands on Linux, macOS and Windows. Needs Node 24+ and Bun (the bundler).
 
 ## Checks
 
@@ -36,7 +37,7 @@ The gate is a single command:
 tlc harness test
 ```
 
-Seventeen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
+Sixteen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
 source of truth, and this table is here to say what each step is for.
 
 | # | Step | Fails on |
@@ -57,7 +58,6 @@ source of truth, and this table is here to say what each step is for.
 | 14 | `render-changelog --check` | a `CHANGELOG.md` that no longer matches `docs/decisions/` |
 | 15 | `render-log --check` | a `docs/log.md` that no longer matches `docs/decisions/` |
 | 16 | `render-coverage --check` | a control named in `docs/coverage.md` that is neither a floor rule nor a capability id, or a row short of `covered` that states no limit |
-| 17 | `check-dist-fresh` | **CI only** — a `dist/` bundle that does not match `src/`. Run `./bin/tlc-build` and commit the result |
 
 Equivalent by hand, for local debugging:
 
@@ -78,7 +78,6 @@ node tools/dev/render-capabilities.ts --check
 node tools/dev/render-changelog.ts --check
 node tools/dev/render-log.ts --check
 node tools/dev/render-coverage.ts --check
-node tools/dev/check-dist-fresh.ts
 ```
 
 `--import ./tools/test-env.mjs` is not optional. Without it a suite reads `CLAUDE_PROJECT_DIR` from

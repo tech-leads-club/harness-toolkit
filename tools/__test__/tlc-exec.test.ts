@@ -65,27 +65,39 @@ describe("findBunOnPath", () => {
     mkdirSync(dirA, { recursive: true });
     mkdirSync(dirB, { recursive: true });
     writeFileSync(join(dirB, "bun"), "");
-    const found = findBunOnPath({ PATH: [dirA, dirB].join(delimiter) }, "linux");
+    const found = findBunOnPath({ PATH: [dirA, dirB].join(delimiter) });
     assert.equal(found, join(dirB, "bun"));
   });
 
-  test("looks for bun.exe on win32", () => {
+  // invariant: the Windows name is found by the same call, with no platform to pass. There is one lookup, so
+  // there is one behaviour to test ([/decisions/ad-097.md](/decisions/ad-097.md)).
+  test("finds bun.exe, the name Windows uses, without being told the platform", () => {
     const root = newRoot();
     mkdirSync(root, { recursive: true });
     writeFileSync(join(root, "bun.exe"), "");
-    const found = findBunOnPath({ PATH: root }, "win32");
-    assert.equal(found, join(root, "bun.exe"));
+
+    assert.equal(findBunOnPath({ PATH: root }), join(root, "bun.exe"));
+  });
+
+  // why: the bare name wins when both are present, so a POSIX machine is never sent to a stray .exe.
+  test("the bare name is preferred when both exist", () => {
+    const root = newRoot();
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, "bun"), "");
+    writeFileSync(join(root, "bun.exe"), "");
+
+    assert.equal(findBunOnPath({ PATH: root }), join(root, "bun"));
   });
 
   test("returns null when no PATH entry has bun", () => {
     const root = newRoot();
     mkdirSync(root, { recursive: true });
-    const found = findBunOnPath({ PATH: root }, "linux");
+    const found = findBunOnPath({ PATH: root });
     assert.equal(found, null);
   });
 
   test("returns null for an empty PATH", () => {
-    const found = findBunOnPath({ PATH: "" }, "linux");
+    const found = findBunOnPath({ PATH: "" });
     assert.equal(found, null);
   });
 });
@@ -221,7 +233,7 @@ describe("Bun/Node dual-runtime parity", () => {
   const fixture = join(import.meta.dirname, "fixtures", "tlc-exec-echo.mjs");
 
   test("Bun and Node produce byte-identical stdout for the same script", () => {
-    const bunPath = findBunOnPath(process.env, process.platform);
+    const bunPath = findBunOnPath(process.env);
     if (!bunPath) {
       console.log("tlc-exec.test: bun not found on PATH — skipping dual-runtime parity check");
       return;

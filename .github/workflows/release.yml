@@ -25,8 +25,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
+# invariant: nothing at the workflow level. Every job names the scopes it needs, so a job added later starts
+# with no token ([/decisions/ad-097.md](/decisions/ad-097.md)).
+permissions: {}
 
 # invariant: one release at a time, and NEVER cancelled halfway. `cancel-in-progress: true` here would mean a run
 # arriving during the seconds between `npm publish` and the tag push destroys the only process that can finish the
@@ -132,7 +133,13 @@ jobs:
 
       # why: full history and tags. The base version is the last tag, and the commit range since it is what earns
       # the bump — a shallow clone would read every commit as unreleased.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      #
+      # why the credential stays in `.git/config` here, alone in this repository: this is the one job that pushes,
+      # and it pushes the commit and the tag with `git push --atomic` at the end. Every other checkout in these
+      # workflows sets `persist-credentials: false`, and the audit is suppressed on this line rather than
+      # repository-wide so a new checkout that forgets it is still reported
+      # ([/decisions/ad-097.md](/decisions/ad-097.md)).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # zizmor: ignore[artipacked]
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token || github.token }}
@@ -221,10 +228,11 @@ jobs:
           VERSION: ${{ needs.decide.outputs.version }}
         run: node tools/dev/render-changelog.ts --release "v${VERSION}"
 
-      # invariant: the published dist/ is built here rather than trusted from the commit. `check-dist-fresh` proves
-      # the committed bundles match src/, and a release is the one moment where building again costs nothing.
-      - name: Build dist/
-        run: bash bin/tlc-build
+      # invariant: the published bundles are built here, from this commit. `dist/` is no longer committed, so there
+      # is nothing to trust and nothing to drift — `prepack` runs the same script again at pack time
+      # ([/decisions/ad-097.md](/decisions/ad-097.md)).
+      - name: Build the bundles
+        run: node bin/tlc-build.mjs
         env:
           TLC_HOME: ${{ github.workspace }}
 

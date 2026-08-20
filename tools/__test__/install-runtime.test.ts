@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -18,6 +19,7 @@ import {
   installReportText,
   installRuntime,
   isShipped,
+  linkRuntime,
   OPERATOR_OWNED,
   originRoot,
   RUNTIME_PAYLOAD,
@@ -185,7 +187,7 @@ test("a nested launcher does not turn its own TLC_HOME into an operator choice",
 });
 
 /**
- * hazard: the exclusion used to be a hand-maintained array in `bin/tlc-build`. It named four checkers while ten
+ * hazard: the exclusion used to be a hand-maintained array in the build script. It named four checkers while ten
  * qualified, so six that validate only this repository were bundled and copied into every install for weeks. The
  * directory is the declaration now, and these are the two product routes that must honour it.
  */
@@ -226,4 +228,84 @@ test("every bundle in dist has a source outside tools/dev", () => {
       existsSync(join(repoRoot, "tools", `${name}.ts`));
     assert.equal(shipped, true, `${bundle} has no shipped source`);
   }
+});
+
+/**
+ * The contributor route. It was `ln -sfn` in bash and `mklink /J` in PowerShell — two implementations, one of
+ * which asked for Developer Mode ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ */
+test("AC1 --link points the runtime home at the checkout, not at a copy", () => {
+  const source = fakePackage();
+  const dest = join(tempDir("home-"), "harness");
+
+  const report = linkRuntime(source, dest);
+
+  assert.equal(report.kind, "linked");
+  assert.equal(lstatSync(dest).isSymbolicLink(), true, "a copy would not be a link");
+  assert.equal(readFileSync(join(dest, "bin", "marker.txt"), "utf8"), "bin");
+});
+
+/** invariant: an edit in the checkout is visible through the link, which is the whole point of the route. */
+test("AC1 an edit in the checkout is live through the link", () => {
+  const source = fakePackage();
+  const dest = join(tempDir("home-"), "harness");
+  linkRuntime(source, dest);
+
+  writeFileSync(join(source, "bin", "marker.txt"), "edited", "utf8");
+
+  assert.equal(readFileSync(join(dest, "bin", "marker.txt"), "utf8"), "edited");
+});
+
+test("AC3 linking twice relinks and leaves one link", () => {
+  const source = fakePackage();
+  const dest = join(tempDir("home-"), "harness");
+
+  assert.equal(linkRuntime(source, dest).kind, "linked");
+  assert.equal(linkRuntime(source, dest).kind, "relinked");
+  assert.equal(lstatSync(dest).isSymbolicLink(), true);
+});
+
+/**
+ * AC2 — hazard: both scripts removed whatever was at the destination. A real directory there is an existing
+ * install or somebody's work ([/decisions/ad-046.md](/decisions/ad-046.md)).
+ */
+test("AC2 an existing real runtime directory is refused and left alone", () => {
+  const source = fakePackage();
+  const dest = join(tempDir("home-"), "harness");
+  mkdirSync(dest, { recursive: true });
+  writeFileSync(join(dest, "config.json"), '{"mine":true}');
+
+  const report = linkRuntime(source, dest);
+
+  assert.equal(report.kind, "refused");
+  assert.match(report.reason ?? "", /move it aside/);
+  assert.equal(readFileSync(join(dest, "config.json"), "utf8"), '{"mine":true}');
+});
+
+/** why: linking the runtime home to itself is not an error, it is a contributor who already did it. */
+test("linking a checkout to itself is reported as already in place", () => {
+  const source = fakePackage();
+
+  assert.equal(linkRuntime(source, source).kind, "in-place");
+});
+
+/** invariant: a checkout that was never built is named as incomplete rather than reported as a good install. */
+test("a checkout missing a payload entry is linked and reported incomplete", () => {
+  const source = fakePackage();
+  rmSync(join(source, "dist"), { recursive: true, force: true });
+  const dest = join(tempDir("home-"), "harness");
+
+  const report = linkRuntime(source, dest);
+
+  assert.equal(report.kind, "linked");
+  assert.deepEqual(report.missing, ["dist"]);
+  assert.match(installReportText(report), /incomplete/);
+});
+
+test("the refusal is what the operator reads, not a stack", () => {
+  const dest = join(tempDir("home-"), "harness");
+  mkdirSync(dest, { recursive: true });
+  writeFileSync(join(dest, "keep"), "x");
+
+  assert.match(installReportText(linkRuntime(fakePackage(), dest)), /refused/);
 });

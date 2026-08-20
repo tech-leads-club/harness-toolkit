@@ -33,15 +33,18 @@ const ENTRY_SPECS: readonly EntrySpec[] = [
   { hookEvent: "afterAgentResponse", handler: "response-after", timeoutSeconds: 5, matcher: "AgentResponse" },
 ];
 
-function commandFor(runtime: RuntimePaths): { command: string; argsPrefix: string[] } {
-  if (process.platform === "win32") {
-    return { command: "cmd", argsPrefix: ["/c", "node", runtime.launcherPath] };
-  }
-  return { command: "node", argsPrefix: [runtime.launcherPath] };
-}
-
+/**
+ * hazard: this used to write `cmd /c node <launcher>` on Windows and `node <launcher>` elsewhere, from the first
+ * commit, with no recorded reason. The other provider's wiring has always written plain `node` on every platform,
+ * including Windows — so the branch was the odd one, not the safe one, and it was the branch no contributor here
+ * could exercise ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ *
+ * invariant: `node` is resolved by the host's own process spawn, which appends the executable extension on the
+ * platform that needs one. If a Windows session ever proves otherwise, this is the one line to change.
+ */
 export function cursorWiring(runtime: RuntimePaths): ProviderWiring {
-  const { command, argsPrefix } = commandFor(runtime);
+  const command = "node";
+  const argsPrefix = [runtime.launcherPath];
   const entries: WiringEntry[] = ENTRY_SPECS.map((spec) => ({
     hookEvent: spec.hookEvent,
     handler: spec.handler,

@@ -88,7 +88,7 @@ function installedMachine(options: { linkedHome?: boolean } = {}): {
     clone,
     targets: {
       home,
-      binLink,
+      binLinks: [binLink],
       claudeSettings: join(claudeDir, "settings.json"),
       cursorHooks: join(cursorDir, "hooks.json"),
       skillLinks,
@@ -142,7 +142,7 @@ test("AC7 building the plan changes nothing on disk", () => {
   assert.equal(pendingItems(plan).length > 0, true);
   assert.equal(readFileSync(targets.claudeSettings, "utf8"), before);
   assert.equal(existsSync(join(targets.home, "src")), true);
-  assert.equal(existsSync(targets.binLink), true);
+  assert.equal(existsSync(targets.binLinks[0] as string), true);
   assert.equal(uninstallReportText(plan, null).includes("WOULD REMOVE"), true);
 });
 
@@ -162,10 +162,10 @@ test("AC9 a tlc on PATH that is not ours is examined and left alone", () => {
   const stranger = join(root, "bin", "tlc-other");
   symlinkSync(foreign, stranger);
 
-  const plan = planUninstall({ ...targets, binLink: stranger });
+  const plan = planUninstall({ ...targets, binLinks: [stranger] });
   const item = plan.items.find((entry) => entry.target === stranger);
   assert.equal(item?.action, "keep");
-  applyUninstall(plan, { ...targets, binLink: stranger });
+  applyUninstall(plan, { ...targets, binLinks: [stranger] });
   assert.equal(existsSync(stranger), true);
 });
 
@@ -227,10 +227,10 @@ test("a link left dangling by an earlier partial removal is still recognised as 
     },
     targets,
   );
-  assert.equal(existsSync(targets.binLink), false, "the link now dangles");
+  assert.equal(existsSync(targets.binLinks[0] as string), false, "the link now dangles");
 
   const plan = planUninstall(targets);
-  const item = plan.items.find((entry) => entry.target === targets.binLink);
+  const item = plan.items.find((entry) => entry.target === targets.binLinks[0]);
   assert.equal(item?.action, "unlink");
   applyUninstall(plan, targets);
   assert.deepEqual(pendingItems(planUninstall(targets)), []);
@@ -275,7 +275,7 @@ test("a dangling link is still ours when an ancestor of the home is itself a sym
 
   const live = planUninstall({
     home,
-    binLink,
+    binLinks: [binLink],
     claudeSettings: join(root, "absent.json"),
     cursorHooks: join(root, "absent-hooks.json"),
     skillLinks: [],
@@ -285,7 +285,7 @@ test("a dangling link is still ours when an ancestor of the home is itself a sym
   rmSync(join(real, "runtime", "bin"), { recursive: true });
   const dangling = planUninstall({
     home,
-    binLink,
+    binLinks: [binLink],
     claudeSettings: join(root, "absent.json"),
     cursorHooks: join(root, "absent-hooks.json"),
     skillLinks: [],
@@ -325,27 +325,38 @@ test("win32 folds drive-letter case the way the platform does", () => {
 });
 
 /**
- * hazard: install.ps1 writes a different layout from install.sh — USERPROFILE, a copied `tlc.cmd`, and one skill
- * junction under `~/.tlc/skills`. Reading the POSIX layout on Windows finds none of it and reports a clean
- * machine, which is the worst possible answer from an uninstaller.
+ * hazard: this used to read one layout per platform, and the two installers wrote different ones — so the POSIX
+ * layout read on Windows found nothing and reported a clean machine, which is the worst answer an uninstaller can
+ * give ([/decisions/ad-066.md](/decisions/ad-066.md)).
+ *
+ * invariant: every layout any version ever wrote is named, on every platform. An absent path reports nothing, so
+ * naming them all is both simpler and more complete than choosing ([/decisions/ad-097.md](/decisions/ad-097.md)).
  */
-test("the Windows layout is the Windows layout, not the POSIX one", () => {
-  const win = uninstallTargets(
-    { USERPROFILE: "C:\\Users\\me", HOME: "/should/not/be/read", TLC_HOME: "C:\\Users\\me\\.tlc\\harness" },
-    "win32",
-  );
-  // invariant: components, not separators. `join` is win32's only when the process is on Windows, so asserting a
-  // rendered path here would test the machine running the suite rather than the branch under test.
-  assert.equal(win.binLink.endsWith("tlc.cmd"), true);
-  assert.equal(win.binLink.startsWith("C:\\Users\\me"), true, "USERPROFILE, never HOME");
-  assert.equal(win.skillLinks.length, 1);
-  assert.equal(win.skillLinks[0]?.includes(".tlc"), true, "one junction under ~/.tlc, not the provider dirs");
-  assert.equal(win.skillLinks[0]?.endsWith("harness-init"), true);
+test("every launcher name and every skill layout is a target, with no platform to ask", () => {
+  const targets = uninstallTargets({ TLC_HOME: join("home", "me", ".tlc", "harness") });
 
-  const posixTargets = uninstallTargets({ HOME: "/home/me", TLC_HOME: "/home/me/.tlc/harness" }, "linux");
-  assert.equal(posixTargets.binLink.endsWith("tlc"), true);
-  assert.equal(posixTargets.binLink.endsWith("tlc.cmd"), false);
-  assert.equal(posixTargets.skillLinks.length, 2);
+  // invariant: components, not separators. `join` renders for the platform running the suite, so asserting a
+  // rendered path would test this machine rather than the list.
+  assert.equal(targets.binLinks.length, 2);
+  assert.ok(
+    targets.binLinks.some((path) => path.endsWith("tlc")),
+    "the POSIX launcher name",
+  );
+  assert.ok(
+    targets.binLinks.some((path) => path.endsWith("tlc.cmd")),
+    "the name the PowerShell installer copied",
+  );
+
+  assert.equal(targets.skillLinks.length, 3);
+  assert.equal(
+    targets.skillLinks.filter((path) => path.endsWith("harness-init")).length,
+    3,
+    "each one names the skill",
+  );
+  assert.ok(
+    targets.skillLinks.some((path) => path.includes(".tlc")),
+    "the legacy junction under ~/.tlc that no provider ever read",
+  );
 });
 
 test("a launcher installed as a copy is removed; an unrelated file of the same name is not", () => {
@@ -362,11 +373,11 @@ test("a launcher installed as a copy is removed; an unrelated file of the same n
     skillLinks: [],
   };
   assert.equal(
-    planUninstall({ ...base, binLink: ours }).items.find((i) => i.target === ours)?.action,
+    planUninstall({ ...base, binLinks: [ours] }).items.find((i) => i.target === ours)?.action,
     "remove",
   );
   assert.equal(
-    planUninstall({ ...base, binLink: theirs }).items.find((i) => i.target === theirs)?.action,
+    planUninstall({ ...base, binLinks: [theirs] }).items.find((i) => i.target === theirs)?.action,
     "keep",
   );
 });

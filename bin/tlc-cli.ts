@@ -9,10 +9,10 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { coreFacade } from "../src/core/index.ts";
 import { emitJson, JSON_FLAG, takeJsonFlag, unknownFlags } from "../src/platform/cli-output.ts";
+import { linkDir, seedConfig } from "../src/platform/links.ts";
 import {
   flagsDir,
   projectConfigPath,
@@ -488,7 +488,7 @@ export const NPM_PACKAGE = "@tech-leads-club/harness-toolkit";
 export const NPM_MARKER = "installed-from-npm";
 
 /**
- * hazard: `install.sh` links the runtime path to the clone it was run from, so on a contributor's machine
+ * hazard: `install --link` points the runtime path at the clone it was run from, so on a contributor's machine
  * `~/.tlc/harness` is a symlink to their working repository. The old failure message told them to run
  * `git reset --hard` there, which would have destroyed uncommitted work. Verified on this machine.
  *
@@ -520,7 +520,7 @@ export function classifyRuntimePath(
  * hazard: an earlier version also treated "resolves elsewhere" as linked, to catch a symlinked ancestor. macOS CI
  * refuted it: `/var` is a symlink to `/private/var`, so every path under the system temp directory resolves
  * elsewhere and a **managed** checkout was classified as linked — which would silently stop updates on the very
- * platform the reporter uses. Only the last hop decides, which is the one thing `install.sh` actually creates.
+ * platform the reporter uses. Only the last hop decides, which is the one thing the install actually creates.
  */
 export function runtimePathKind(dest: string): RuntimePathKind {
   return classifyRuntimePath(dest, {
@@ -752,13 +752,16 @@ const GATE_FIELDS: Record<string, GateField> = {
 
 // why: resolved without executing. Running the binary to see whether it exists would run it, which is not
 // something a config write is allowed to do.
-export function resolveExecutable(
-  name: string,
-  env: NodeJS.ProcessEnv = process.env,
-  platform: string = process.platform,
-): string | null {
-  const extensions = platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""];
-  const candidates = (base: string): string[] => [base, ...extensions.map((ext) => `${base}${ext}`)];
+/**
+ * why one list rather than a platform branch reading PATHEXT: the extensions only exist on the platform that uses
+ * them, so trying all of them everywhere finds the same file and removes a branch nobody can test twice. The bare
+ * name is first, so a POSIX `foo` is never beaten by a stray `foo.exe`
+ * ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ */
+const EXECUTABLE_EXTENSIONS = ["", ".exe", ".cmd", ".bat", ".ps1"];
+
+export function resolveExecutable(name: string, env: NodeJS.ProcessEnv = process.env): string | null {
+  const candidates = (base: string): string[] => EXECUTABLE_EXTENSIONS.map((ext) => `${base}${ext}`);
 
   if (name.includes("/") || name.includes("\\")) {
     return candidates(name).find((candidate) => existsSync(candidate)) ?? null;
@@ -901,12 +904,69 @@ export function resolveHarnessRoot(): string {
   }
 }
 
-export function execBinPath(): string {
-  return join(resolveHarnessRoot(), "bin", "tlc-exec");
+/**
+ * Everything an install has to put in place outside the runtime directory itself: the init skill where each
+ * provider reads it, the user-level hooks, and a seeded config.
+ *
+ * hazard: there were three implementations of this — bash, PowerShell, and the POSIX branch here — and they
+ * disagreed. The PowerShell one linked the init skill into `~/.tlc/skills/harness-init`, which no provider reads,
+ * so on Windows `update` refreshed a skill nothing could route to. That is the defect
+ * [/decisions/ad-095.md](/decisions/ad-095.md) fixed on the other side, still live on this one
+ * ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ *
+ * invariant: one function, no platform branch, and the launcher on PATH is npm's business.
+ */
+export function wireRuntime(dest: string, home: string): { lines: string[]; missingSkill: boolean } {
+  const lines: string[] = [];
+  const seeded = seedConfig(dest);
+  if (seeded.seeded) {
+    lines.push(`config seeded → ${seeded.path}`);
+  }
+
+  if (!existsSync(join(dest, "skills", "harness-init"))) {
+    return { lines, missingSkill: true };
+  }
+
+  const links = coreFacade.skill.skillLinks(dest, providerConfigDirs(), existsSync);
+  if (links.length === 0) {
+    lines.push("no provider config dir found — skill not linked");
+  }
+  for (const link of links) {
+    const outcome = linkDir(link.source, link.target);
+    lines.push(
+      outcome.kind === "refused" ? `skill not linked — ${outcome.reason}` : `skill → ${outcome.target}`,
+    );
+  }
+
+  const hooks = spawnSync(process.execPath, [join(dest, "bin", "write-user-hooks.mjs")], {
+    stdio: "inherit",
+    env: { ...process.env, TLC_HOME: home },
+  });
+  if ((hooks.status ?? 1) !== 0) {
+    lines.push("hooks unchanged (merge manually or: node bin/write-user-hooks.mjs --force)");
+  }
+  return { lines, missingSkill: false };
 }
 
+/**
+ * hazard: this was the extensionless bash wrapper, so every `runEntry` spawn — `doctor`, `prices refresh`,
+ * `install-runtime`, `price-lookup` — named a file Windows cannot execute. The hooks never had this problem
+ * because they name the `.mjs` ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ *
+ * invariant: paired with `process.execPath`, so the entry runs under the interpreter that is already running.
+ */
+export function execBinPath(): string {
+  return join(resolveHarnessRoot(), "bin", "tlc-exec.mjs");
+}
+
+/**
+ * why the `.mjs` and not a wrapper: the wrapper was bash, so `spawnSync` could not run it on Windows and
+ * `update` there could never rebuild a missing bundle ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ *
+ * invariant: spawned with `process.execPath`, so the interpreter running the CLI is the one that builds.
+ */
 export function buildBinPath(): string {
-  return join(resolveHarnessRoot(), "bin", "tlc-build");
+  return join(resolveHarnessRoot(), "bin", "tlc-build.mjs");
 }
 
 export type Action =
@@ -1225,13 +1285,18 @@ function runUpdate(root: string): never {
     const bump = spawnSync("npm", ["install", "-g", `${NPM_PACKAGE}@latest`], {
       stdio: "inherit",
       env: process.env,
-      shell: process.platform === "win32",
+      // why: `npm` is `npm.cmd` on Windows and a shell is how that resolves; on POSIX it costs one `/bin/sh`,
+      // and the argv here is fixed ([/decisions/ad-097.md](/decisions/ad-097.md)).
+      shell: true,
     });
     if ((bump.status ?? 1) !== 0) {
       console.error(npmUpdateFailureMessage());
       process.exit(bump.status ?? 1);
     }
-    const sync = spawnSync(execBinPath(), ["install-runtime"], { stdio: "inherit", env: process.env });
+    const sync = spawnSync(process.execPath, [execBinPath(), "install-runtime"], {
+      stdio: "inherit",
+      env: process.env,
+    });
     if ((sync.status ?? 1) !== 0) {
       process.exit(sync.status ?? 1);
     }
@@ -1270,47 +1335,13 @@ function runUpdate(root: string): never {
     );
   }
 
-  const binDir = process.env.TLC_BIN_DIR || join(homedir(), ".local", "bin");
-  mkdirSync(binDir, { recursive: true });
-
-  if (process.platform === "win32") {
-    const installPs1 = join(dest, "install.ps1");
-    const r = spawnSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installPs1], {
-      stdio: "inherit",
-      env: { ...process.env, TLC_HOME: home },
-      cwd: dest,
-    });
-    if ((r.status ?? 1) !== 0) {
-      process.exit(r.status ?? 1);
-    }
-  } else {
-    const tlcBin = join(dest, "bin", "tlc");
-    const skillSrc = join(dest, "skills", "harness-init");
-    spawnSync("ln", ["-sfn", tlcBin, join(binDir, "tlc")], { stdio: "inherit" });
-    if (!existsSync(skillSrc)) {
-      console.error(`update: missing skill at ${skillSrc}`);
-      process.exit(1);
-    }
-    // hazard: this linked to `<home>/../skills/harness-init` — a directory no provider reads, and which did not
-    // exist at all on the machine where this was found. `install.sh` had it right all along, linking into every
-    // provider config directory that exists, because each provider only reads its own. The resolution is now one
-    // function both use ([/decisions/ad-095.md](/decisions/ad-095.md)).
-    const links = coreFacade.skill.skillLinks(dest, providerConfigDirs(), existsSync);
-    if (links.length === 0) {
-      console.log("update: no provider config dir found — skill not linked");
-    }
-    for (const link of links) {
-      mkdirSync(join(link.providerDir, "skills"), { recursive: true });
-      spawnSync("ln", ["-sfn", link.source, link.target], { stdio: "inherit" });
-      console.log(`update: skill → ${link.target}`);
-    }
-    const hooks = spawnSync(process.execPath, [join(dest, "bin", "write-user-hooks.mjs")], {
-      stdio: "inherit",
-      env: { ...process.env, TLC_HOME: home },
-    });
-    if ((hooks.status ?? 1) !== 0) {
-      console.log("update: hooks unchanged (merge manually or: node bin/write-user-hooks.mjs --force)");
-    }
+  const wired = wireRuntime(dest, home);
+  for (const line of wired.lines) {
+    console.log(`update: ${line}`);
+  }
+  if (wired.missingSkill) {
+    console.error(`update: missing skill at ${join(dest, "skills", "harness-init")}`);
+    process.exit(1);
   }
 
   // invariant: never build into the artifact when it is already complete. `dist/` is committed for the Node
@@ -1322,7 +1353,7 @@ function runUpdate(root: string): never {
     console.log("update: dist/ complete — no rebuild, so the runtime path stays clean");
   } else if (existsSync(buildBinPath())) {
     console.log(`update: ${missing.length} bundle(s) missing — building`);
-    const build = spawnSync(buildBinPath(), [], { stdio: "inherit", env: process.env });
+    const build = spawnSync(process.execPath, [buildBinPath()], { stdio: "inherit", env: process.env });
     if ((build.status ?? 1) !== 0) {
       console.log(`update: build failed — ${missing.length} bundle(s) still missing from dist/`);
     }
@@ -1337,13 +1368,13 @@ function runUpdate(root: string): never {
    * failure is tolerated — a rate that could not be fetched is not a reason for a failed update
    * ([/decisions/ad-096.md](/decisions/ad-096.md)).
    */
-  spawnSync(execBinPath(), ["refresh-model-prices", "all", "--if-stale"], {
+  spawnSync(process.execPath, [execBinPath(), "refresh-model-prices", "all", "--if-stale"], {
     stdio: "inherit",
     env: { ...process.env, TLC_PROJECT_DIR: root },
   });
 
   console.log("update: running doctor…");
-  const doctor = spawnSync(execBinPath(), ["doctor"], {
+  const doctor = spawnSync(process.execPath, [execBinPath(), "doctor"], {
     stdio: "inherit",
     env: { ...process.env, TLC_PROJECT_DIR: root },
   });
@@ -1352,7 +1383,7 @@ function runUpdate(root: string): never {
 }
 
 function runEntry(entry: string, toolArgs: string[], root: string): never {
-  const r = spawnSync(execBinPath(), [entry, ...toolArgs], {
+  const r = spawnSync(process.execPath, [execBinPath(), entry, ...toolArgs], {
     stdio: "inherit",
     env: { ...process.env, TLC_PROJECT_DIR: root },
   });
@@ -1453,7 +1484,7 @@ function main(argv: string[]): void {
       console.log(helpText(createStyle()));
       break;
     case "build": {
-      const r = spawnSync(buildBinPath(), [], { stdio: "inherit", env: process.env });
+      const r = spawnSync(process.execPath, [buildBinPath()], { stdio: "inherit", env: process.env });
       process.exit(r.status ?? 1);
       break;
     }

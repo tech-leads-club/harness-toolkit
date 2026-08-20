@@ -104,6 +104,7 @@ Handoff section and a link back to this index.
 | [AD-087](/decisions/ad-087.md) | How the release works, and the six wrong shapes it took first | active |
 | [AD-095](/decisions/ad-095.md) | Four defects about where things are written, and one of them made every hook run twice | active |
 | [AD-096](/decisions/ad-096.md) | Prices are the machine's, in one file, and the parser that fills it was wrong twice | active |
+| [AD-097](/decisions/ad-097.md) | The shell layer goes, and with it every platform branch that only existed because of it | active |
 
 ## Archived
 

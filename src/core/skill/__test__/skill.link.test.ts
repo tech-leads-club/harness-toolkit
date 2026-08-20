@@ -7,7 +7,7 @@ const HOME = "/opt/tlc/harness";
 describe("skillLinks", () => {
   /**
    * hazard: `tlc harness update` linked to `<runtime-home>/../skills/harness-init` — a directory no provider
-   * reads, and which did not exist at all on the machine where this was found. `install.sh` had it right: each
+   * reads, and which did not exist at all on the machine where this was found. the installer had it right: each
    * provider reads only its own skills directory.
    */
   test("AC every present provider directory gets its own link, under that provider", () => {
