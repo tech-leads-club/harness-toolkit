@@ -16,7 +16,7 @@ npm i -g @tech-leads-club/harness-toolkit
 tlc harness install
 ```
 
-Then restart Cursor or Claude Code. That is the whole setup — the installer finds which of the two you
+Then restart Cursor or Claude Code. That is the whole setup — `install` finds which of the two you
 have and wires only those, and the harness works in every repository right away with a safe baseline.
 
 To give one project its own rules, open it and say **"setup harness"** to the agent, or run
@@ -42,11 +42,10 @@ To give one project its own rules, open it and say **"setup harness"** to the ag
 13. [Paths and shared state](#paths-and-shared-state)
 14. [Ship claims](#ship-claims)
 15. [Prices](#prices)
-16. [Windows](#windows)
-17. [Troubleshooting](#troubleshooting)
-18. [Documentation](#documentation)
-19. [Contributing](#contributing)
-20. [License](#license)
+16. [Troubleshooting](#troubleshooting)
+17. [Documentation](#documentation)
+18. [Contributing](#contributing)
+19. [License](#license)
 
 ## Everything it validates
 
@@ -214,9 +213,12 @@ nothing reads — `src/providers/provider.degrade.ts`.
 
 | Dependency | Notes |
 |------------|--------|
-| **Bun** *or* **Node.js 24+** | Either one is enough. Bun runs every hook directly with no build step (~1 ms/hook); Node needs 24 LTS or 26 and the shipped `dist/` (~27 ms/hook). With neither, the installer stops and names both fixes |
-| **npm** | Delivers the package on every platform |
-| **esbuild** (only for the Node path) | Needed once to recompile `dist/`; the published `dist/` already works |
+| **Bun** *or* **Node.js 24+** | Either one is enough. Bun runs every hook directly (~1 ms/hook); Node runs the shipped bundles (~27 ms/hook). With neither, the install stops and names both fixes |
+| **npm** | Delivers the package, and generates the `tlc` shim for the platform it runs on |
+
+Linux, macOS and Windows, same commands and same code path. CI runs the full suite and the bundle build on all
+three on every push; hooks firing inside an editor session on Windows are outside that coverage
+([`docs/decisions/ad-006.md`](docs/decisions/ad-006.md), [`docs/decisions/ad-097.md`](docs/decisions/ad-097.md)).
 
 ## Install
 
@@ -301,8 +303,8 @@ Reload/restart the provider session afterward if hooks or the init skill should 
 | `managed checkout` | moves it to upstream with a hard reset. Do not develop there — a local change is discarded |
 | `link to a working clone` | nothing in the clone. That is a contributor install; you pull it yourself |
 
-`dist/` is rebuilt only when a bundle is missing. Rebuilding a complete `dist/` is what used to dirty the checkout
-and break every later update, because Bun and esbuild emit different bytes for the same source.
+The bundles are rebuilt only when one is missing, and only Bun builds them — a second bundler emits different
+bytes for the same source.
 
 **If `update` aborts on `dist/`, install the package again.** A stuck install cannot deliver its own fix — the fix
 lives in the revision `update` has to fetch — so `npm i -g @tech-leads-club/harness-toolkit@latest` followed by
@@ -441,16 +443,6 @@ Catalogue: `~/.tlc/harness/model-prices.json`, one plane per billing origin. Ove
 `doctor` reports the age.
 
 See `tlc harness help prices` or [`docs/measure.md`](docs/measure.md).
-
-## Windows
-
-Path resolution goes through `os.homedir()`, hooks use exec form, filenames are sanitized, atomic writes retry,
-directory links are junctions, and npm generates the PATH shims
-([`docs/decisions/ad-006.md`](docs/decisions/ad-006.md), [`docs/decisions/ad-097.md`](docs/decisions/ad-097.md)).
-
-CI runs the full suite and the bundle build on `windows-latest` on every push.
-
-Outside CI coverage: hooks firing inside a Cursor or Claude Code session on Windows.
 
 ## Troubleshooting
 
