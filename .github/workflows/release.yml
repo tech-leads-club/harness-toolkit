@@ -47,6 +47,12 @@ jobs:
   # copied. One definition, one matrix, three platforms.
   gate:
     uses: ./.github/workflows/ci.yml
+    # hazard: a called workflow cannot hold more than the job that calls it. With `permissions: {}` at the workflow
+    # level and nothing here, the callee's `contents: read` exceeded the caller's empty token and the whole run
+    # failed validation before any job started — `startup_failure`, with no job and no log to read
+    # ([/decisions/ad-097.md](/decisions/ad-097.md)).
+    permissions:
+      contents: read
 
   # why: deciding BEFORE asking. The approval used to be the first job, which meant every push to `main` requested
   # one — including the ones that release nothing, which is most of them. Reading the plan first costs a checkout
