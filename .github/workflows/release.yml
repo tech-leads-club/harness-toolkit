@@ -277,7 +277,11 @@ jobs:
         run: |
           git config user.name "${AUTHOR}[bot]"
           git config user.email "${AUTHOR}[bot]@users.noreply.github.com"
-          git add package.json package-lock.json CHANGELOG.md dist
+          # hazard: this named `dist` while it was tracked. Untracking it made `git add` exit 1 under `bash -e`,
+          # AFTER the publish — npm held 0.3.0 and main held 0.2.4, which is the one state this whole ordering
+          # exists to avoid. The list is now exactly what the version bump and the changelog touch, and every one
+          # of them is tracked ([/decisions/ad-097.md](/decisions/ad-097.md)).
+          git add package.json package-lock.json CHANGELOG.md
           # why: `chore(release):` is an inert type, so this commit cannot earn the next version. That is what makes
           # the pipeline terminate instead of releasing itself for ever.
           git commit -m "chore(release): ${VERSION}"
