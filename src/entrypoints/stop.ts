@@ -413,6 +413,28 @@ async function failGate(args: {
   return { kind: "continue", text: parts.join("\n") };
 }
 
+/**
+ * why the sha is fetched twice-or-never: `git rev-parse` is a process spawn and this runs on every stop. The first
+ * pass answers whether any `on: stop` rule fired at all, which costs two directory reads; only then is a sha worth
+ * a process, and the second pass is the one whose verdict counts. Same shape as the action-time rail
+ * ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+async function decideStopRules(
+  root: string,
+  policy: Policy,
+  sessionKey: string,
+): Promise<ReturnType<typeof coreFacade.rules.decideStop>> {
+  const context = { sessionKey, mode: policy.mode };
+  const dryRun = coreFacade.rules.decideStop(root, policy.rules, { ...context, sha: null });
+  if (dryRun.outcomes.length === 0) {
+    return dryRun;
+  }
+  return coreFacade.rules.decideStop(root, policy.rules, {
+    ...context,
+    sha: await currentGitSha(root),
+  });
+}
+
 export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerContext): Promise<Decision> => {
   const { policy, capabilities } = ctx;
   const root = event.projectDir;
@@ -853,6 +875,32 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
       evidenceDir: policy.shipGate.evidenceDir,
       detail: handoff.last_ship_claim_snippet,
     });
+  }
+
+  /**
+   * The operator's own bar, last among the blockers so every gate the harness owns has already spoken — and after
+   * the gates specifically, because a rule asking for `gate(lint) since HEAD` can only be satisfied once lint has
+   * run this turn ([/decisions/ad-100.md](/decisions/ad-100.md)).
+   *
+   * invariant: `warn` returns `context`, which does not block. Everything else refuses the stop, so a rule the
+   * operator wrote cannot be ended past.
+   */
+  const stopRules = await decideStopRules(root, policy, sessionKey);
+  if (stopRules.decision.kind !== "abstain") {
+    if (stopRules.decision.kind !== "context") {
+      const worst = coreFacade.rules.strictest(stopRules.outcomes);
+      await coreFacade.handoff.patchHandoff(root, provider, {
+        slice: {
+          last_gate_result: "fail",
+          last_failure_category: "policy",
+          blockers: `Rule ${worst?.rule.name ?? "unknown"} is not satisfied for this HEAD.`,
+          next_action: worst?.missing.length
+            ? `Produce ${worst.missing.join(", ")}, then stop again.`
+            : "Satisfy the rule named in the follow-up, then stop again.",
+        },
+      });
+    }
+    return stopRules.decision;
   }
 
   // why: the pairing of a failure with what resolved it is captured here, immediately before the record that

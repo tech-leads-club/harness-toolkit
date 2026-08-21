@@ -9,7 +9,7 @@
  */
 import type { Decision } from "../../contracts/decision.ts";
 import type { OperatorMode } from "../policy/policy.types.ts";
-import { actionDecision, evaluateRules, type RuleOutcome, strictest } from "./rules.decide.ts";
+import { actionDecision, evaluateRules, type RuleOutcome, stopDecision, strictest } from "./rules.decide.ts";
 import {
   gateObservation,
   type ObservableEvent,
@@ -99,7 +99,29 @@ export function decideAction(
   root: string,
   config: RulesConfig,
   trigger: TriggerContext,
-  context: { sha: string | null; sessionKey: string; mode: OperatorMode },
+  context: RuleContext,
+): RulesVerdict {
+  return decide(root, config, trigger, context, actionDecision);
+}
+
+/**
+ * The end-of-turn answer, and the only caller that can see an `on: stop` rule.
+ *
+ * why a second entry rather than a flag: the trigger is fixed and the mapping differs, so a boolean would make one
+ * function answer two questions ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+export function decideStop(root: string, config: RulesConfig, context: RuleContext): RulesVerdict {
+  return decide(root, config, { event: "stop" }, context, stopDecision);
+}
+
+export type RuleContext = { sha: string | null; sessionKey: string; mode: OperatorMode };
+
+function decide(
+  root: string,
+  config: RulesConfig,
+  trigger: TriggerContext,
+  context: RuleContext,
+  map: (outcome: RuleOutcome) => Decision,
 ): RulesVerdict {
   const set = loadRules(root, config);
   if (set.rules.length === 0 && set.errors.length === 0) {
@@ -112,7 +134,7 @@ export function decideAction(
   const outcomes = evaluateRules(firing, readObservations(root), context);
   const worst = strictest(outcomes);
   return {
-    decision: worst === null ? { kind: "abstain" } : actionDecision(worst),
+    decision: worst === null ? { kind: "abstain" } : map(worst),
     outcomes,
     errors: set.errors,
   };

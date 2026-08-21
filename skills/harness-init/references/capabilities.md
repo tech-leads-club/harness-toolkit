@@ -112,7 +112,20 @@ Convene the jury on this branch. Checklist: docs/review-checklist.md
 The frontmatter is enforced; the body is the operator's own text, shown verbatim when the rule fires — so it is
 where the instruction, the checklist and the reason go.
 
-Four things to say while writing it:
+The four verdicts land differently at the two moments a rule can fire:
+
+| verdict | on an action | at the stop |
+|---|---|---|
+| `deny` | refuses the action | refuses the stop |
+| `ask` | asks under `paired`, refuses otherwise | refuses the stop — no host offers an ask there |
+| `follow-up` | allows | refuses the stop, framed as the next action |
+| `warn` | allows | advisory text, and the stop is allowed |
+
+An `on: stop` rule is the one to reach for when the instruction is "before you finish, do X". It is read after the
+lint, test and docs gates have run, so a rule asking for `gate(test) since HEAD` can be satisfied by this turn's
+gate.
+
+Five things to say while writing it:
 
 - **The proof must be observable.** A subagent of that type finishing, a command that ran and did not fail, a gate
   that passed, a file that changed. There is no proof that the review was any good, and asking for one would be

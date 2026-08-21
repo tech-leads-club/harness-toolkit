@@ -277,6 +277,18 @@ subcommands are refused from inside a session.
 `since HEAD` compares the sha the observation was made against with the current one, so a review followed by
 another commit is stale. A project with no git checkout cannot satisfy `since HEAD` at all.
 
+The four verdicts land differently at the two moments a rule can fire:
+
+| verdict | on an action | at the stop |
+|---|---|---|
+| `deny` | refuses the action | refuses the stop |
+| `ask` | asks under `paired`, refuses otherwise | refuses the stop — no host offers an ask there |
+| `follow-up` | allows | refuses the stop, framed as the next action |
+| `warn` | allows | advisory text, and the stop is allowed |
+
+`on: stop` rules are read only at the stop, and they are read after the lint, test and docs gates have run — so a
+rule asking for `gate(test) since HEAD` can be satisfied by the gate this turn.
+
 Posture reaches `ask` and nothing else: it interrupts under `paired` and hardens to `deny` under `solo` and
 `focus`. `deny`, `follow-up` and `warn` are verification and are identical at all three
 ([/decisions/ad-025.md](/decisions/ad-025.md)).

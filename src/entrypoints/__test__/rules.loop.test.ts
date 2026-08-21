@@ -270,3 +270,112 @@ describe("a gate proof comes from a gate that ran", () => {
     assert.equal((await runHandler(toolBeforeHandler, stdinOf(openPr()))).decision.kind, "deny");
   });
 });
+
+/**
+ * The other moment. A stop can only be allowed or continued, so the four verdicts land differently here than at an
+ * action — and this is the only caller that can see an `on: stop` rule at all.
+ *
+ * hazard: `on: stop`, `follow-up` and `warn` were declared, parsed and evaluated, and consumed by nothing.
+ * `firingRules` handled a stop event that nothing ever passed it, and the action rail read only `.outcomes.length`.
+ * Three members of a closed vocabulary that a rule could name and `doctor` would list as active
+ * ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+describe("a rule at the end of the turn", () => {
+  function withStopRule(otherwise: string, mode = "solo"): void {
+    mkdirSync(join(root, ".tlc", "harness", "rules"), { recursive: true });
+    writeFileSync(
+      join(root, ".tlc", "harness", "config.json"),
+      JSON.stringify({ version: 1, mode, rules: { enabled: true } }),
+      "utf8",
+    );
+    writeFileSync(
+      join(root, ".tlc", "harness", "rules", "spec-first.md"),
+      `---\non: stop\nrequire:\n  - subagent(tlc-spec-driven) since HEAD\notherwise: ${otherwise}\n---\nRun the spec pass before finishing.`,
+      "utf8",
+    );
+  }
+
+  const stopped = (): string =>
+    JSON.stringify({ hook_event_name: "Stop", cwd: root, session_id: "sess-1", status: "completed" });
+
+  const atStop = async () => (await runHandler(stopHandler, stdinOf(stopped()))).decision;
+
+  test("AC7 deny refuses the stop and carries the operator's text", async () => {
+    withStopRule("deny");
+
+    const decision = await atStop();
+
+    assert.equal(decision.kind, "continue");
+    assert.match(String(decision.text), /^BLOCKED: rule spec-first \(project\)/);
+    assert.match(String(decision.text), /Run the spec pass before finishing\./);
+  });
+
+  test("AC7 follow-up refuses the stop too, framed as what is needed", async () => {
+    withStopRule("follow-up");
+
+    const decision = await atStop();
+
+    assert.equal(decision.kind, "continue");
+    assert.match(String(decision.text), /^NEED: rule spec-first/);
+  });
+
+  /** AC8 — the one verdict that is a record rather than a bar. */
+  test("AC8 warn says so and lets the turn end", async () => {
+    withStopRule("warn");
+
+    const decision = await atStop();
+
+    assert.equal(decision.kind, "context");
+    assert.match(String(decision.text), /^ADVISORY: rule spec-first/);
+  });
+
+  /**
+   * why `ask` refuses here: no host offers an ask channel on a stop, and a verdict that quietly became "allow" at
+   * the one moment its channel is missing would be a bar that vanishes.
+   *
+   * hazard: the first version of this test ran at the default posture, where `effectiveVerdict` has already
+   * hardened `ask` into `deny` — so the `ask` branch was unreachable and the test asserted nothing about it.
+   * Measured: making that branch pass the stop left the test green. `paired` is the one posture where the verdict
+   * survives as itself ([/decisions/ad-100.md](/decisions/ad-100.md)).
+   */
+  test("AC13 ask has no channel at a stop, so it refuses rather than passing", async () => {
+    withStopRule("ask", "paired");
+
+    assert.equal((await atStop()).kind, "continue");
+  });
+
+  test("AC13 and at solo the same rule has already hardened to deny", async () => {
+    withStopRule("ask", "solo");
+
+    const decision = await atStop();
+
+    assert.equal(decision.kind, "continue");
+    assert.match(decision.kind === "continue" ? decision.text : "", /^BLOCKED:/);
+  });
+
+  test("AC3 the same rule stops firing once the real rail has recorded the proof", async () => {
+    withStopRule("deny");
+    assert.equal((await atStop()).kind, "continue");
+
+    await runHandler(
+      subagentStopHandler,
+      stdinOf(
+        JSON.stringify({
+          hook_event_name: "subagentStop",
+          workspace_roots: [root],
+          conversation_id: "conv-1",
+          session_id: "sess-1",
+          subagent_type: "tlc-spec-driven",
+        }),
+      ),
+    );
+
+    assert.equal((await atStop()).kind, "abstain");
+  });
+
+  test("AC1 an action-time rule is not consulted at the stop", async () => {
+    withRule("subagent(the-jury) since HEAD");
+
+    assert.equal((await atStop()).kind, "abstain");
+  });
+});

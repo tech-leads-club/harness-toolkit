@@ -79,7 +79,7 @@ export function strictest(outcomes: readonly RuleOutcome[]): RuleOutcome | null 
 
 /**
  * The decision for an action-time trigger. `follow-up` and `warn` never block an action — they are answers to the
- * end of a turn and to the record, so at action time they abstain and the stop rail handles them.
+ * end of a turn, and `stopDecision` is where they are answered.
  */
 export function actionDecision(outcome: RuleOutcome): Decision {
   const rule = `rule:${outcome.rule.name}`;
@@ -90,4 +90,34 @@ export function actionDecision(outcome: RuleOutcome): Decision {
     return { kind: "ask", reason: outcome.message, userNote: outcome.message, rule };
   }
   return { kind: "abstain" };
+}
+
+/**
+ * The same four verdicts at the other moment. A stop can only be allowed or continued, so the matrix is:
+ *
+ * | verdict     | at an action                  | at the stop                                      |
+ * |-------------|-------------------------------|--------------------------------------------------|
+ * | `deny`      | refuses the action            | refuses the stop                                 |
+ * | `ask`       | asks (`paired`), else refuses | refuses the stop — no host offers an ask here     |
+ * | `follow-up` | allows                        | refuses the stop, framed as the next action       |
+ * | `warn`      | allows                        | advisory text, and the stop is allowed           |
+ *
+ * why `ask` refuses rather than passes: it already hardens to `deny` under `solo` and `focus`, and a verdict that
+ * quietly became "allow" at the one moment its channel is missing would be a bar that vanishes
+ * ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ *
+ * hazard: `follow-up` and `warn` were declared, parsed and evaluated, and then discarded — the caller read only
+ * `.outcomes.length`. `on: stop` was the same: `firingRules` handled it while nothing ever called this with a stop
+ * event. Three members of a closed vocabulary that a rule could name and `doctor` would list as active.
+ */
+export function stopDecision(outcome: RuleOutcome): Decision {
+  switch (outcome.verdict) {
+    case "deny":
+    case "ask":
+      return { kind: "continue", text: `BLOCKED: ${outcome.message}` };
+    case "follow-up":
+      return { kind: "continue", text: `NEED: ${outcome.message}` };
+    case "warn":
+      return { kind: "context", text: `ADVISORY: ${outcome.message}` };
+  }
 }

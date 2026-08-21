@@ -139,12 +139,19 @@ import {
   readDecisions,
 } from "./release/release.decisions.ts";
 import { readReleaseSeen, writeReleaseSeen } from "./release/release.seen.ts";
-import { actionDecision, effectiveVerdict, evaluateRules, strictest } from "./rules/rules.decide.ts";
+import {
+  actionDecision,
+  effectiveVerdict,
+  evaluateRules,
+  stopDecision,
+  strictest,
+} from "./rules/rules.decide.ts";
 import { gateObservation, observationFrom } from "./rules/rules.observe.ts";
 import { buildRuleSet } from "./rules/rules.parse.ts";
 import { unobservedKinds } from "./rules/rules.proof.ts";
 import {
   decideAction,
+  decideStop,
   loadRules,
   observe,
   observeGate,
@@ -440,6 +447,7 @@ export const coreFacade = {
     // ([/decisions/ad-016.md](/decisions/ad-016.md)).
     // what the entrypoints call
     decideAction,
+    decideStop,
     observe,
     observeGate,
     wants: wantsObservation,
@@ -456,6 +464,7 @@ export const coreFacade = {
     evaluate: evaluateRules,
     strictest,
     actionDecision,
+    stopDecision,
     effectiveVerdict,
     unobservedKinds,
   },
