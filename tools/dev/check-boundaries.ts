@@ -43,6 +43,18 @@ export const DEFAULT_CONFIG: Omit<BoundaryCheckConfig, "root"> = {
 
 const VENDOR_PATTERN = /\b(cursor|claude|codex|composer|anthropic)\b/i;
 const HOME_ENV_PATTERN = /process\.env\.HOME\b/;
+
+/**
+ * The one file allowed to write the home into the environment.
+ *
+ * why: the rule exists so production resolves the home with `os.homedir()`, which is the portable answer — on
+ * Windows the variable is `USERPROFILE` ([/decisions/ad-006.md](/decisions/ad-006.md)). The test harness is the
+ * opposite job: it *sets* the variable so `os.homedir()` answers a throwaway, which is what keeps a suite from
+ * writing into the operator's real directories ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ *
+ * invariant: exactly one entry, asserted by a test. A second exemption has to be argued for, not appended.
+ */
+export const HOME_ENV_EXEMPT = ["tools/test-env.mjs"] as const;
 const CURSOR_PATH_PATTERN = /\.cursor\/(harness|agent-harness)/;
 const IMPORT_SPEC_PATTERN = /(?:from|import)\s+["']([^"']+)["']/;
 const SOURCE_EXTENSIONS = /\.(ts|tsx|js|mjs|cjs)$/;
@@ -153,7 +165,9 @@ export function runBoundaryChecks(config: BoundaryCheckConfig): Violation[] {
   for (const rel of config.homeEnvScanRoots) {
     violations.push(
       ...scanForPattern(
-        listSourceFiles(join(config.root, rel)),
+        listSourceFiles(join(config.root, rel)).filter(
+          (file) => !HOME_ENV_EXEMPT.some((exempt) => relative(config.root, file) === exempt),
+        ),
         HOME_ENV_PATTERN,
         "process-env-home",
         config.root,

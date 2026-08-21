@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_CONFIG, runBoundaryChecks, type Violation } from "../dev/check-boundaries.ts";
+import {
+  DEFAULT_CONFIG,
+  HOME_ENV_EXEMPT,
+  runBoundaryChecks,
+  type Violation,
+} from "../dev/check-boundaries.ts";
 
 const CHECKER_PATH = fileURLToPath(new URL("../dev/check-boundaries.ts", import.meta.url));
 
@@ -313,4 +318,52 @@ describe("CLI executable", () => {
     assert.match(stderr, /gate\.service\.ts:1/);
     rmSync(root, { recursive: true, force: true });
   });
+});
+
+/**
+ * The exemption list is one entry and stays one entry.
+ *
+ * why a test rather than a comment: an allowlist grows by append, and each append is invisible in review. The rule
+ * it weakens exists so production resolves the home with `os.homedir()`, which is the portable answer
+ * ([/decisions/ad-006.md](/decisions/ad-006.md), [/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
+test("exactly one file may write the home into the environment", () => {
+  assert.deepEqual([...HOME_ENV_EXEMPT], ["tools/test-env.mjs"]);
+});
+
+/** invariant: and the rule still fires everywhere else, or the exemption would have disabled it. */
+test("a production file writing process.env.HOME is still a violation", () => {
+  const root = mkdtempSync(join(tmpdir(), "tlc-home-rule-"));
+  try {
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(join(root, "src", "leaky.ts"), 'process.env.HOME = "/nope";\n', "utf8");
+
+    const violations = runBoundaryChecks({ root, ...DEFAULT_CONFIG });
+
+    assert.equal(
+      violations.filter((violation) => violation.rule === "process-env-home").length,
+      1,
+      JSON.stringify(violations),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/** and the exempt path is not a violation, which is the half the first assertion cannot show. */
+test("the harness writing it is not a violation", () => {
+  const root = mkdtempSync(join(tmpdir(), "tlc-home-rule-ok-"));
+  try {
+    mkdirSync(join(root, "tools"), { recursive: true });
+    writeFileSync(join(root, "tools", "test-env.mjs"), 'process.env.HOME = "/fake";\n', "utf8");
+
+    const violations = runBoundaryChecks({ root, ...DEFAULT_CONFIG });
+
+    assert.deepEqual(
+      violations.filter((violation) => violation.rule === "process-env-home"),
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
