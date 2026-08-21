@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import type { ProviderWiring } from "../../src/contracts/index.ts";
 import { coreFacade } from "../../src/core/index.ts";
 import { DEFAULTS } from "../../src/core/policy/policy.defaults.ts";
-import { projectConfigPath } from "../../src/platform/paths.ts";
+import { executableOnPath, projectConfigPath } from "../../src/platform/paths.ts";
 import { mergeClaudeSettings } from "../../src/providers/claude/claude.wiring.ts";
 import { cursorWiring, formatWiringProblems } from "../../src/providers/cursor/cursor.wiring.ts";
 import type { ProviderPort } from "../../src/providers/provider.port.ts";
@@ -21,13 +21,13 @@ import {
   checkProjectPolicy,
   checkProviders,
   checkRules,
+  checkRuntimePaths,
   checkShadowedPolicy,
   exitCodeFor,
   formatReport,
   measureRuntimeStart,
   medianMs,
   providerWiringStatus,
-  resolveOnPath,
   runChecks,
   toReport,
   wiringProblems,
@@ -747,11 +747,13 @@ describe("checkPrices", () => {
  * The second is part of every install, so the row could not fail — and it printed the first path either way
  * ([/decisions/ad-097.md](/decisions/ad-097.md)).
  */
-describe("resolveOnPath", () => {
+// why the tests moved with it: `doctor` had its own copy of the PATH walk, and it is now one function in
+// `platform/` ([/decisions/ad-101.md](/decisions/ad-101.md)).
+describe("executableOnPath", () => {
   const PATH = ["/a", "/b"].join(delimiter);
 
   test("AC5 finds the bare name a POSIX npm install writes", () => {
-    const found = resolveOnPath("tlc", { PATH }, (p) => p === join("/b", "tlc"));
+    const found = executableOnPath("tlc", { PATH }, (p) => p === join("/b", "tlc"));
 
     assert.equal(found, join("/b", "tlc"));
   });
@@ -759,25 +761,25 @@ describe("resolveOnPath", () => {
   /** why: the `.cmd` and `.ps1` shims npm writes on Windows are found without asking which platform this is. */
   test("AC5 finds the shim names an npm install writes on Windows", () => {
     assert.equal(
-      resolveOnPath("tlc", { PATH }, (p) => p === join("/a", "tlc.cmd")),
+      executableOnPath("tlc", { PATH }, (p) => p === join("/a", "tlc.cmd")),
       join("/a", "tlc.cmd"),
     );
     assert.equal(
-      resolveOnPath("tlc", { PATH }, (p) => p === join("/b", "tlc.ps1")),
+      executableOnPath("tlc", { PATH }, (p) => p === join("/b", "tlc.ps1")),
       join("/b", "tlc.ps1"),
     );
   });
 
   test("AC5 nothing on PATH is null, not a guess", () => {
     assert.equal(
-      resolveOnPath("tlc", { PATH }, () => false),
+      executableOnPath("tlc", { PATH }, () => false),
       null,
     );
   });
 
   test("an empty PATH entry is skipped rather than probing the working directory", () => {
     const probed: string[] = [];
-    resolveOnPath("tlc", { PATH: `${delimiter}/a` }, (p) => {
+    executableOnPath("tlc", { PATH: `${delimiter}/a` }, (p) => {
       probed.push(String(p));
       return false;
     });
@@ -947,5 +949,29 @@ describe("checkShadowedPolicy", () => {
     // assertion failed on correct output.
     const listed = /have: (.+?), and \d+ more\./.exec(detail)?.[1] ?? "";
     assert.equal(listed.split(", ").length, 6, listed);
+  });
+});
+
+/**
+ * hazard: `doctor` printed twenty rows and not one carried a version, so an operator could not answer "which
+ * version am I running" from any command ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+describe("the version row", () => {
+  test("names the version read from the runtime's own manifest", () => {
+    const home = newRoot();
+    writeFileSync(join(home, "package.json"), JSON.stringify({ version: "9.9.9" }), "utf8");
+
+    const row = checkRuntimePaths(home, "linux").find((check) => check.name === "harness version");
+
+    assert.equal(row?.level, "ok");
+    assert.equal(row?.detail, "9.9.9");
+  });
+
+  /** invariant: a runtime with no readable manifest is a warning, not a missing row. */
+  test("an unreadable manifest is reported rather than omitted", () => {
+    const row = checkRuntimePaths(newRoot(), "linux").find((check) => check.name === "harness version");
+
+    assert.equal(row?.level, "warn");
+    assert.match(row?.detail ?? "", /unknown/);
   });
 });

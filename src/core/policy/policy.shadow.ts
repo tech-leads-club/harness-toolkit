@@ -27,71 +27,67 @@ function sameValue(a: unknown, b: unknown): boolean {
 }
 
 /**
- * Every leaf in `project` whose value the lower tiers already resolve to.
+ * One walk, two questions.
  *
- * `resolved` is the policy as it would be with the project config absent — `DEFAULTS` merged with the user tier.
+ * hazard: `shadowedKeys` and `pruneShadowed` were two recursions over the same tree applying the same leaf test —
+ * so a change to what counts as a restatement had to be made twice, and the report and the pruner could disagree
+ * about the same config ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ *
+ * `resolved` is the policy as it would be with the project config absent: the shipped defaults merged with this
+ * machine's tier.
  */
-export function shadowedKeys(
+function walk(
   project: Record<string, unknown>,
   resolved: Record<string, unknown>,
-  prefix = "",
-): ShadowedKey[] {
-  const found: ShadowedKey[] = [];
+  prefix: string,
+): { shadowed: ShadowedKey[]; kept: Record<string, unknown> } {
+  const shadowed: ShadowedKey[] = [];
+  const kept: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(project)) {
-    // why skipped: `version` is the config's own shape marker rather than a setting, so naming it is required
-    // rather than redundant.
+    // why kept and never reported: `version` marks the config's shape rather than a setting, so naming it is
+    // required rather than redundant.
     if (prefix === "" && key === "version") {
+      kept[key] = value;
       continue;
     }
     const path = prefix === "" ? key : `${prefix}.${key}`;
     const below = resolved[key];
     if (isPlainObject(value) && isPlainObject(below)) {
-      found.push(...shadowedKeys(value, below, path));
+      const inner = walk(value, below, path);
+      shadowed.push(...inner.shadowed);
+      // why empty blocks go: `{ shipGate: {} }` decides nothing, and leaving it behind would make a pruned config
+      // read as though it had opinions.
+      if (Object.keys(inner.kept).length > 0) {
+        kept[key] = inner.kept;
+      }
       continue;
     }
     if (sameValue(value, below)) {
-      found.push({ path, value });
+      shadowed.push({ path, value });
+    } else {
+      kept[key] = value;
     }
   }
-  return found;
+  return { shadowed, kept };
+}
+
+/** What `doctor` reports: every leaf whose value the tiers below already resolve to. */
+export function shadowedKeys(
+  project: Record<string, unknown>,
+  resolved: Record<string, unknown>,
+): ShadowedKey[] {
+  return walk(project, resolved, "").shadowed;
 }
 
 /**
- * The project config with every restatement removed.
- *
- * why this and not just a report: `init` wrote the whole default policy when a project had no config yet, and the
- * wizard wrote every knob it collected — so a fresh project shadowed the machine tier in dozens of places before
- * anyone had chosen anything. Reporting it after the fact leaves the operator to undo it by hand; not writing it
- * is the fix ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ * What `init` writes: the same config with every restatement removed.
  *
  * invariant: pruning cannot change the effective policy. A leaf is dropped only when the tiers below already
  * resolve to it, so the merge produces the same value with the key absent.
- *
- * why empty objects go too: `{ shipGate: {} }` is a block that decides nothing, and leaving it behind would make
- * a pruned config read as though it had opinions.
  */
 export function pruneShadowed(
   project: Record<string, unknown>,
   resolved: Record<string, unknown>,
-  prefix = "",
 ): Record<string, unknown> {
-  const kept: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(project)) {
-    if (prefix === "" && key === "version") {
-      kept[key] = value;
-      continue;
-    }
-    const below = resolved[key];
-    if (isPlainObject(value) && isPlainObject(below)) {
-      const inner = pruneShadowed(value, below, `${prefix}${key}.`);
-      if (Object.keys(inner).length > 0) {
-        kept[key] = inner;
-      }
-      continue;
-    }
-    if (!sameValue(value, below)) {
-      kept[key] = value;
-    }
-  }
-  return kept;
+  return walk(project, resolved, "").kept;
 }

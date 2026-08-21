@@ -9,18 +9,22 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 import { coreFacade } from "../src/core/index.ts";
 import { emitJson, JSON_FLAG, takeJsonFlag, unknownFlags } from "../src/platform/cli-output.ts";
 import { linkDir, linkFile, seedConfig } from "../src/platform/links.ts";
 import {
+  EXECUTABLE_EXTENSIONS,
+  executableOnPath,
   flagsDir,
   isOnPath,
   launcherBinDir,
+  machineHome,
   projectConfigPath,
   projectStateDir,
   providerConfigDirs,
   runtimeHome,
+  sameLocation,
 } from "../src/platform/paths.ts";
 import { type Row, render, type Screen, type Section } from "../src/platform/screen.ts";
 import { createStyle, PLAIN, type Style } from "../src/platform/style.ts";
@@ -760,24 +764,16 @@ const GATE_FIELDS: Record<string, GateField> = {
  * name is first, so a POSIX `foo` is never beaten by a stray `foo.exe`
  * ([/decisions/ad-097.md](/decisions/ad-097.md)).
  */
-const EXECUTABLE_EXTENSIONS = ["", ".exe", ".cmd", ".bat", ".ps1"];
-
+/**
+ * why this still exists beside `executableOnPath`: it also answers for a name that is already a path, which a PATH
+ * walk has nothing to say about. The walk itself is not repeated here
+ * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
 export function resolveExecutable(name: string, env: NodeJS.ProcessEnv = process.env): string | null {
-  const candidates = (base: string): string[] => EXECUTABLE_EXTENSIONS.map((ext) => `${base}${ext}`);
-
   if (name.includes("/") || name.includes("\\")) {
-    return candidates(name).find((candidate) => existsSync(candidate)) ?? null;
+    return EXECUTABLE_EXTENSIONS.map((ext) => `${name}${ext}`).find((c) => existsSync(c)) ?? null;
   }
-  for (const dir of (env.PATH ?? "").split(delimiter)) {
-    if (!dir) {
-      continue;
-    }
-    const found = candidates(join(dir, name)).find((candidate) => existsSync(candidate));
-    if (found) {
-      return found;
-    }
-  }
-  return null;
+  return executableOnPath(name, env);
 }
 
 /**
@@ -897,6 +893,29 @@ export function pricesHelpText(style: Style = PLAIN): string {
   return render(pricesHelpScreen(), style);
 }
 
+/**
+ * The installed version, read from the runtime's own manifest.
+ *
+ * hazard: nothing showed it. `doctor` printed twenty rows and not one carried a version, and `update` on the npm
+ * route said `runtime → <path>` without naming what it was on or what it moved to
+ * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+export function runtimeVersion(home: string): string | null {
+  try {
+    const raw = JSON.parse(readFileSync(join(home, "package.json"), "utf8")) as { version?: unknown };
+    return typeof raw.version === "string" ? raw.version : null;
+  } catch {
+    return null;
+  }
+}
+
+/** why one line: an unchanged version is the common case and reads better as a sentence than as two rows. */
+export function versionMoveLine(before: string | null, after: string | null): string {
+  return before !== null && after !== null && before !== after
+    ? `update: ${before} → ${after}`
+    : `update: already at ${after ?? before ?? "unknown"}`;
+}
+
 export function resolveHarnessRoot(): string {
   const home = runtimeHome();
   try {
@@ -995,6 +1014,18 @@ export function npmRootFailureMessage(home: string): string {
  * then reports it healthy while the command still does not exist.
  */
 export function launcherLines(dest: string): string[] {
+  /**
+   * hazard: this linked unconditionally. An install to a throwaway `TLC_INSTALL_DEST` therefore pointed the
+   * machine's `tlc` at that directory — measured: a proof-of-concept install into a temp directory left the
+   * operator's command running from `/tmp`, and every `tlc harness ...` after it resolved its runtime there
+   * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+   *
+   * invariant: only the machine's own runtime home owns the command on `PATH`. Installing somewhere else is a
+   * deliberate act and must not reach into anybody's shell.
+   */
+  if (!sameLocation(dest, machineHome())) {
+    return [`tlc not linked — ${dest} is not this machine's runtime home`];
+  }
   const dir = launcherBinDir();
   const source = join(dest, "bin", "tlc");
   // hazard: `symlinkSync` happily creates a link to a path that is not there, and `existsSync` on a dangling link
@@ -1369,7 +1400,8 @@ function runUpdate(root: string): never {
   const dest = resolveHarnessRoot();
   const revisionBefore = runtimeRevision(dest).revision;
   const home = runtimeHome();
-  console.log(`update: runtime → ${dest}`);
+  const versionBefore = runtimeVersion(dest);
+  console.log(`update: runtime → ${dest} (${versionBefore ?? "unknown"})`);
 
   if (!existsSync(join(dest, "bin", "tlc-exec.mjs"))) {
     console.error(`update: missing install at ${home}`);
@@ -1414,6 +1446,7 @@ function runUpdate(root: string): never {
     if ((sync.status ?? 1) !== 0) {
       process.exit(sync.status ?? 1);
     }
+    console.log(versionMoveLine(versionBefore, runtimeVersion(dest)));
   } else if (kind === "unmanaged") {
     console.log(unmanagedRuntimeMessage(dest));
   } else {

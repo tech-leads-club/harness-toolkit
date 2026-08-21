@@ -1,18 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { DEFAULT_OBS } from "../../core/observability/observability.types.ts";
-import { DEFAULTS } from "../../core/policy/policy.defaults.ts";
+import { coreFacade } from "../../core/index.ts";
 import { OBS_CONFIG_AUDIT, obsConfigFor } from "../support.ts";
 
-const base = DEFAULTS;
+const base = coreFacade.policy.DEFAULTS;
 
 describe("obsConfigFor", () => {
   test("a project that configures nothing gets today's defaults", () => {
     const config = obsConfigFor(base);
-    assert.equal(config.includePayloads, DEFAULT_OBS.includePayloads);
-    assert.equal(config.maxAttrChars, DEFAULT_OBS.maxAttrChars);
-    assert.equal(config.retentionDays, DEFAULT_OBS.retentionDays);
-    assert.equal(config.sessionCostAlertUsd, DEFAULT_OBS.sessionCostAlertUsd);
+    assert.equal(config.includePayloads, coreFacade.observability.DEFAULT_OBS.includePayloads);
+    assert.equal(config.maxAttrChars, coreFacade.observability.DEFAULT_OBS.maxAttrChars);
+    assert.equal(config.retentionDays, coreFacade.observability.DEFAULT_OBS.retentionDays);
+    assert.equal(config.sessionCostAlertUsd, coreFacade.observability.DEFAULT_OBS.sessionCostAlertUsd);
     assert.equal(config.globalSpool, false);
   });
 

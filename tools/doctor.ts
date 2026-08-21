@@ -1,14 +1,15 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { homedir, platform as osPlatform } from "node:os";
-import { basename, delimiter, dirname, join } from "node:path";
-import { runtimePathKind } from "../bin/tlc-cli.ts";
+import { basename, dirname, join } from "node:path";
+import { runtimePathKind, runtimeVersion } from "../bin/tlc-cli.ts";
 import { findBunOnPath, writeRuntimeCache } from "../bin/tlc-exec.mjs";
 import { isCursorWired } from "../bin/write-user-hooks.mjs";
 import type { ProviderWiring } from "../src/contracts/index.ts";
 import { coreFacade } from "../src/core/index.ts";
 import { emitJson, takeJsonFlag } from "../src/platform/cli-output.ts";
 import {
+  executableOnPath,
   launcherBinDir,
   projectConfigPath,
   projectStateDir,
@@ -216,36 +217,6 @@ export function checkPrices(
 }
 
 /**
- * Where a shell would find the `tlc` command, if anywhere.
- *
- * hazard: this row used to pass when `~/.local/bin/tlc` existed **or** `<runtime home>/bin/tlc` existed. The
- * second is part of every install, so the check could not fail — and it printed the first path either way, so an
- * operator whose command was not on PATH read a passing row naming a file they did not have
- * ([/decisions/ad-034.md](/decisions/ad-034.md), [/decisions/ad-097.md](/decisions/ad-097.md)).
- *
- * why the four names: an npm global install writes the shims for its platform — bare on POSIX, `.cmd` and `.ps1`
- * on Windows. Trying all four everywhere costs four `existsSync` calls and needs no platform branch.
- */
-export function resolveOnPath(
-  command: string,
-  env: NodeJS.ProcessEnv = process.env,
-  exists = existsSync,
-): string | null {
-  for (const dir of (env.PATH ?? "").split(delimiter)) {
-    if (!dir) {
-      continue;
-    }
-    for (const name of [command, `${command}.cmd`, `${command}.exe`, `${command}.ps1`]) {
-      const candidate = join(dir, name);
-      if (exists(candidate)) {
-        return candidate;
-      }
-    }
-  }
-  return null;
-}
-
-/**
  * The operator's own rules: which apply, where each came from, and any that can never be satisfied here.
  *
  * why the tier is printed: two tiers apply together, so "why did this fire?" and "why did it not?" are both
@@ -309,10 +280,18 @@ export function checkRules(root: string): Check[] {
 }
 
 export function checkRuntimePaths(home: string, platform: NodeJS.Platform): Check[] {
+  const version = runtimeVersion(home);
   const launcher = join(home, "bin", "tlc-exec.mjs");
   const distSample = join(home, "dist", "stop.mjs");
-  const onPath = resolveOnPath("tlc");
+  const onPath = executableOnPath("tlc");
   return [
+    {
+      level: version === null ? "warn" : "ok",
+      name: "harness version",
+      // why a row rather than a footer: an operator asking "which version is this" was reading twenty rows that
+      // never said ([/decisions/ad-101.md](/decisions/ad-101.md)).
+      detail: version ?? `unknown — no readable package.json at ${home}`,
+    },
     { level: "ok", name: "platform", detail: platform },
     { level: existsSync(launcher) ? "ok" : "fail", name: "global runtime", detail: home },
     runtimeOwnershipCheck(home),

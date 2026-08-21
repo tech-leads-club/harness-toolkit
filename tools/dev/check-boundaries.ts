@@ -101,6 +101,42 @@ function checkCrossImports(root: string, fromRel: string, forbiddenRel: string, 
   return violations;
 }
 
+/**
+ * A module may be imported, but only through its barrel.
+ *
+ * hazard: the direction checks above ban an import outright, so nothing covered "may import, but only the front
+ * door". Four test files reached into `core/observability/…` and `providers/claude/…` for values the barrels did not
+ * publish, which is the coupling a facade exists to prevent — and no check could see it
+ * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ *
+ * why the barrels were widened rather than the imports left alone: a caller reaching past the front door is usually
+ * telling you the front door is missing something.
+ */
+function checkDeepImports(root: string, fromRel: string, intoRel: string, rule: string): Violation[] {
+  const intoAbs = resolve(root, intoRel);
+  const barrel = join(intoAbs, "index.ts");
+  const violations: Violation[] = [];
+  // why tests are included here and nowhere else: a test reaching past a barrel is the same coupling as production
+  // reaching past it, and every one of the four this check was written for lived in a test file. The direction
+  // checks above scan production only, which is why nothing could see them.
+  for (const file of listSourceFiles(join(root, fromRel), true)) {
+    readFileSync(file, "utf8")
+      .split("\n")
+      .forEach((lineText, idx) => {
+        const importSpec = IMPORT_SPEC_PATTERN.exec(lineText)?.[1];
+        if (importSpec === undefined || !importSpec.startsWith(".")) {
+          return;
+        }
+        const resolvedSpec = resolve(dirname(file), importSpec);
+        const inside = resolvedSpec === intoAbs || resolvedSpec.startsWith(`${intoAbs}${sep}`);
+        if (inside && resolvedSpec !== barrel) {
+          violations.push({ file: relative(root, file), line: idx + 1, rule, detail: lineText.trim() });
+        }
+      });
+  }
+  return violations;
+}
+
 export function runBoundaryChecks(config: BoundaryCheckConfig): Violation[] {
   const violations: Violation[] = [];
 
@@ -165,6 +201,18 @@ export function runBoundaryChecks(config: BoundaryCheckConfig): Violation[] {
       config.contractsDir,
       config.entrypointsDir,
       "contracts-imports-entrypoints",
+    ),
+  );
+
+  violations.push(
+    ...checkDeepImports(config.root, config.entrypointsDir, config.coreDir, "entrypoints-deep-imports-core"),
+  );
+  violations.push(
+    ...checkDeepImports(
+      config.root,
+      config.entrypointsDir,
+      config.providersDir,
+      "entrypoints-deep-imports-providers",
     ),
   );
 

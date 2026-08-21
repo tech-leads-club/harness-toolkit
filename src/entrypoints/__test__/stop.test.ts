@@ -5,9 +5,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { coreFacade } from "../../core/index.ts";
-import { resolveObsLevel } from "../../core/observability/observability.types.ts";
+
 import { projectConfigPath } from "../../platform/paths.ts";
-import { claudeWiring } from "../../providers/claude/claude.wiring.ts";
+import { claudeWiring } from "../../providers/index.ts";
+
 import { responseAfterHandler } from "../response-after.ts";
 import { type RunOutcome, runHandler } from "../run.ts";
 import { STOP_LOCK_WAIT_MS, stopHandler, stopLockWaitMs } from "../stop.ts";
@@ -295,7 +296,8 @@ test("a grind lock held by a neighbour defers the gate instead of blocking the t
 
     // invariant: the plane comes from the resolver, not from a guess. Reading `debug.jsonl` found nothing because
     // `gate.outcome` resolves to signal — the plane mismatch AD-065 built a checker for, made here in a test.
-    const plane = resolveObsLevel("gate.outcome") === "signal" ? "obs.jsonl" : "debug.jsonl";
+    const plane =
+      coreFacade.observability.resolveObsLevel("gate.outcome") === "signal" ? "obs.jsonl" : "debug.jsonl";
     const deferrals = coreFacade.observability
       .readSignalEvents(root, plane, 200)
       .filter((event) => event.kind === "gate.outcome" && event.attrs?.deferred_to !== undefined);
@@ -346,7 +348,8 @@ test("a reusable verdict is honoured while a neighbour holds the lock", async ()
     const handoff = coreFacade.handoff.readHandoff(root, "cursor");
     assert.equal(handoff?.last_gate_result, "pass");
 
-    const plane = resolveObsLevel("gate.outcome") === "signal" ? "obs.jsonl" : "debug.jsonl";
+    const plane =
+      coreFacade.observability.resolveObsLevel("gate.outcome") === "signal" ? "obs.jsonl" : "debug.jsonl";
     const outcomes = coreFacade.observability
       .readSignalEvents(root, plane, 200)
       .filter((event) => event.kind === "gate.outcome");

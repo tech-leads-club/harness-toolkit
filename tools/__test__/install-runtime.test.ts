@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { launcherLines, NPM_MARKER } from "../../bin/tlc-cli.ts";
+import { launcherLines, NPM_MARKER, runtimeVersion, versionMoveLine } from "../../bin/tlc-cli.ts";
 import { isLink } from "../../src/platform/links.ts";
 import {
   installDest,
@@ -32,6 +32,29 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 function tempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
+}
+
+/**
+ * why both variables: `launcherLines` links only into the machine's own runtime home, so a test that wants the link
+ * has to say the destination *is* that home ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+function withLauncherEnv<T>(args: { bin: string; home?: string }, fn: () => T): T {
+  const previous = { TLC_BIN_DIR: process.env.TLC_BIN_DIR, TLC_HOME: process.env.TLC_HOME };
+  process.env.TLC_BIN_DIR = args.bin;
+  if (args.home !== undefined) {
+    process.env.TLC_HOME = args.home;
+  }
+  try {
+    return fn();
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+  }
 }
 
 function fakePackage(): string {
@@ -370,10 +393,8 @@ test("AC install wires the providers, not only the runtime directory", () => {
 test("wiring links the tlc launcher into the bin directory and names it", () => {
   const dest = fakePackage();
   const bin = tempDir("bin-");
-  const previous = process.env.TLC_BIN_DIR;
-  process.env.TLC_BIN_DIR = bin;
   try {
-    const lines = launcherLines(dest);
+    const lines = withLauncherEnv({ bin, home: dest }, () => launcherLines(dest));
 
     assert.equal(existsSync(join(bin, "tlc")), true);
     assert.ok(
@@ -381,11 +402,6 @@ test("wiring links the tlc launcher into the bin directory and names it", () => 
       lines.join(" | "),
     );
   } finally {
-    if (previous === undefined) {
-      delete process.env.TLC_BIN_DIR;
-    } else {
-      process.env.TLC_BIN_DIR = previous;
-    }
     rmSync(dest, { recursive: true, force: true });
     rmSync(bin, { recursive: true, force: true });
   }
@@ -398,19 +414,14 @@ test("wiring links the tlc launcher into the bin directory and names it", () => 
 test("a bin directory that is not on PATH is said so", () => {
   const dest = fakePackage();
   const bin = tempDir("offpath-");
-  const previous = process.env.TLC_BIN_DIR;
-  process.env.TLC_BIN_DIR = bin;
   try {
     assert.ok(
-      launcherLines(dest).some((line) => line.includes("not on PATH")),
+      withLauncherEnv({ bin, home: dest }, () => launcherLines(dest)).some((line) =>
+        line.includes("not on PATH"),
+      ),
       "the operator has to be told",
     );
   } finally {
-    if (previous === undefined) {
-      delete process.env.TLC_BIN_DIR;
-    } else {
-      process.env.TLC_BIN_DIR = previous;
-    }
     rmSync(dest, { recursive: true, force: true });
     rmSync(bin, { recursive: true, force: true });
   }
@@ -446,10 +457,8 @@ test("wireRuntime calls the launcher step", () => {
 test("a runtime with no launcher wrapper is reported, not linked to nothing", () => {
   const dest = tempDir("nolauncher-");
   const bin = tempDir("bin2-");
-  const previous = process.env.TLC_BIN_DIR;
-  process.env.TLC_BIN_DIR = bin;
   try {
-    const lines = launcherLines(dest);
+    const lines = withLauncherEnv({ bin, home: dest }, () => launcherLines(dest));
 
     assert.ok(
       lines.some((line) => /not linked — .*is missing from the runtime/.test(line)),
@@ -457,12 +466,66 @@ test("a runtime with no launcher wrapper is reported, not linked to nothing", ()
     );
     assert.equal(isLink(join(bin, "tlc")), false, "nothing was created");
   } finally {
-    if (previous === undefined) {
-      delete process.env.TLC_BIN_DIR;
-    } else {
-      process.env.TLC_BIN_DIR = previous;
-    }
     rmSync(dest, { recursive: true, force: true });
     rmSync(bin, { recursive: true, force: true });
   }
+});
+
+/**
+ * hazard: the launcher was linked whatever the destination, so an install to a throwaway `TLC_INSTALL_DEST`
+ * pointed the machine's `tlc` at that directory. Measured: a proof-of-concept install into a temp directory left
+ * the operator's command running from `/tmp`, and every `tlc harness ...` after it resolved its runtime there
+ * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+test("an install somewhere other than the machine's runtime does not touch the PATH", () => {
+  const dest = fakePackage();
+  const bin = tempDir("nolink-");
+  try {
+    const lines = withLauncherEnv({ bin }, () => launcherLines(dest));
+
+    assert.ok(
+      lines.some((line) => /not linked — .*not this machine's runtime home/.test(line)),
+      lines.join(" | "),
+    );
+    assert.equal(existsSync(join(bin, "tlc")), false, "nobody's shell was reached into");
+  } finally {
+    rmSync(dest, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
+
+/** invariant: and the machine's own runtime still gets it, or the fix above would just remove the feature. */
+test("an install into the machine's runtime home does link it", () => {
+  const dest = fakePackage();
+  const bin = tempDir("dolink-");
+  try {
+    withLauncherEnv({ bin, home: dest }, () => launcherLines(dest));
+
+    assert.equal(existsSync(join(bin, "tlc")), true);
+  } finally {
+    rmSync(dest, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
+
+/**
+ * hazard: no command showed a version. `doctor` printed twenty rows and not one carried it, and `update` on the npm
+ * route said `runtime → <path>` without naming what it was on or moved to.
+ */
+test("the runtime version is read from the runtime's own manifest", () => {
+  const dest = tempDir("ver-");
+  try {
+    writeFileSync(join(dest, "package.json"), JSON.stringify({ version: "9.9.9" }), "utf8");
+
+    assert.equal(runtimeVersion(dest), "9.9.9");
+    assert.equal(runtimeVersion(join(dest, "nope")), null, "an unreadable manifest is unknown, not a crash");
+  } finally {
+    rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test("the update line names both versions, or says it did not move", () => {
+  assert.equal(versionMoveLine("0.3.6", "0.4.0"), "update: 0.3.6 → 0.4.0");
+  assert.equal(versionMoveLine("0.4.0", "0.4.0"), "update: already at 0.4.0");
+  assert.equal(versionMoveLine(null, null), "update: already at unknown");
 });

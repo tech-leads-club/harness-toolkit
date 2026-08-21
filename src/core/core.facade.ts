@@ -95,6 +95,7 @@ import {
   recordObs,
 } from "./observability/observability.service.ts";
 import { getRollup, pruneObs, pruneSpool, readSignalEvents } from "./observability/observability.store.ts";
+import { resolveObsLevel } from "./observability/observability.types.ts";
 import {
   decisionsFrom,
   NOTHING_WAS_THE_HARNESS,
@@ -110,6 +111,7 @@ import {
 } from "./observe/observe.service.ts";
 import { detectDeviations, detectPlan } from "./plan/plan.detect.ts";
 import { evaluatePlanGate, planVerdict } from "./plan/plan.service.ts";
+import { DEFAULTS } from "./policy/policy.defaults.ts";
 import { guardPolicySurface } from "./policy/policy.guard.ts";
 import {
   acceptPolicySources,
@@ -354,6 +356,7 @@ export const coreFacade = {
   },
   observability: {
     DEFAULT_OBS,
+    resolveObsLevel,
     recordObs,
     recordFromEvent,
     recordAudit,
@@ -399,6 +402,10 @@ export const coreFacade = {
     activeRails,
     operatorBootstrapLines,
     loadPolicy,
+    // why on the facade and not exported from the barrel: `core/index.ts` publishes types and this object only, so
+    // a caller outside `core` reaching for the shipped defaults comes through here
+    // ([/decisions/ad-004.md](/decisions/ad-004.md), [/decisions/ad-101.md](/decisions/ad-101.md)).
+    DEFAULTS,
     resolvedWithoutProjectTier,
     shadowedKeys,
     pruneShadowed,

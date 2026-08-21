@@ -1,3 +1,4 @@
+import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 
@@ -150,12 +151,66 @@ export function launcherNames(): readonly string[] {
 }
 
 /**
+ * The one place `PATH` is split.
+ *
+ * hazard: four implementations walked it — the CLI's executable finder, `doctor`'s, the launcher's Bun probe, and
+ * a third added for the install check. Three of them were the same function with different extension lists
+ * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+export function pathEntries(env: NodeJS.ProcessEnv = process.env): string[] {
+  return (env.PATH ?? "").split(delimiter).filter((entry) => entry.length > 0);
+}
+
+/**
+ * why the extensions: on Windows a command is `tlc`, `tlc.cmd`, `tlc.exe`, `tlc.bat` or `tlc.ps1` depending on who
+ * generated it, and npm's shim is a `.cmd`. Asking for all of them costs one `existsSync` per entry and removes the
+ * only reason the two finders differed.
+ */
+export const EXECUTABLE_EXTENSIONS = ["", ".exe", ".cmd", ".bat", ".ps1"] as const;
+
+export function executableOnPath(
+  name: string,
+  env: NodeJS.ProcessEnv = process.env,
+  exists = existsSync,
+): string | null {
+  for (const dir of pathEntries(env)) {
+    for (const ext of EXECUTABLE_EXTENSIONS) {
+      const candidate = join(dir, `${name}${ext}`);
+      if (exists(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Whether a shell would find something in this directory.
  *
  * why it matters at install time: a launcher nobody can reach is worse than none, because `doctor` then reports a
  * healthy link while the command still does not exist.
  */
 export function isOnPath(dir: string, env: NodeJS.ProcessEnv = process.env): boolean {
-  const entries = (env.PATH ?? "").split(delimiter).filter((entry) => entry.length > 0);
-  return entries.some((entry) => resolve(entry) === resolve(dir));
+  return pathEntries(env).some((entry) => resolve(entry) === resolve(dir));
+}
+
+/**
+ * Whether two paths name the same directory, following links.
+ *
+ * why not `resolve` alone: `resolve` is lexical, so a runtime home that is a symlink to a checkout compares
+ * unequal to the checkout and every guard built on it misses. That is how `install` came to delete the checkout it
+ * pointed at ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ *
+ * why the fallback: a destination that does not exist yet has no real path, and a first install is exactly that
+ * case. Then the lexical answer is the only one there is, and it is right — nothing is there to alias.
+ */
+export function sameLocation(a: string, b: string): boolean {
+  const real = (path: string): string => {
+    try {
+      return realpathSync(path);
+    } catch {
+      return resolve(path);
+    }
+  };
+  return real(a) === real(b);
 }
