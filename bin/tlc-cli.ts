@@ -1296,6 +1296,15 @@ export type TestStep = { label: string; bin: string; args: string[] };
 // against the real repository — green from a shell, red from inside a hook.
 export const TEST_ENV_IMPORT = ["--import", "./tools/test-env.mjs"];
 
+/**
+ * The number of unused exports this repository carries today.
+ *
+ * why a number in code and not a snapshot file: it is a debt, and a debt that has to be edited down in a reviewed
+ * commit is one somebody looks at. Lowering it is the point; raising it needs an argument in the diff
+ * ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
+export const KNIP_EXPORTS_CEILING = 76;
+
 export function buildTestSteps(): TestStep[] {
   return [
     // why: `--error-on-warnings`. A warn-level rule does not change biome's exit code, so three fixable warnings
@@ -1307,6 +1316,22 @@ export function buildTestSteps(): TestStep[] {
     { label: "tsc --noEmit", bin: "npx", args: ["tsc", "--noEmit"] },
     { label: "src suite", bin: "node", args: [...TEST_ENV_IMPORT, "--test", "src/**/__test__/*.test.ts"] },
     { label: "tools suite", bin: "node", args: [...TEST_ENV_IMPORT, "--test", "tools/__test__/*.test.ts"] },
+    /**
+     * why two knip steps and not one: `files` and `dependencies` are already at zero, so they block. `exports` has a
+     * backlog of legitimately-exported-for-tests symbols, and a step that reports without failing is a signal that
+     * never fires — so it blocks on *growth* instead, which is the published way to adopt this without a sweep
+     * ([/decisions/ad-102.md](/decisions/ad-102.md)).
+     *
+     * hazard: `observe` was exported, wired into the facade and called by nothing, so no proof could ever exist and
+     * every operator rule denied for ever. 113 tests passed. This is the check that sees that class
+     * ([/decisions/ad-100.md](/decisions/ad-100.md)).
+     */
+    { label: "knip: dead files and dependencies", bin: "npx", args: ["knip", "--files", "--dependencies"] },
+    {
+      label: "knip: unused exports do not grow",
+      bin: "npx",
+      args: ["knip", "--exports", "--max-issues", String(KNIP_EXPORTS_CEILING)],
+    },
     { label: "check-boundaries", bin: "node", args: ["tools/dev/check-boundaries.ts"] },
     // why: `--error-on-warnings` above cannot see a rule that was suppressed rather than fixed, and biome accepts
     // any text after the colon. This is what makes the reason a reason ([/decisions/ad-051.md](/decisions/ad-051.md)).

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/entrypoints/*.ts",
+    "bin/tlc-cli.ts",
+    "bin/write-user-hooks.mjs",
+    "tools/*.ts",
+    "tools/dev/*.ts",
+    "tools/test-env.mjs",
+    "**/__test__/*.test.ts",
+    "**/__test__/fixtures/*.ts"
+  ],
+  "project": [
+    "src/**/*.ts",
+    "tools/**/*.ts",
+    "bin/**/*.{ts,mjs}"
+  ],
+  "ignoreDependencies": [
+    "@biomejs/biome"
+  ]
+}
