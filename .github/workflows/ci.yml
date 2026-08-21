@@ -57,6 +57,42 @@ jobs:
           BASE: ${{ github.base_ref }}
         run: node tools/dev/check-scopes.ts --base "origin/$BASE"
 
+  # why on demand and not on every pull request: this resolves dependencies from the network and installs globally,
+  # which is why it is a release step rather than a gate step ([/decisions/ad-102.md](/decisions/ad-102.md)). But the
+  # release is the *only* place it ran, so a change to the verification itself could not be proven on the two
+  # platforms it exists for until after the merge that would publish it. `workflow_dispatch` on a branch closes that
+  # ([/decisions/ad-103.md](/decisions/ad-103.md)).
+  artefact:
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    name: artefact · ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install Bun (build toolchain)
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.3.14"
+
+      - run: npm ci
+
+      - name: Pack it, install it, drive it
+        run: node tools/dev/verify-package.mjs
+
   test:
     permissions:
       contents: read
