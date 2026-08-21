@@ -49,8 +49,13 @@ jobs:
         with:
           node-version: "24"
 
+      # hazard: `${{ github.base_ref }}` expanded straight into a `run:` block is code injection — a branch name is
+      # attacker-controllable text, and zizmor reports it as high confidence. It travels as an environment variable
+      # for that reason, which is the same shape every other interpolation in these workflows already uses.
       - name: An inert scope must not change what the package ships
-        run: node tools/dev/check-scopes.ts --base "origin/${{ github.base_ref }}"
+        env:
+          BASE: ${{ github.base_ref }}
+        run: node tools/dev/check-scopes.ts --base "origin/$BASE"
 
   test:
     permissions:
