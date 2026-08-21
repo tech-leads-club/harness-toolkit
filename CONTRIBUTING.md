@@ -116,30 +116,30 @@ fails there, which is exactly what happened — and the check worked.
 
 ## Releasing
 
-A push to `main` **stages** the version on npm. Staged means queued and not installable: `npx` cannot reach it, no
-dist-tag moves, and nothing on any machine changes. The release becomes real only when a maintainer approves it
-with proof of presence.
+A push to `main` releases. Nothing to run, nothing to approve, and no credential anywhere: trusted publishing mints
+a short-lived OIDC token per run and npm checks it against the registered publisher — organisation, repository,
+workflow filename, environment name — so there is no stored secret to steal and nothing to rotate. Provenance is
+generated from that same identity ([/decisions/ad-102.md](/decisions/ad-102.md)).
 
-From your own terminal:
+**What makes it safe is the gate, not a gate-keeper:** eighteen steps on four platforms, then the packed tarball
+installed into a container and driven as a real command, and only then `npm publish`.
 
-```bash
-npm stage list @tech-leads-club/harness-toolkit   # what is waiting
-npm stage view <stage-id>                          # inspect the staged tarball
-npm stage approve <stage-id>                       # 2FA, and it goes live
-npm stage reject <stage-id>                        # it never existed
-```
+Two settings outside this repository decide whether "tokenless" is true or merely available:
 
-Why it works this way: OIDC covers `npm publish` and `npm stage publish` and nothing else. Every other stage
-subcommand needs interactive authentication, so **no workflow can finish a release** — that is the design, not a
-limitation, and it means this repository holds no npm credential at all
-([/decisions/ad-102.md](/decisions/ad-102.md)).
+- **Require OIDC** on npmjs.com, which *disables* token publishing for the package. Without it a token still works
+  and the property is optional. npm's publish emails say `via OIDC` or `via token`, which is how you check.
+- **Required reviewers** on the `publish` environment. With them, every release waits for a human; without them it
+  is unattended. The environment itself must keep its name either way, because the trusted publisher is registered
+  against it.
 
-The commit and the tag are pushed right after staging, before approval, because nothing in CI can wait for an
-interactive action — and a staged version whose commit is not on `main` is the worse state, since approving it would
-make a version live from a tree nobody can see. If you reject a stage, delete its tag.
+There is no rollback, and no amount of tooling invents one: npm versions are immutable and re-pointing `latest`
+needs an automation token. The recovery for a bad version is the next patch, which this same pipeline ships in
+minutes — so `0.4.2` was fixed by `0.4.3`, not by undoing anything.
 
-`0.4.2` shipped a defect that `0.4.3` fixed minutes later. Nothing was wrong with the gate; there was simply nowhere
-for a release to sit.
+Two shapes were tried before this and both were worse. A `next` dist-tag needs a token, because trusted publishing
+does not cover `npm dist-tag`. `npm stage publish` is tokenless but no workflow can finish it — every stage
+subcommand except `publish` requires proof of presence — so it turns every release into a manual step and buys
+nothing the gate did not already give.
 
 ## Decision records
 
