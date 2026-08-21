@@ -510,6 +510,19 @@ describe("harness test — step plan and runner", () => {
       "--max-issues",
       String(KNIP_EXPORTS_CEILING),
     ]);
+
+    /**
+     * hazard: the assertion above compares the argument with the constant it came from, so raising the ceiling from
+     * 76 to 500 left every test green — the debt could be switched off with no red anywhere. Found by an independent
+     * review ([/decisions/ad-102.md](/decisions/ad-102.md)).
+     *
+     * invariant: a literal, and an inequality. Lowering the ceiling is free, which is the point; raising it fails
+     * here, so it has to be argued for in a diff somebody reads.
+     */
+    assert.ok(
+      KNIP_EXPORTS_CEILING <= 76,
+      `the unused-export ceiling went up to ${KNIP_EXPORTS_CEILING}. Lowering it is free; raising it is a decision.`,
+    );
   });
 
   test("stops at the first failing step and does not run the rest", () => {

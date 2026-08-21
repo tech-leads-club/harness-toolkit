@@ -35,8 +35,9 @@ export const REDIRECTED_ENV = [
   "TLC_HOME",
   "TLC_INSTALL_DEST",
   "TLC_BIN_DIR",
-  // hazard: four paths derive from `homedir()` — the conventional runtime home, the launcher bin directory, and
-  // both provider config directories — and none of them was redirected. Two defects reached a live machine through
+  // hazard: eleven call sites resolve the home across five files, and none of them was redirected. Every one goes
+  // through `os.homedir()`, which is why redirecting the variable closes the class rather than the instances —
+  // verified by an independent review that found no `os.userInfo()` and no `HOMEDRIVE`/`HOMEPATH` anywhere. Two defects reached a live machine through
   // that gap in one afternoon: a test deleted the repository's own `bin/`, and a wiring step wrote a launcher into
   // the operator's `PATH` pointing at a temp directory it then removed. Each was patched by name. This is the
   // class ([/decisions/ad-102.md](/decisions/ad-102.md)).
@@ -51,3 +52,13 @@ export const REDIRECTED_ENV = [
   "CLAUDE_CONFIG_DIR",
   "CURSOR_CONFIG_DIR",
 ];
+
+/**
+ * The third behaviour: a fact about the machine, published so a guard can compare against it.
+ *
+ * why not `REDIRECTED_ENV`: the guards there assert the value is a throwaway, and this one is deliberately the
+ * operator's real home — it exists so the negative assertion ("nothing a suite writes can reach these") has a real
+ * path to be negative about. Two behaviours in one list is how `TLC_BIN_DIR` broke a guard once already, so this is
+ * its own ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
+export const PUBLISHED_ENV = ["TLC_TEST_REAL_HOME"];

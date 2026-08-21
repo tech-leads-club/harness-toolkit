@@ -12,7 +12,7 @@ import {
   cursorConfigDir,
   launcherBinDir,
 } from "../../src/platform/paths.ts";
-import { PROJECT_SCOPED_ENV, REDIRECTED_ENV, RUNTIME_SCOPED_ENV } from "../test-env.names.mjs";
+import { PROJECT_SCOPED_ENV, PUBLISHED_ENV, REDIRECTED_ENV, RUNTIME_SCOPED_ENV } from "../test-env.names.mjs";
 
 // invariant: the names come from test-env.names.mjs, which has no side effect. Importing test-env.mjs here
 // would run its delete loop, so the guard would clean the environment it is asserting about and could never
@@ -135,8 +135,15 @@ test("no variable naming a runtime copy reaches a test", () => {
  * invariant: and the destination is redirected rather than deleted, for the same reason `TLC_HOME` is. Deleting it
  * sends an install that a test spawns at the conventional home, which is the machine's.
  */
+/**
+ * hazard: this built the real paths from `homedir()`, which by this point answers the fake — so the assertion whose
+ * message says *points at a real path on this machine* could no longer see one. The setup captures the real home
+ * before redirecting, and this compares against that ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
 test("every destination variable is redirected somewhere throwaway", () => {
-  const real = [join(homedir(), ".tlc", "harness"), join(homedir(), ".local", "bin")];
+  const realHome = process.env.TLC_TEST_REAL_HOME;
+  assert.ok(realHome, "the setup must publish the home it replaced, or this guard cannot see a real path");
+  const real = [join(realHome, ".tlc", "harness"), join(realHome, ".local", "bin")];
 
   for (const name of REDIRECTED_ENV) {
     const value = process.env[name];
@@ -235,11 +242,13 @@ test("the setup module redirects a home that is already set", () => {
  * invariant: nothing a suite writes can reach the operator's real directories, asserted as a negative — the shape
  * the published isolation pattern uses, because a positive assertion about the fake says nothing about the real.
  */
+/**
+ * hazard: this read `TLC_TEST_REAL_HOME`, which nothing set — so it returned on its first line every single run. The
+ * one test written as the negative of the whole claim never ran ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
 test("the real provider directories are not what a test would write to", () => {
   const realHome = process.env.TLC_TEST_REAL_HOME;
-  if (realHome === undefined) {
-    return;
-  }
+  assert.ok(realHome, "the setup must publish the home it replaced, or this assertion is vacuous");
   for (const path of [claudeConfigDir(), cursorConfigDir(), conventionalRuntimeHome()]) {
     assert.ok(!path.startsWith(realHome), `${path} is inside the real home ${realHome}`);
   }
@@ -253,9 +262,9 @@ test("the real provider directories are not what a test would write to", () => {
  * a mutation that did exactly that survived. Declared and done are two facts, and this is the one that pairs them
  * ([/decisions/ad-102.md](/decisions/ad-102.md)).
  */
-test("every variable the setup redirects is declared, and every declared one is redirected", () => {
+test("every variable the setup writes is declared, and every declared one is written", () => {
   const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "test-env.mjs"), "utf8");
   const assigned = [...source.matchAll(/process\.env\.([A-Z_]+)\s*=/g)].map((match) => match[1] as string);
 
-  assert.deepEqual([...new Set(assigned)].sort(), [...REDIRECTED_ENV].sort());
+  assert.deepEqual([...new Set(assigned)].sort(), [...REDIRECTED_ENV, ...PUBLISHED_ENV].sort());
 });

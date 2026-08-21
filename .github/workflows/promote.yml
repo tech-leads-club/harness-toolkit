@@ -13,6 +13,12 @@
 # tag and the GitHub release exist for it first — promoting from a broken or half-finished release is the failure
 # this guard is for.
 #
+# hazard: this needs an npm automation token in the `publish` environment as `NPM_TOKEN`. Trusted publishing (OIDC)
+# covers `npm publish` and not `dist-tag`, so the credential the release job uses cannot move a tag. An independent
+# review found no such secret visible on the repository or the environment — organisation secrets were not readable —
+# so the first `apply` run is where a missing token shows up. Confirm it before relying on this as the only route to
+# `latest`.
+#
 # hazard: a tag move only reaches *new* installs. Anyone with the command already installed is unaffected until they
 # update, so a bad `latest` still needs a patch behind it. The summary says so on every run rather than leaving it to
 # be rediscovered.
@@ -51,9 +57,11 @@ jobs:
     # why the same environment as the release: moving `latest` decides what every new install gets, which is the
     # same authority as publishing and belongs behind the same approval.
     environment: publish
+    # why no `id-token: write`: trusted publishing covers `npm publish`, not `dist-tag`. Moving a tag needs a
+    # registry token, so this job authenticates with one and must not hold a publishing identity it cannot use
+    # ([/decisions/ad-102.md](/decisions/ad-102.md)).
     permissions:
       contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
         with:
@@ -65,7 +73,9 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - name: Use an npm that speaks OIDC
+      # why pinned: `npm@latest` in a job that holds a registry token is a mutable payload in a privileged slot, and
+      # npm 12 changed the `allow-remote` default — `latest` walks into that on its own schedule.
+      - name: Use a pinned npm
         run: npm install -g npm@12.0.2
 
       # invariant: every claim is checked before anything moves. A version that npm does not have, a git tag that
