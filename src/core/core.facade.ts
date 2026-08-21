@@ -163,7 +163,13 @@ import {
   wantsGateObservation,
   wantsObservation,
 } from "./rules/rules.service.ts";
-import { readObservations, readRuleSources, recordObservation } from "./rules/rules.store.ts";
+import {
+  globalRulesDir,
+  projectRulesDir,
+  readObservations,
+  readRuleSources,
+  recordObservation,
+} from "./rules/rules.store.ts";
 import { firingRules } from "./rules/rules.trigger.ts";
 import { evaluateShellCommand } from "./shell-policy/shell-policy.service.ts";
 import { clearShellStall } from "./shell-policy/shell-policy.stall.ts";
@@ -468,6 +474,8 @@ export const coreFacade = {
     wantsGate: wantsGateObservation,
     load: loadRules,
     // the pieces, for doctor and for tests
+    projectDir: projectRulesDir,
+    globalDir: globalRulesDir,
     read: readRuleSources,
     build: buildRuleSet,
     firing: firingRules,

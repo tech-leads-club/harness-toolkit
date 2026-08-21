@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { normalizeSeparators } from "../../src/platform/sanitize.ts";
 import {
   DEFAULT_CONFIG,
   HOME_ENV_EXEMPT,
@@ -366,4 +367,32 @@ test("the harness writing it is not a violation", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+/**
+ * hazard: the exemption compared `relative()` output with a `/`-spelled literal. `relative()` answers
+ * `tools\test-env.mjs` on Windows, so the exemption never matched there and the harness's own file was reported as
+ * a violation — the gate failed on the Windows leg, for a legitimate file, and only there. A POSIX developer running
+ * a POSIX gate cannot see this ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ *
+ * why this test can: it asserts the comparison the rule performs, against a path spelled the way Windows spells it,
+ * on any platform.
+ */
+test("the exemption matches however the platform spells the separator", () => {
+  const windowsSpelling = HOME_ENV_EXEMPT[0]?.replace(/\//g, "\\") as string;
+
+  assert.notEqual(windowsSpelling, HOME_ENV_EXEMPT[0], "the fixture must differ from the declared spelling");
+  assert.equal(
+    normalizeSeparators(windowsSpelling),
+    HOME_ENV_EXEMPT[0],
+    "the rule compares normalised paths, or the exemption is POSIX-only",
+  );
+});
+
+/** invariant: and the rule itself normalises — asserted by reading the comparison it makes, not the literal. */
+test("the home-env rule normalises before comparing", () => {
+  const source = readFileSync(CHECKER_PATH, "utf8");
+  const guard = source.slice(source.indexOf("HOME_ENV_EXEMPT.some"));
+
+  assert.match(guard.slice(0, 200), /normalizeSeparators\(relative\(/);
 });

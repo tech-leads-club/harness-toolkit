@@ -223,16 +223,26 @@ export function checkPrices(
  * answered by knowing whether the rule came from this project or from the machine
  * ([/decisions/ad-100.md](/decisions/ad-100.md)).
  *
- * invariant: silent when the capability is off, and silent when no rule is declared. A row about a mechanism
- * nobody opted into is noise on every healthy install ([/decisions/ad-034.md](/decisions/ad-034.md)).
+ * invariant: silent when the capability is off. A row about a mechanism nobody opted into is noise on every
+ * healthy install ([/decisions/ad-034.md](/decisions/ad-034.md)).
+ *
+ * hazard: switched on with no rule file, this mechanism is inert and every other report about it is empty too —
+ * which reads exactly like a working install. That state gets a row naming both directories, because the operator
+ * who opted in is the one person who must not have to guess ([/decisions/ad-100.md](/decisions/ad-100.md)).
  */
 export function checkRules(root: string): Check[] {
   const policy = coreFacade.policy.loadPolicy(root);
-  // why the switch is not re-read here: `load` owns it, and a second copy of the same condition is a second
-  // thing to keep true ([/decisions/ad-100.md](/decisions/ad-100.md)).
   const set = coreFacade.rules.load(root, policy.rules);
   if (set.rules.length === 0 && set.disabled.length === 0 && set.errors.length === 0) {
-    return [];
+    return policy.rules.enabled
+      ? [
+          {
+            level: "warn",
+            name: "operator rules",
+            detail: `enabled, and no rule file was found — nothing is enforced. A rule is one markdown file in ${coreFacade.rules.projectDir(root)} (this repository) or ${coreFacade.rules.globalDir()} (every repository here); tlc harness help rules has the frontmatter`,
+          },
+        ]
+      : [];
   }
 
   const checks: Check[] = [];

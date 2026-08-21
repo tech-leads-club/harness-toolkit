@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { normalizeSeparators } from "../../src/platform/sanitize.ts";
 
 export type Violation = {
   file: string;
@@ -166,7 +167,14 @@ export function runBoundaryChecks(config: BoundaryCheckConfig): Violation[] {
     violations.push(
       ...scanForPattern(
         listSourceFiles(join(config.root, rel)).filter(
-          (file) => !HOME_ENV_EXEMPT.some((exempt) => relative(config.root, file) === exempt),
+          /**
+           * hazard: this compared `relative()` output with a `/`-spelled literal, and `relative()` answers
+           * `tools\test-env.mjs` on Windows — so the exemption never matched there and the harness's own file was
+           * reported as a violation. The gate failed on the Windows leg for a legitimate file, and only there
+           * ([/decisions/ad-102.md](/decisions/ad-102.md)).
+           */
+          (file) =>
+            !HOME_ENV_EXEMPT.some((exempt) => normalizeSeparators(relative(config.root, file)) === exempt),
         ),
         HOME_ENV_PATTERN,
         "process-env-home",
