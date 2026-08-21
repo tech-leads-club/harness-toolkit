@@ -25,6 +25,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # why a job of its own and not a step of the gate: it reads a commit range, and the gate reads the working tree.
+  # There is no base to compare against on `main`, which is also the moment it would be too late — an inert scope
+  # that lied has already decided the version by then ([/decisions/ad-103.md](/decisions/ad-103.md)).
+  #
+  # why not on the matrix: the answer does not vary by platform, and asking it four times is three runners spent on
+  # a question already answered.
+  scopes:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # why full history: the check walks every commit of the pull request, and the base branch has to exist
+          # locally for the range to resolve at all.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: An inert scope must not change what the package ships
+        run: node tools/dev/check-scopes.ts --base "origin/${{ github.base_ref }}"
+
   test:
     permissions:
       contents: read
