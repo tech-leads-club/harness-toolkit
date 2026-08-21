@@ -836,8 +836,21 @@ describe("checkRules", () => {
     assert.deepEqual(checkRules(project({ "review-before-pr": VALID }, false)), []);
   });
 
-  test("AC1 nothing is reported when no rule is declared", () => {
-    assert.deepEqual(checkRules(project({})), []);
+  /**
+   * hazard: this test used to assert silence here, which is what the defect looked like from the consumer side.
+   * Switched on with no rule file the mechanism is inert, and every other report about it is empty too — so
+   * silence is indistinguishable from a working install for the one person who opted in
+   * ([/decisions/ad-100.md](/decisions/ad-100.md)).
+   */
+  test("AC1 the capability on with no rule file says so, and names both directories", () => {
+    const root = project({});
+    const rows = checkRules(root);
+    const row = rows.find((entry) => entry.name === "operator rules");
+
+    assert.equal(row?.level, "warn");
+    assert.match(row?.detail ?? "", /no rule file was found/);
+    assert.ok(row?.detail.includes(join(root, ".tlc", "harness", "rules")), "the project directory is named");
+    assert.ok(row?.detail.includes(coreFacade.rules.globalDir()), "the machine directory is named");
   });
 
   test("AC14 an active rule is listed with its tier, trigger and verdict", () => {
