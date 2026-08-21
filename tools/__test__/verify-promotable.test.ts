@@ -22,14 +22,18 @@ describe("promotionProblems", () => {
     const problems = promotionProblems("pkg", "1.2.3", { ...ALL_GOOD, publishedOnNpm: () => false });
 
     assert.equal(problems.length, 1);
-    assert.match(problems[0] as string, /npm has no pkg@1\.2\.3/);
+    assert.match(problems[0] as string, /npm could not confirm pkg@1\.2\.3/);
   });
 
-  /** invariant: a published version with no tag means the run stopped in the window that needs a human. */
+  /**
+   * invariant: a published version with no tag means the run stopped in the window that needs a human — or the tags
+   * were never fetched. The message names both, because a probe cannot tell them apart and picking one lies half
+   * the time ([/decisions/ad-102.md](/decisions/ad-102.md)).
+   */
   test("a missing git tag is refused, naming the tag", () => {
     const problems = promotionProblems("pkg", "1.2.3", { ...ALL_GOOD, gitTagExists: () => false });
 
-    assert.deepEqual(problems, ["no git tag harness-toolkit-v1.2.3 — that release did not finish"]);
+    assert.match(problems[0] as string, /no git tag harness-toolkit-v1\.2\.3 here/);
   });
 
   test("a missing GitHub release is refused too", () => {

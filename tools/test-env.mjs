@@ -8,7 +8,7 @@
  * from the real repository instead. The suite passed from a shell and failed from inside a hook.
  */
 import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { PROJECT_SCOPED_ENV, RUNTIME_SCOPED_ENV } from "./test-env.names.mjs";
 
@@ -54,9 +54,9 @@ process.env.TLC_BIN_DIR = mkdtempSync(join(tmpdir(), "tlc-test-bin-"));
 /**
  * A fake home, and the provider directories inside it.
  *
- * hazard: everything above was patched one name at a time, after each one reached a live machine. Four paths derive
- * from `homedir()` — the conventional runtime home, the launcher bin directory, and both provider config
- * directories — and none of them was redirected. So `wireRuntime` in a test linked skills into the operator's own
+ * hazard: everything above was patched one name at a time, after each one reached a live machine. Eleven call sites resolve
+ * the home across five files — `platform/paths.ts`, `core/floor/floor.paths.ts`, `bin/tlc-exec.mjs`,
+ * `tools/uninstall-runtime.ts` and `tools/doctor.ts` — and none of them was redirected. So `wireRuntime` in a test linked skills into the operator's own
  * `~/.cursor/skills` and merged their `settings.json`, and the only reason nothing broke is that no test happened to
  * step there. Redirecting the home closes the class rather than the instances
  * ([/decisions/ad-102.md](/decisions/ad-102.md)).
@@ -67,6 +67,18 @@ process.env.TLC_BIN_DIR = mkdtempSync(join(tmpdir(), "tlc-test-bin-"));
  *
  * why `USERPROFILE`: it is what `os.homedir()` reads on Windows.
  */
+/**
+ * hazard: the guards for this redirect built "the real paths on this machine" from `homedir()` — which by then
+ * answers the fake, so the assertion whose message says *points at a real path on this machine* had stopped being
+ * able to see one. And the one test written as the negative of the whole claim read `TLC_TEST_REAL_HOME`, which
+ * nothing set, so it returned on its first line every run. Both found by an independent review
+ * ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ *
+ * invariant: captured before the redirect, and published, so a guard can compare against the machine this is
+ * actually running on.
+ */
+process.env.TLC_TEST_REAL_HOME = homedir();
+
 const fakeHome = mkdtempSync(join(tmpdir(), "tlc-test-home-dir-"));
 process.env.HOME = fakeHome;
 process.env.USERPROFILE = fakeHome;

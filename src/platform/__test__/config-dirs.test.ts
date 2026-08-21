@@ -2,24 +2,13 @@ import assert from "node:assert/strict";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { withEnv as scopedEnv } from "../../../tools/test-env.scope.mjs";
 import { claudeConfigDir, cursorConfigDir } from "../paths.ts";
 
+// why a wrapper and not the shared helper directly: this file's callers pass one name, and rewriting every call
+// site to pass an object would be churn for no reading gained ([/decisions/ad-102.md](/decisions/ad-102.md)).
 function withEnv(name: string, value: string | undefined, run: () => void): void {
-  const previous = process.env[name];
-  if (value === undefined) {
-    delete process.env[name];
-  } else {
-    process.env[name] = value;
-  }
-  try {
-    run();
-  } finally {
-    if (previous === undefined) {
-      delete process.env[name];
-    } else {
-      process.env[name] = previous;
-    }
-  }
+  scopedEnv({ [name]: value }, run);
 }
 
 test("CLAUDE_CONFIG_DIR wins over the default location", () => {

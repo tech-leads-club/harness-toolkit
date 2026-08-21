@@ -36,13 +36,15 @@ export function promotionProblems(pkg, version, probes) {
   const tag = tagFor(version);
   const problems = [];
   if (!probes.publishedOnNpm(pkg, version)) {
-    problems.push(`npm has no ${pkg}@${version} — promote a version that is published`);
+    // why the probe is named: a failing `npm view` cannot tell "not published" from "no network" or "no auth", and
+    // a message that picks one of the three lies twice ([/decisions/ad-102.md](/decisions/ad-102.md)).
+    problems.push(`npm could not confirm ${pkg}@${version} — it is unpublished, or the registry was unreachable`);
   }
   if (!probes.gitTagExists(tag)) {
-    problems.push(`no git tag ${tag} — that release did not finish`);
+    problems.push(`no git tag ${tag} here — that release did not finish, or the tags were not fetched`);
   }
   if (!probes.releaseExists(tag)) {
-    problems.push(`no GitHub release for ${tag} — that release did not finish`);
+    problems.push(`no GitHub release for ${tag} — that release did not finish, or the token cannot read releases`);
   }
   return problems;
 }

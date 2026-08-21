@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { withEnv } from "../../../../tools/test-env.scope.mjs";
 import { evaluateFloor, type FloorRule } from "../floor.service.ts";
 import { tokenizeShell } from "../floor.tokenize.ts";
 
@@ -20,24 +21,7 @@ const PROJECT = "/home/dev/project";
 const HOME = "/home/someone";
 
 function shell(command: string) {
-  return withHome(() => evaluateFloor({ projectDir: PROJECT, command }));
-}
-
-function withHome<T>(fn: () => T): T {
-  const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
-  process.env.HOME = HOME;
-  process.env.USERPROFILE = HOME;
-  try {
-    return fn();
-  } finally {
-    for (const [name, value] of Object.entries(previous)) {
-      if (value === undefined) {
-        delete process.env[name];
-      } else {
-        process.env[name] = value;
-      }
-    }
-  }
+  return withEnv({ HOME, USERPROFILE: HOME }, () => evaluateFloor({ projectDir: PROJECT, command }));
 }
 
 function ruleOf(decision: { kind: string; reason?: string }): string | null {

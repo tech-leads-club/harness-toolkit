@@ -42,7 +42,7 @@ function packageIdentity() {
  * invariant: the file list is asserted before anything is installed. A tarball missing `bin/` installs a command
  * that cannot run, and that is cheaper to catch here than after the registry has it for good.
  */
-function assertPayload(tarball) {
+export function assertPayload(tarball) {
   const listed = run("tar", ["-tzf", tarball]);
   if (listed.status !== 0) {
     fail(`cannot read ${tarball}: ${listed.stderr}`);
@@ -67,29 +67,51 @@ function assertPayload(tarball) {
   if (leaked.length > 0) {
     fail(`the tarball ships what it must not: ${leaked.slice(0, 5).join(", ")}`);
   }
-  console.log(`verify-package: payload ok (${entries.filter(Boolean).length} entries)`);
+  const kept = entries.filter(Boolean);
+  console.log(`verify-package: payload ok (${kept.length} entries)`);
+  /**
+   * why the entries are returned and used: an independent review deleted the call to this function and every test
+   * stayed green, because the assertions read the script's *source* for the strings it checks. Handing the caller a
+   * value it needs makes removing the call a runtime error rather than a convention nobody enforces
+   * ([/decisions/ad-102.md](/decisions/ad-102.md)).
+   */
+  return kept;
 }
 
-/** The script the clean room runs: install the tarball globally, then drive the command a user would type. */
-function probeScript(tarball, version) {
+/**
+ * The commands the clean room runs, as data.
+ *
+ * why a list and not a string: an independent review deleted the `tlc harness doctor` line and the test stayed
+ * green, because it asserted the script's source *contained* that text — and the version check on the next line
+ * contains it too. A list can be asserted element by element ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
+export function probeCommands(tarball, version) {
   return [
     `npm i -g /work/${tarball} --silent`,
-    // why `--version` first: it is the one command that fails loudly when the shim exists but the runtime does not.
-    `tlc harness version`,
-    `tlc harness install`,
-    // why doctor last: it is the reading an operator is told to trust, so it has to survive a fresh install with no
+    // why version first: it is the one command that fails loudly when the shim exists but the runtime does not.
+    "tlc harness version",
+    "tlc harness install",
+    // why doctor: it is the reading an operator is told to trust, so it has to survive a fresh install with no
     // project, no config and no prior state.
-    `tlc harness doctor`,
-    /**
-     * why the version is read back out of `doctor`: the tarball says one thing and the installed runtime is what an
-     * operator reads. A shim that resolves an older runtime reports the older version, which is the shape of the
-     * 0.4.1-shim-with-0.4.0-runtime split this whole script exists to catch.
-     *
-     * why grepping the text and not the JSON: the row lives in `checks[]`, and asking for it through `node -e`
-     * inside a shell string is three layers of quoting for one assertion.
-     */
-    `tlc harness doctor | grep -q "harness version — ${version}" || echo "verify-package: doctor did not report ${version}"`,
-  ].join(" && ");
+    "tlc harness doctor",
+    // why the version is read back out of `doctor`: the tarball says one thing, and the runtime an operator reads
+    // is what matters. A shim resolving an older runtime reports the older version.
+    `tlc harness doctor | grep -q "harness version — ${version}"`,
+  ];
+}
+
+/**
+ * hazard: these were joined with ` && ` and ended in `|| echo "<message>"`. `&&` and `||` share precedence, so any
+ * failure anywhere in the chain fell into the `||` and the compound command exited 0 — which made the status check
+ * below unreachable, hid the clean room's stderr entirely, and reported every possible failure as the same wrong
+ * message. Proven: `sh -c 'true && false && echo x | grep -q y || echo swallowed'` exits 0
+ * ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ *
+ * invariant: `set -e` and one command per line, so the first failure is the exit status and the reason reaches the
+ * operator as itself.
+ */
+export function composeProbe(commands) {
+  return ["set -e", ...commands].join("\n");
 }
 
 function inContainer(tarball, version) {
@@ -103,7 +125,7 @@ function inContainer(tarball, version) {
     NODE_IMAGE,
     "sh",
     "-c",
-    probeScript(tarball, version),
+    composeProbe(probeCommands(tarball, version)),
   ]);
   return { ...probe, room: `container (${NODE_IMAGE})` };
 }
@@ -115,7 +137,7 @@ function inContainer(tarball, version) {
 function inPrefix(tarball, version) {
   const prefix = mkdtempSync(join(tmpdir(), "tlc-verify-prefix-"));
   try {
-    const probe = run("sh", ["-c", probeScript(tarball, version)], {
+    const probe = run("sh", ["-c", composeProbe(probeCommands(tarball, version))], {
       cwd: process.cwd(),
       env: {
         ...process.env,
@@ -145,16 +167,14 @@ if (!existsSync(tarball)) {
 }
 
 try {
-  assertPayload(tarball);
+  const entries = assertPayload(tarball);
   const probe = dockerAvailable() ? inContainer(tarball, version) : inPrefix(tarball, version);
-  console.log(`verify-package: clean room = ${probe.room}`);
+  console.log(`verify-package: clean room = ${probe.room}, ${entries.length} entries`);
   process.stdout.write(probe.stdout ?? "");
   if ((probe.status ?? 1) !== 0) {
+    // invariant: the clean room's own stderr, which is the only place the real reason exists.
     process.stderr.write(probe.stderr ?? "");
     fail(`the installed command failed in the clean room (exit ${probe.status})`);
-  }
-  if ((probe.stdout ?? "").includes("did not report")) {
-    fail("doctor did not report the version that was installed");
   }
   console.log(`verify-package: ok — ${version} installs and answers in a clean room`);
 } finally {

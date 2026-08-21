@@ -26,6 +26,7 @@ import {
   originRoot,
   RUNTIME_PAYLOAD,
 } from "../install-runtime.ts";
+import { withEnv } from "../test-env.scope.mjs";
 import { uninstallTargets } from "../uninstall-runtime.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -39,22 +40,10 @@ function tempDir(prefix: string): string {
  * has to say the destination *is* that home ([/decisions/ad-101.md](/decisions/ad-101.md)).
  */
 function withLauncherEnv<T>(args: { bin: string; home?: string }, fn: () => T): T {
-  const previous = { TLC_BIN_DIR: process.env.TLC_BIN_DIR, TLC_HOME: process.env.TLC_HOME };
-  process.env.TLC_BIN_DIR = args.bin;
-  if (args.home !== undefined) {
-    process.env.TLC_HOME = args.home;
-  }
-  try {
-    return fn();
-  } finally {
-    for (const [name, value] of Object.entries(previous)) {
-      if (value === undefined) {
-        delete process.env[name];
-      } else {
-        process.env[name] = value;
-      }
-    }
-  }
+  return withEnv(
+    args.home === undefined ? { TLC_BIN_DIR: args.bin } : { TLC_BIN_DIR: args.bin, TLC_HOME: args.home },
+    fn,
+  );
 }
 
 function fakePackage(): string {
