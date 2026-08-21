@@ -212,3 +212,55 @@ describe("the packed artefact is verified before the irreversible step", () => {
     }
   });
 });
+
+/**
+ * `latest` is the only tag npm treats specially — a bare `npm i` resolves it — so it is the switch that decides what
+ * a new machine gets. Releasing straight onto it leaves no window between "published" and "everybody gets it":
+ * 0.4.2 shipped a defect that 0.4.3 fixed minutes later, and nothing was wrong with the gate
+ * ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
+describe("a release does not become everybody's install by itself", () => {
+  const release = readFileSync(join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
+  const promote = readFileSync(join(repoRoot, ".github", "workflows", "promote.yml"), "utf8");
+
+  test("the release publishes to next, never to latest", () => {
+    assert.match(release, /npm publish --tag next/);
+    assert.doesNotMatch(release, /^\s*run: npm publish\s*$/m);
+  });
+
+  test("and a separate workflow moves the tag", () => {
+    assert.match(promote, /npm dist-tag add/);
+  });
+
+  /** invariant: the default is a dry run, so the destructive reading is the one somebody had to ask for. */
+  test("promotion defaults to changing nothing", () => {
+    assert.match(promote, /apply:[\s\S]*?default: false/);
+    assert.match(promote, /if: \$\{\{ inputs\.apply \}\}/);
+  });
+
+  /**
+   * invariant: promoting from a release that did not finish is how a half-published version becomes the one
+   * everybody installs, so all three facts are checked before anything moves.
+   */
+  /**
+   * hazard: this asserted the three shell commands were present, which a probe defeated by wrapping one in
+   * `false &&` — the string stayed. The decision moved into `verify-promotable.mjs`, where it is executed against
+   * inputs, and this only checks the workflow still calls it ([/decisions/ad-102.md](/decisions/ad-102.md)).
+   */
+  test("it refuses to promote from an unfinished release", () => {
+    assert.match(promote, /node tools\/dev\/verify-promotable\.mjs/);
+  });
+
+  /** why asserted: the same authority as publishing, so the same approval. */
+  test("it sits behind the publish environment", () => {
+    assert.match(promote, /environment: publish/);
+  });
+
+  /**
+   * hazard: a tag move reaches new installs only. Anyone who already has the command keeps it until they update, so
+   * a bad `latest` still needs a patch behind it — said on every run rather than left to be rediscovered.
+   */
+  test("it says a tag move does not reach existing installs", () => {
+    assert.match(promote, /new installs only/);
+  });
+});
