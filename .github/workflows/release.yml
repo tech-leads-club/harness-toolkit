@@ -7,8 +7,14 @@ name: Release
 #
 # ORDER, and why it is this order:
 #
-#   gate → decide → [approval] → assert → bump + changelog + dist (local) → verify the artefact →
-#   npm publish (OIDC, no token) → push commit+tag → release
+#   gate → decide → verify the artefact on three platforms → [approval] → assert →
+#   bump + changelog + dist (local) → verify the bumped artefact → npm publish (OIDC, no token) →
+#   push commit+tag → release → drive the published version on three platforms
+#
+# why the artefact is verified BEFORE the approval: the approval is a person deciding to make something
+# irreversible, and it is only worth asking for once the thing being published has been installed and driven
+# where operators install it. Every defect that reached an operator was an install defect, and install is the most
+# platform-shaped code in the package ([/decisions/ad-103.md](/decisions/ad-103.md)).
 #
 # `decide` reads and writes nothing, so the approval is requested only when there is a version to publish. The
 # approval is the `publish` environment on the one job that writes — structural, not a condition: GitHub does not
@@ -96,6 +102,50 @@ jobs:
           echo "### Nothing to release" >> "$GITHUB_STEP_SUMMARY"
           echo "Staying on ${{ steps.plan.outputs.current }}. Only \`feat\`, \`fix\` and \`perf\` outside the inert scopes release." >> "$GITHUB_STEP_SUMMARY"
 
+  # invariant: the tarball is installed and driven on every platform the package claims, before a human is asked to
+  # approve anything. The gate runs on four legs and proves the working tree; this proves the artefact — and the
+  # artefact used to be proven on Linux alone, inside a container that exists nowhere else, while `~/.local/bin`
+  # against a `.cmd` shim and `PATH` against `PATHEXT` are precisely where install goes wrong
+  # ([/decisions/ad-103.md](/decisions/ad-103.md)).
+  #
+  # why `needs: [decide]` and not the gate: this reads nothing the gate writes, so waiting for a four-leg matrix
+  # would serialise two things that answer different questions. `release` needs both, so nothing is published
+  # behind either one being red.
+  verify:
+    needs: [decide]
+    if: needs.decide.outputs.released == 'true'
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    name: artefact · ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+
+      # why Bun here too: `prepack` runs the bundler, so packing needs it on every platform this runs on.
+      - name: Install Bun (build toolchain)
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.3.14"
+
+      - run: npm ci
+
+      # invariant: no `shell:` override. The script spawns one process per step rather than composing a POSIX
+      # script, which is what lets the same command run on all three.
+      - name: Pack it, install it, drive it
+        run: node tools/dev/verify-package.mjs
+
   # why: the approval lives HERE, on the job that writes, and there is no separate gate job. A previous shape put
   # `environment: publish` on an approval job carrying `if: github.actor != '…bot'` — so on the bot's own push that
   # job was skipped, and the release job's `always()` condition let the publish through with no required reviewer at
@@ -105,7 +155,7 @@ jobs:
   # invariant: this is the only job that writes anywhere — npm, the branch, the tag, the release. Everything before
   # it reads.
   release:
-    needs: [gate, decide]
+    needs: [gate, decide, verify]
     if: needs.decide.outputs.released == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -325,4 +375,39 @@ jobs:
           gh release create "$TAG" --repo "$REPO" \
             --title "v${VERSION}" \
             --notes "See [CHANGELOG.md](https://github.com/${REPO}/blob/${TAG}/CHANGELOG.md)."
+
+  # why after the irreversible step, knowing it cannot undo it: everything before this reads a tarball built here.
+  # What an operator installs is what the registry serves, and the two have differed. There is no rollback — versions
+  # are immutable and moving `latest` needs a token — so this cannot prevent anything. What it does is turn "a person
+  # finds it on their own machine, days later" into "the run goes red, minutes later", which is the difference
+  # between shipping the next patch today and hearing about it from a user ([/decisions/ad-103.md](/decisions/ad-103.md)).
+  #
+  # invariant: it installs the exact version just published, from the registry, on every platform the package claims.
+  smoke:
+    needs: [decide, release]
+    if: needs.decide.outputs.released == 'true'
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    name: published · ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      # why a retry and not a bare run: the registry is eventually consistent across its CDN, so the version can be
+      # a few seconds behind the publish that created it. A failure here must mean the package is broken, not that
+      # it is new.
+      - name: Drive the published version
+        env:
+          SPEC: "@tech-leads-club/harness-toolkit@${{ needs.decide.outputs.version }}"
+        run: node tools/dev/verify-package.mjs --from "$SPEC" --retries 6
 

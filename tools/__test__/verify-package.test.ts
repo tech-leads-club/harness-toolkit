@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { composeProbe, probeCommands } from "../dev/verify-package.mjs";
+import { attempts, parsePackReport, probeSteps, registrySpec, runSteps } from "../dev/verify-package.mjs";
 
 /**
  * hazard: an independent review deleted the `tlc harness doctor` line from the probe and every test stayed green,
@@ -13,10 +13,15 @@ import { composeProbe, probeCommands } from "../dev/verify-package.mjs";
  * ` && ` and ended in `|| echo`, and `&&` and `||` share precedence, so any failure fell into the `||` and the
  * compound exited 0 ([/decisions/ad-102.md](/decisions/ad-102.md)).
  */
-describe("probeCommands", () => {
-  const commands = probeCommands("pkg-1.0.0.tgz", "1.0.0");
+describe("probeSteps", () => {
+  const steps = probeSteps("/tmp/pkg-1.0.0.tgz", "1.0.0") as {
+    label: string;
+    command: string;
+    expect?: string;
+  }[];
+  const commands = steps.map((step) => step.command);
 
-  /** invariant: asserted element by element, so a deleted command cannot hide inside another one's text. */
+  /** invariant: asserted element by element, so a deleted step cannot hide inside another one's text. */
   test("the clean room installs, then drives every command an operator would", () => {
     assert.ok(commands.includes("tlc harness version"), commands.join(" | "));
     assert.ok(commands.includes("tlc harness install"), commands.join(" | "));
@@ -24,49 +29,141 @@ describe("probeCommands", () => {
   });
 
   test("it installs the tarball it was given, the way npx would", () => {
-    assert.equal(commands[0], "npm i -g /work/pkg-1.0.0.tgz --silent");
+    assert.equal(steps[0]?.command, 'npm i -g "/tmp/pkg-1.0.0.tgz" --silent');
   });
 
+  /**
+   * invariant: the version is read back out of the installed runtime, and as an expectation on captured output
+   * rather than a `grep` pipeline — `grep` is not a command on Windows, and a pipeline's exit status was the other
+   * half of the swallowed-failure defect ([/decisions/ad-103.md](/decisions/ad-103.md)).
+   */
   test("and reads the version back out of the installed runtime", () => {
-    assert.ok(
-      commands.some((command) => command.includes("grep -q") && command.includes("1.0.0")),
-      commands.join(" | "),
-    );
+    const doctor = steps.find((step) => step.command === "tlc harness doctor");
+
+    assert.equal(doctor?.expect, "harness version — 1.0.0");
+  });
+
+  /** invariant: no step composes a shell — one process per step is what removed the swallowed-failure class. */
+  test("no step carries a shell operator", () => {
+    for (const command of commands) {
+      assert.doesNotMatch(command, /&&|\|\||\|/, command);
+    }
   });
 });
 
 /**
- * The composition rule, executed rather than read: the first failure must be the exit status, and nothing after it
- * may run.
+ * The composition rule, executed rather than read: the first failure must stop the run, and a step that exits 0
+ * while reporting the wrong thing must fail too.
  */
-describe("composeProbe", () => {
-  function shell(script: string) {
-    const result = spawnSync("sh", ["-c", script], { encoding: "utf8" });
-    return { status: result.status, stdout: result.stdout ?? "" };
-  }
+describe("runSteps", () => {
+  /**
+   * invariant: "nothing after the failure runs" is proven by a step that would leave a file behind, not by an
+   * assertion about a variable this test controls.
+   */
+  test("a failure stops the run and names the step that failed", () => {
+    const marker = join(mkdtempSync(join(tmpdir(), "tlc-steps-")), "reached");
+    const result = runSteps(
+      [
+        { label: "first", command: 'node -e "console.log(1)"' },
+        { label: "the one that fails", command: 'node -e "process.exit(3)"' },
+        {
+          label: "unreachable",
+          command: `node -e "require('fs').writeFileSync(process.argv[1],'x')" ${marker}`,
+        },
+      ],
+      {},
+    ) as { ok: boolean; step?: { label: string }; reason?: string };
 
-  test("a failure anywhere stops the run and is the exit status", () => {
-    const result = shell(composeProbe(["true", "false", "echo unreachable"]));
-
-    assert.notEqual(result.status, 0);
-    assert.doesNotMatch(result.stdout, /unreachable/, "nothing after the failure may run");
+    assert.equal(result.ok, false);
+    assert.equal(result.step?.label, "the one that fails");
+    assert.match(result.reason ?? "", /exit 3/);
+    assert.equal(existsSync(marker), false, "nothing after the failure may run");
   });
 
-  test("a failing pipeline is a failure too, not a swallowed one", () => {
-    const result = shell(composeProbe(['echo nothing | grep -q "absent"']));
+  /**
+   * hazard: this is the case a chained shell script could not see at all. `doctor` exits 0 while reporting a
+   * version that is not the one being published — a shim resolving an older runtime does exactly that.
+   */
+  test("a step that exits 0 with the wrong output fails", () => {
+    const result = runSteps(
+      [{ label: "wrong version", command: "node -e \"console.log('0.0.1')\"", expect: "9.9.9" }],
+      {},
+    ) as { ok: boolean; reason?: string };
 
-    assert.notEqual(result.status, 0);
+    assert.equal(result.ok, false);
+    assert.match(result.reason ?? "", /does not contain/);
   });
 
-  test("and a clean run is zero", () => {
-    assert.equal(shell(composeProbe(["true", "echo fine"])).status, 0);
+  test("and a clean run is ok", () => {
+    const result = runSteps(
+      [{ label: "fine", command: "node -e \"console.log('ready')\"", expect: "ready" }],
+      {},
+    ) as {
+      ok: boolean;
+    };
+
+    assert.equal(result.ok, true);
   });
 });
 
 /**
- * hazard: this module's main flow ran at module scope, so importing it to test `probeCommands` executed `npm pack`
- * and the whole container probe. It passed locally and failed the macOS leg of CI with a file-level error at line 1
- * — the module, not a test. The rule already existed: no library module self-executes
+ * hazard: `prepack` runs the bundler, so this stdout is not only npm's report — and the bundler colours its output,
+ * which means an ANSI escape's own `[` is what a scan for the first bracket finds
+ * ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ */
+describe("parsePackReport", () => {
+  const report =
+    '{\n  "@scope/pkg": {\n    "filename": "scope-pkg-1.0.0.tgz",\n    "files": [{ "path": "bin/tlc" }]\n  }\n}';
+
+  test("noise before the report does not hide it", () => {
+    const parsed = parsePackReport(
+      `tlc-build → /repo/dist\n[32mBundled 125 modules in 9ms[0m\n${report}`,
+    ) as {
+      filename: string;
+    };
+
+    assert.equal(parsed.filename, "scope-pkg-1.0.0.tgz");
+  });
+
+  test("the array shape npm also uses is read the same way", () => {
+    const parsed = parsePackReport('noise\n[\n  { "filename": "a-1.0.0.tgz" }\n]') as { filename: string };
+
+    assert.equal(parsed.filename, "a-1.0.0.tgz");
+  });
+
+  test("no report at all is null rather than a throw", () => {
+    assert.equal(parsePackReport("npm error code E404\n"), null);
+  });
+});
+
+/**
+ * The post-publish probe reads its target and its patience from argv, and both have a failure mode that is silent:
+ * a spec with no version would drive whatever `latest` happens to be, and a retry count nothing parses would make
+ * the flag in the workflow decorative ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ */
+describe("the published-version probe", () => {
+  test("no --from means the local tarball, not the registry", () => {
+    assert.equal(registrySpec(["node", "verify-package.mjs"]), null);
+  });
+
+  test("a spec carries the version it will assert on", () => {
+    const parsed = registrySpec(["--from", "@scope/pkg@1.2.3"]) as { spec: string; version: string };
+
+    assert.equal(parsed.spec, "@scope/pkg@1.2.3");
+    assert.equal(parsed.version, "1.2.3");
+  });
+
+  test("retries are only what argv actually says", () => {
+    assert.equal(attempts(["--retries", "6"]), 6);
+    assert.equal(attempts(["--retries", "nonsense"]), 0);
+    assert.equal(attempts(["--from", "a@1"]), 0);
+  });
+});
+
+/**
+ * hazard: this module's main flow ran at module scope, so importing it to test the steps executed `npm pack` and the
+ * whole probe. It passed locally and failed the macOS leg of CI with a file-level error at line 1 — the module, not
+ * a test. The rule already existed: no library module self-executes
  * ([/decisions/ad-098.md](/decisions/ad-098.md), [/decisions/ad-102.md](/decisions/ad-102.md)).
  */
 test("importing the module runs nothing", () => {
@@ -77,25 +174,7 @@ test("importing the module runs nothing", () => {
   const guard = source.indexOf("if (import.meta.main) {");
 
   assert.ok(guard > 0, "the main flow must sit behind an import.meta.main guard");
-  assert.doesNotMatch(
-    source.slice(0, guard),
-    /^(npm|const packed|const tarball)\b/m,
-    "nothing above the guard may act",
-  );
-});
-
-/**
- * invariant: and the guard is asserted by behaviour too — a child process that imports the module must exit clean
- * without packing anything, which is the failure CI saw.
- */
-test("a process that only imports it exits clean", () => {
-  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-  const result = spawnSync(
-    process.execPath,
-    ["-e", 'import("./tools/dev/verify-package.mjs").then(() => process.exit(0))'],
-    { cwd: repoRoot, encoding: "utf8", timeout: 30_000 },
-  );
-
-  assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
-  assert.doesNotMatch(`${result.stdout}`, /payload ok|clean room/, "importing must not run the probe");
+  // why unindented: an indented declaration is inside a function, which is where spawning belongs. Only a
+  // module-scope one executes on import, and that is the defect this rail exists for.
+  assert.doesNotMatch(source.slice(0, guard), /^(?:const|let)\s+\w+\s*=\s*(?:run|spawnSync)\(/m);
 });
