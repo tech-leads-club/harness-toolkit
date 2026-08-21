@@ -225,3 +225,23 @@ test("positionalWords takes everything before the first flag", () => {
   assert.equal(positionalWords(["do", "the", "thing", "--gate", "test"]), "do the thing");
   assert.equal(positionalWords(["--gate", "test"]), "");
 });
+
+/**
+ * hazard: the list cut the instruction at 160 characters with no marker, so a 263-character lesson lost 103 of
+ * them mid-word and an operator asked why their lesson had been cut — it had not been, only its display had. The
+ * slice is gone; the section is wrapped instead ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+test("a long instruction reaches the screen whole", () => {
+  const instruction = Array.from({ length: 40 }, (_, index) => `word${index}`).join(" ");
+  assert.ok(instruction.length > 160, "the fixture has to be longer than the old slice");
+
+  const text = listText(listReport(newRoot(), [lesson({ instruction })], CONFIG, NOW));
+  const shown = text
+    .split("\n")
+    .map((line) => line.trim())
+    .join(" ");
+
+  for (const word of instruction.split(" ")) {
+    assert.ok(shown.includes(word), `${word} is missing from the screen`);
+  }
+});

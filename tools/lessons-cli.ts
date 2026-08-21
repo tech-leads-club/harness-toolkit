@@ -159,7 +159,10 @@ export function listScreen(report: LessonsListReport): Screen {
         },
         { label: "notes", value: notes.join("  ") },
       ],
-      lines: ["", row.instruction.slice(0, 160)],
+      // why the whole instruction: it is the operator's own text, and a slice with no marker is how 103
+      // characters of a 263-character lesson vanished mid-word ([/decisions/ad-101.md](/decisions/ad-101.md)).
+      lines: ["", row.instruction],
+      wrap: true,
     });
   }
 
