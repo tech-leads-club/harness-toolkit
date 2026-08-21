@@ -185,6 +185,18 @@ the validity window, mode filtering and the char budget — so pinning changes o
 rule naming a renamed file is withheld like any other. Nothing caps how many can be pinned; the budget bounds
 delivery and `lessons list` marks each one `PINNED` ([/decisions/ad-043.md](/decisions/ad-043.md)).
 
+Going first means taking the room first. `maxCharsSession` defaults to 900, a rendered lesson runs 300–500
+characters, and the six shipped seeds compete for the same budget — so one long pinned rule can be the only thing
+that arrives:
+
+```bash
+tlc harness doctor    # lesson budget — N eligible lessons never reach the model at session start
+```
+
+That row names how many fit, how much of the budget they used, and which pinned lessons went first. Raise
+`maxCharsSession`, shorten the rule, or unpin one. Without it the shortfall was only visible inside the injected
+block, which the model reads and the operator does not ([/decisions/ad-100.md](/decisions/ad-100.md)).
+
 ## Provider views
 
 `.tlc/harness/lessons.md` is the source of truth, and the store, the ranking, the budget and the rendered text are

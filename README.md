@@ -451,7 +451,7 @@ See `tlc harness help architecture` or [`docs/architecture.md`](docs/architectur
 | `tlc harness lessons list` | Lessons across the three tiers, with staleness and effectiveness |
 | `tlc harness lessons add "…" [--ref path:symbol] [--global] [--pin]` | Write a lesson; `--ref` retires it when that stops resolving, `--pin` puts it ahead of ranking |
 | `tlc harness policy` / `policy accept <path>` | List a mid-session policy change; accept exactly those paths |
-| `tlc harness init --minimal` | Project stub |
+| `tlc harness init --minimal` | A project config that decides nothing; an existing one is kept |
 
 ## Connect a project
 

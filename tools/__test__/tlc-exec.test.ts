@@ -1,13 +1,23 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterEach, describe, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   decideRuntime,
   entrySourceCandidates,
   findBunOnPath,
+  HOOK_ENTRIES,
   isPackagedCopy,
   MIN_NODE_MAJOR,
   resolveBunPath,
@@ -16,6 +26,9 @@ import {
   runtimeCachePath,
   writeRuntimeCache,
 } from "../../bin/tlc-exec.mjs";
+
+const repoRoot = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..");
+const launcher = join(repoRoot, "bin", "tlc-exec.mjs");
 
 function fixtureRoot(): string {
   return mkdtempSync(join(tmpdir(), "tlc-exec-"));
@@ -395,5 +408,79 @@ describe("the runtime cache never writes into the package", () => {
     mkdirSync(root, { recursive: true });
     writeRuntimeCache(root, "/usr/bin/bun");
     assert.equal(existsSync(join(root, "state", "runtime-cache.json")), true);
+  });
+});
+
+/**
+ * hazard: a launcher that could not run emitted nothing on stdout and exit 1. Claude reads that as a non-blocking
+ * error; Cursor's `beforeShellExecution` contract does not describe it. Measured on an operator's machine: every
+ * tool in an unrelated session was blocked while the runtime was mid-edit, and the only way out was editing
+ * provider hooks by hand ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ *
+ * invariant: a harness that cannot run was protecting nothing, so it must not be what stops the turn — but a
+ * *command* that cannot run has to fail, or the operator and CI lose the signal.
+ */
+describe("a runtime that cannot run", () => {
+  const broken = join(tmpdir(), "tlc-exec-no-runtime-does-not-exist");
+
+  function launch(entry: string): { stdout: string; status: number | null } {
+    const result = spawnSync(process.execPath, [launcher, entry], {
+      encoding: "utf8",
+      input: "",
+      env: { ...process.env, TLC_HOME: broken },
+    });
+    return { stdout: result.stdout ?? "", status: result.status };
+  }
+
+  test("AC1 a hook carries on, in the shape both hosts read as no opinion", () => {
+    const result = launch("tool-before");
+
+    assert.equal(result.stdout.trim(), "{}");
+    assert.equal(result.status, 0);
+  });
+
+  test("AC2 and the diagnosis still reaches the operator on stderr", () => {
+    const result = spawnSync(process.execPath, [launcher, "tool-before"], {
+      encoding: "utf8",
+      input: "",
+      env: { ...process.env, TLC_HOME: broken },
+    });
+
+    assert.match(result.stderr ?? "", /tlc:/);
+  });
+
+  /** AC5 — the opposite duty. A failing `doctor` that exits 0 is a green light nobody earned. */
+  test("AC5 a command still fails loudly", () => {
+    const result = launch("doctor");
+
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stdout.trim(), "");
+  });
+
+  test("AC5 every hook entry carries on and every other entry does not", () => {
+    for (const entry of ["stop", "session-start", "subagent-stop"]) {
+      assert.equal(launch(entry).status, 0, entry);
+    }
+    for (const entry of ["install-runtime", "lessons-cli", "tlc-cli"]) {
+      assert.notEqual(launch(entry).status, 0, entry);
+    }
+  });
+
+  /**
+   * AC6 — the list cannot drift. A hook missing from it fails closed, which is the direction that blocks a working
+   * machine, so the gate compares it against the entrypoints that actually run as programs.
+   */
+  test("AC6 the hook list is exactly the entrypoints that run as programs", () => {
+    const dir = join(repoRoot, "src", "entrypoints");
+    const programs = readdirSync(dir)
+      .filter((file) => file.endsWith(".ts"))
+      .filter((file) => readFileSync(join(dir, file), "utf8").includes("import.meta.main"))
+      .map((file) => file.replace(/\.ts$/, ""))
+      // why excluded: the project shim is not dispatched through this launcher — it re-dispatches to it, and
+      // carries its own carry-on path for the same reason.
+      .filter((entry) => entry !== "shim")
+      .sort();
+
+    assert.deepEqual([...HOOK_ENTRIES].sort(), programs);
   });
 });

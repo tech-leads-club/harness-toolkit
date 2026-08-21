@@ -153,6 +153,44 @@ export function resolveEntrySource(harnessHome, entry) {
   return null;
 }
 
+/**
+ * The entries that answer a host hook, as opposed to the ones an operator runs.
+ *
+ * why the distinction: a hook that cannot run must not stand between the agent and its tools, and a command that
+ * cannot run must fail loudly or the operator and CI lose the signal. Same launcher, opposite duties
+ * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ *
+ * invariant: this list is checked against `src/entrypoints/` by the gate, so an entrypoint added later cannot be
+ * left out of it — a hook missing from here fails closed, which is the direction that blocks a working machine.
+ */
+export const HOOK_ENTRIES = new Set([
+  "compact-before",
+  "prompt-submit",
+  "response-after",
+  "session-end",
+  "session-start",
+  "stop",
+  "subagent-start",
+  "subagent-stop",
+  "tool-after",
+  "tool-before",
+  "tool-failure",
+]);
+
+/**
+ * No opinion, in the shape both hosts read as "carry on".
+ *
+ * why `{}` rather than nothing: measured against both providers' own renderers, an abstain is `{}` on stdout for
+ * Cursor and empty for Claude, and `{}` satisfies both — Claude parses it as a verdict with no decision. A broken
+ * runtime used to emit nothing at all with exit 1, which Claude treats as a non-blocking error and Cursor's
+ * contract does not describe. A harness that cannot run was protecting nothing, so it must not be the thing that
+ * stops the turn ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+function carryOn() {
+  process.stdout.write("{}");
+  process.exit(0);
+}
+
 export function decideRuntime({ harnessHome, entry, bunPath, nodeMajor, distExists, srcPath }) {
   const distPath = join(harnessHome, "dist", `${entry}.mjs`);
   if (bunPath && srcPath && distExists) {
@@ -196,7 +234,7 @@ export function decideRuntime({ harnessHome, entry, bunPath, nodeMajor, distExis
   };
 }
 
-function run(harnessHome, command, commandArgs, origin = harnessHome) {
+function run(harnessHome, command, commandArgs, origin = harnessHome, entry = "") {
   const result = spawnSync(command, commandArgs, {
     stdio: "inherit",
     // why: `TLC_ORIGIN` is where this copy physically lives, which is not `TLC_HOME` once an npm-installed shim
@@ -216,6 +254,9 @@ function run(harnessHome, command, commandArgs, origin = harnessHome) {
   });
   if (result.error) {
     console.error(`tlc: failed to start ${command}: ${result.error.message}`);
+    if (HOOK_ENTRIES.has(entry)) {
+      carryOn();
+    }
     process.exit(127);
   }
   process.exit(result.status ?? 1);
@@ -240,10 +281,14 @@ export function main(argv = process.argv) {
 
   const decision = decideRuntime({ harnessHome, entry, bunPath, nodeMajor, distExists, srcPath });
   if (decision.kind === "error") {
+    // invariant: the diagnosis still reaches stderr either way. Failing open is not failing silently.
     console.error(decision.message);
+    if (HOOK_ENTRIES.has(entry)) {
+      carryOn();
+    }
     process.exit(decision.status);
   }
-  run(harnessHome, decision.command, [...decision.args, ...args], join(binDir, ".."));
+  run(harnessHome, decision.command, [...decision.args, ...args], join(binDir, ".."), entry);
 }
 
 if (import.meta.main) {

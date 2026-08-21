@@ -58,3 +58,4 @@ export type RuntimeDecision =
 export function decideRuntime(input: RuntimeDecisionInput): RuntimeDecision;
 
 export function main(argv?: string[]): void;
+export const HOOK_ENTRIES: Set<string>;

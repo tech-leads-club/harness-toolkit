@@ -79,6 +79,14 @@ if (existsSync(execBin)) {
 } else if (existsSync(srcHandler)) {
   run(process.env.BUN_BIN || "bun", ["run", srcHandler]);
 } else {
+  /**
+   * hazard: this exited 127 with nothing on stdout. The project shim answers a host hook, so a shim that cannot
+   * find its handler was standing between the agent and its tools with no verdict at all — the same defect the
+   * launcher had one layer down ([/decisions/ad-101.md](/decisions/ad-101.md)).
+   *
+   * invariant: the diagnosis still reaches stderr. Failing open is not failing silently.
+   */
   console.error(`tlc shim: handler not found: ${handler}`);
-  process.exit(127);
+  process.stdout.write("{}");
+  process.exit(0);
 }

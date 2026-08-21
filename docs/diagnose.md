@@ -34,6 +34,26 @@ Run `tlc harness doctor` first. Then walk this checklist.
 On Windows, Cursor hooks use `cmd /c node "…\tlc-exec.mjs" …`; Claude Code hooks stay exec-form
 (`node …`) on every platform.
 
+## A broken runtime does not block the agent
+
+A hook that cannot run answers `{}` and exits 0 — no opinion, both hosts carry on — and prints why on stderr.
+That covers a missing `dist/`, an interpreter below the minimum, a runtime home that is not there, and a project
+shim whose handler is gone.
+
+The reason is not politeness: a harness that cannot run was not checking anything, so it must not be the thing that
+stops the turn. It happened the other way once, and the only route out was editing provider hooks by hand
+([/decisions/ad-101.md](/decisions/ad-101.md)).
+
+A **command** is the opposite and still fails loudly — `tlc harness doctor` exiting 0 on a broken runtime would be
+a green light nobody earned. So a silent harness shows up as a healthy-looking session and a failing `doctor`:
+
+```bash
+tlc harness doctor
+```
+
+There is deliberately no switch that turns the harness off. `tlc harness pause` disables the stop checks; the floor
+and the action-time rails keep running, because a limit an agent can turn off is not a limit.
+
 ## Node vs Bun
 
 - Preferred: **Bun** on PATH — every hook runs the TypeScript source directly, ~1 ms per invocation.

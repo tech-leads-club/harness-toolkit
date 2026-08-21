@@ -82,8 +82,16 @@ tlc harness init --write [--stdin-json] [--force]
 tlc harness init --minimal
 ```
 
-`--minimal` writes a safe, provider-agnostic stub (grind/ship off) plus whichever provider shims are
-detected. Prefer the harness-init skill for full discovery.
+`--minimal` writes a config that decides nothing — `{"version": 1}` — plus whichever provider shims are
+detected. Everything else is inherited: the shipped defaults, then this machine's own config. Naming a value the
+tiers below already resolve to would stop it tracking them, so a machine-wide change would never reach the project
+([/decisions/ad-101.md](/decisions/ad-101.md)).
+
+The wizard's answers go in through `--stdin-json`, and the ones that restate the tiers below are dropped the same
+way. Prefer the harness-init skill for full discovery.
+
+**An existing config is never overwritten.** `--minimal` and `--write` keep it and say so; only `--stdin-json`
+replaces it, because that is the operator supplying a policy. To start over, delete the file first.
 
 ## After write
 
