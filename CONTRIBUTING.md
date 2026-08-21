@@ -94,6 +94,39 @@ TLC_HOME="$PWD" tlc harness test
 CLAUDE_PROJECT_DIR="$PWD" TLC_PROJECT_DIR="$PWD" tlc harness test
 ```
 
+### What the gate deliberately cannot see
+
+The suite runs against the working tree with a fake home, which is what keeps it from writing into yours — and it is
+also what it cannot speak about. Two checks live outside it for that reason
+([/decisions/ad-102.md](/decisions/ad-102.md)):
+
+```bash
+node tools/dev/verify-package.mjs
+```
+
+Packs the tarball, asserts its payload, installs it into a container the way `npx` would, and drives the installed
+command. It is a release step, not a gate step: it resolves dependencies from the network. Without docker it falls
+back to a throwaway npm prefix and says so, because a weaker check reported as the stronger one is worse than none.
+
+Three install defects reached operators through this gap — 0.3.0 installed nothing, 0.3.2 shipped bundles where
+every entry answered as the CLI, 0.4.0 left `tlc` off `PATH`. Every one was found by a person on their own machine.
+
+The Windows leg of CI is the other one. A POSIX path assumption in a test passes on every developer machine here and
+fails there, which is exactly what happened — and the check worked.
+
+## Releasing
+
+A push to `main` publishes to the **`next`** dist-tag and stops. `latest` — the tag a bare `npm i` resolves — does
+not move on its own, so a release cannot reach everybody until somebody decides it should.
+
+To make it everybody's: **Actions → Promote →** version, `latest`, tick *apply*. Dry run is the default. It refuses
+to promote a version npm does not have, or one whose git tag or GitHub release is missing, because that means the
+previous run stopped in the window between `npm publish` and the push.
+
+Rollback is the same lever pointed at the previous version — seconds, not another release. It reaches **new installs
+only**: anyone who already has the command keeps it until they run `tlc harness update`, so a bad `latest` still
+needs a patch behind it.
+
 ## Decision records
 
 `docs/decisions/` holds one record per decision. Four headings are required — `## Decision`, a heading beginning
