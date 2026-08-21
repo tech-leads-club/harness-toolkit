@@ -113,7 +113,12 @@ function deny(detail: string, note: string, remedy?: string): PolicySurfaceVerdi
  * all — an instruction that points at a path the floor guards is three layers disagreeing.
  */
 export const READ_REMEDY =
-  "Reading is allowed: run `tlc harness handoff` for handoff state, `tlc harness policy` for the resolved policy, or use a proven reader (cat, head, jq, grep, ls, stat, test) on the path.";
+  // hazard: this said "`tlc harness policy` for the resolved policy". That command reports a policy that changed
+  // out of band and prints nothing about the resolved values, so an agent that followed the advice learned nothing
+  // and had no other route — measured, it cost a working session. `status` answers posture and gates; the resolved
+  // values are read from the file, which the proven readers are allowed to do
+  // ([/decisions/ad-100.md](/decisions/ad-100.md)).
+  "Reading is allowed: run `tlc harness handoff` for handoff state, `tlc harness status` for posture and gates, `tlc harness doctor` for what the settings amount to, or use a proven reader (cat, head, jq, grep, ls, stat, test) on the path.";
 
 // why: the harness directory prefix is derived from the path module rather than written as a literal, so a
 // change to the on-disk layout cannot leave this rule matching a path that no longer exists. The relative

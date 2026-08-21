@@ -533,6 +533,62 @@ export function checkSubagentAllowlist(root: string): Check[] {
   ];
 }
 
+/**
+ * What the operator cannot otherwise find out: how many of their lessons actually reach the model.
+ *
+ * hazard: the char budget drops lessons, and the only place that said so was the injected block itself — text the
+ * model reads and the operator never sees. `lessons list` answers a different question (`not-injected` is about
+ * grading history, not about the budget), and `status` does not answer it at all. So an operator with six lessons
+ * and a 900-char budget saw six healthy lessons and had four that never left the file
+ * ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ *
+ * why the real selector rather than a size sum: pinning, staleness, validity windows and the mode all bind before
+ * the budget does. Re-deriving the arithmetic here would be a second answer that drifts from the first.
+ */
+export function checkLessonBudget(root: string): Check[] {
+  const policy = coreFacade.policy.loadPolicy(root);
+  const config = policy.intelligence.lessons;
+  if (!config.enabled) {
+    return [];
+  }
+  const selected = coreFacade.lesson.previewLessonSelection({ projectDir: root, config, mode: "session" });
+  const reaching = selected.lessons.length;
+  if (selected.omitted === 0) {
+    return reaching === 0
+      ? []
+      : [
+          {
+            level: "ok",
+            name: "lesson budget",
+            detail: `every eligible lesson reaches the model at session start (${plural(reaching, "lesson")}, maxCharsSession ${config.maxCharsSession})`,
+          },
+        ];
+  }
+  const chars = selected.lessons.reduce(
+    (total, lesson) => total + coreFacade.lesson.renderLessonBlock(lesson).length,
+    0,
+  );
+  const hogs = selected.lessons
+    .filter((lesson) => lesson.pinned)
+    .map((lesson) => `${lesson.id} (pinned, ${coreFacade.lesson.renderLessonBlock(lesson).length} chars)`);
+  return [
+    {
+      level: "warn",
+      name: "lesson budget",
+      detail: [
+        // hazard: this read "4 eligible lessons never reaches". `plural` handles the noun and the verb still has to
+        // agree — the same slip the unproven row already carries a note about.
+        `${plural(selected.omitted, "eligible lesson")} ${selected.omitted === 1 ? "never reaches" : "never reach"} the model at session start:`,
+        `${reaching} of ${reaching + selected.omitted} fit in maxCharsSession ${config.maxCharsSession} (${chars} used).`,
+        hogs.length > 0 ? `Pinned lessons go first and take the room: ${hogs.join(", ")}.` : "",
+        "Raise intelligence.lessons.maxCharsSession, shorten a lesson, or unpin one. Run: tlc harness lessons list",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    },
+  ];
+}
+
 export function checkLessonHealth(root: string): Check[] {
   const policy = coreFacade.policy.loadPolicy(root);
   if (!policy.intelligence.lessons.enabled) {
@@ -660,6 +716,7 @@ export function checkProjectPolicy(root: string): Check[] {
     checkPosture(root),
     ...checkObservedRails(root),
     ...checkLessonHealth(root),
+    ...checkLessonBudget(root),
     ...checkSubagentAllowlist(root),
     ...checkPolicyDivergence(root),
     ...checkGateScope(root),

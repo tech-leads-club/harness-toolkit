@@ -139,14 +139,28 @@ export function rankLessonsForSync(lessons: HarnessLesson[]): HarnessLesson[] {
     );
 }
 
-export async function selectLessons(args: {
+export type LessonSelectionArgs = {
   projectDir: string;
   config: LessonsPolicyConfig;
   mode: SelectMode;
   gate?: string;
   text?: string;
   now?: Date;
-}): Promise<{ lessons: HarnessLesson[]; usedIds: string[]; omitted: number }> {
+};
+
+export type LessonSelection = { lessons: HarnessLesson[]; usedIds: string[]; omitted: number };
+
+/**
+ * The selection with no side effect, so a reader can ask what would be injected without becoming an injection.
+ *
+ * why this is separate: `selectLessons` marks the picked lessons as accessed, which is correct at an injection and
+ * wrong anywhere else. `doctor` needs the same answer and must not move the accessed timestamps — a measurement
+ * that changes what it measures is not a measurement ([/decisions/ad-027.md](/decisions/ad-027.md)).
+ *
+ * invariant: one selector. Re-deriving the budget arithmetic for the reporting path would be a second answer that
+ * drifts from the first ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+export function previewLessonSelection(args: LessonSelectionArgs): LessonSelection {
   if (!args.config.enabled) {
     return { lessons: [], usedIds: [], omitted: 0 };
   }
@@ -200,10 +214,19 @@ export async function selectLessons(args: {
     chars += block.length;
   }
 
-  const usedIds = picked.filter((l) => l.source !== "core").map((l) => l.id);
-  await touchAccessed(args.projectDir, usedIds, now);
   // hazard: `maxInjectSession` defaults to 5 and `maxCharsSession` to 900, which fits about two rendered blocks —
-  // so the count promises five and delivers two, silently. Whoever reads the injected block has to be able to tell
-  // that eligible lessons were dropped ([/decisions/ad-043.md](/decisions/ad-043.md)).
-  return { lessons: picked, usedIds: picked.map((l) => l.id), omitted: ordered.length - picked.length };
+  // so the count promises five and delivers two. Whoever reads the injected block has to be able to tell that
+  // eligible lessons were dropped, and so does the operator ([/decisions/ad-043.md](/decisions/ad-043.md)).
+  return {
+    lessons: picked,
+    usedIds: picked.map((lesson) => lesson.id),
+    omitted: ordered.length - picked.length,
+  };
+}
+
+export async function selectLessons(args: LessonSelectionArgs): Promise<LessonSelection> {
+  const selection = previewLessonSelection(args);
+  const accessed = selection.lessons.filter((lesson) => lesson.source !== "core").map((lesson) => lesson.id);
+  await touchAccessed(args.projectDir, accessed, args.now ?? new Date());
+  return selection;
 }

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
-import type { HarnessLesson } from "../../src/core/index.ts";
+import { coreFacade, type HarnessLesson } from "../../src/core/index.ts";
 import { upsertGlobalLesson, upsertProjectLesson } from "../../src/core/lesson/lesson.store.ts";
-import { checkLessonHealth, plural } from "../doctor.ts";
+import { checkLessonBudget, checkLessonHealth, plural } from "../doctor.ts";
 
 const NOW = "2026-08-04T12:00:00.000Z";
 const cleanup: string[] = [];
@@ -164,4 +164,136 @@ test("the global tier is counted alongside the project tier", async () => {
   await upsertGlobalLesson(lesson({ id: "manual:global" }));
   const checks = checkLessonHealth(root);
   assert.match(checks[0]?.detail ?? "", /1 lesson across the writable tiers/);
+});
+
+/**
+ * hazard: the char budget drops lessons, and the only place that said so was the injected block — text the model
+ * reads and the operator never sees. `lessons list` answers a different question (`not-injected` is grading
+ * history, not the budget) and `status` does not answer it at all. Measured on this repository the day it was
+ * added: 4 of 6 lessons never reached the model, and nothing said so
+ * ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+function projectWithBudget(maxChars: number, maxCount = 5): string {
+  const root = newDir("tlc-doctor-budget-");
+  mkdirSync(join(root, ".tlc", "harness"), { recursive: true });
+  writeFileSync(
+    join(root, ".tlc", "harness", "config.json"),
+    JSON.stringify({
+      version: 1,
+      intelligence: {
+        lessons: { enabled: true, maxCharsSession: maxChars, maxInjectSession: maxCount },
+      },
+    }),
+    "utf8",
+  );
+  process.env.TLC_HOME = newDir("tlc-doctor-budget-home-");
+  return root;
+}
+
+const LONG = "x".repeat(300);
+
+/**
+ * why the counts are not hard-coded: the shipped core lessons compete for the same budget, so an assertion on an
+ * absolute total would break the day a core lesson is added. Measured while writing this: 3 project lessons read
+ * as 7 ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+function omittedFrom(detail: string): { count: number; verb: string } {
+  const match = /(\d+) eligible lessons? (never reaches|never reach)/.exec(detail);
+  assert.ok(match, `no omitted clause in: ${detail}`);
+  return { count: Number(match[1]), verb: String(match[2]) };
+}
+
+test("a budget that fits everything says so and names no fault", async () => {
+  const root = projectWithBudget(20_000, 50);
+  await upsertProjectLesson(root, lesson({ id: "project:a", instruction: "keep it short" }));
+
+  const rows = checkLessonBudget(root);
+
+  assert.equal(rows[0]?.level, "ok");
+  assert.match(rows[0]?.detail ?? "", /every eligible lesson reaches the model/);
+});
+
+test("a lesson the budget drops is reported to the operator, with the numbers", async () => {
+  const root = projectWithBudget(400);
+  await upsertProjectLesson(root, lesson({ id: "project:a", instruction: LONG }));
+  await upsertProjectLesson(root, lesson({ id: "project:b", instruction: LONG }));
+  await upsertProjectLesson(root, lesson({ id: "project:c", instruction: LONG }));
+
+  const row = checkLessonBudget(root)[0];
+
+  assert.equal(row?.level, "warn");
+  assert.ok(omittedFrom(row?.detail ?? "").count > 0);
+  assert.match(row?.detail ?? "", /\d+ of \d+ fit in maxCharsSession 400 \(\d+ used\)/);
+  assert.match(row?.detail ?? "", /Raise intelligence\.lessons\.maxCharsSession/);
+});
+
+/** invariant: the verb agrees with the count. `plural` handles the noun and nothing else. */
+test("the verb agrees with however many were dropped", async () => {
+  const root = projectWithBudget(400);
+  await upsertProjectLesson(root, lesson({ id: "project:a", instruction: LONG }));
+
+  const { count, verb } = omittedFrom(checkLessonBudget(root)[0]?.detail ?? "");
+
+  assert.equal(verb, count === 1 ? "never reaches" : "never reach");
+});
+
+/** and the singular branch is reached by capping the count one below whatever is eligible. */
+test("exactly one dropped lesson reads as one", async () => {
+  const root = projectWithBudget(20_000, 50);
+  await upsertProjectLesson(root, lesson({ id: "project:a", instruction: "short" }));
+  const eligible = coreFacade.lesson.previewLessonSelection({
+    projectDir: root,
+    config: { ...coreFacade.policy.loadPolicy(root).intelligence.lessons },
+    mode: "session",
+  }).lessons.length;
+
+  const capped = projectWithBudget(20_000, eligible - 1);
+  await upsertProjectLesson(capped, lesson({ id: "project:a", instruction: "short" }));
+
+  assert.deepEqual(omittedFrom(checkLessonBudget(capped)[0]?.detail ?? ""), {
+    count: 1,
+    verb: "never reaches",
+  });
+});
+
+/** why named: a pinned lesson goes ahead of everything scored, so it is the one that took the room. */
+test("a pinned lesson that took the room is named", async () => {
+  const root = projectWithBudget(400);
+  await upsertProjectLesson(root, lesson({ id: "project:pinned", instruction: LONG, pinned: true }));
+  await upsertProjectLesson(root, lesson({ id: "project:b", instruction: LONG }));
+
+  const detail = checkLessonBudget(root)[0]?.detail ?? "";
+
+  assert.match(detail, /Pinned lessons go first and take the room: project:pinned \(pinned, \d+ chars\)/);
+});
+
+test("nothing is said when the capability is off", async () => {
+  const root = newDir("tlc-doctor-budget-off-");
+  mkdirSync(join(root, ".tlc", "harness"), { recursive: true });
+  writeFileSync(
+    join(root, ".tlc", "harness", "config.json"),
+    JSON.stringify({ version: 1, intelligence: { lessons: { enabled: false } } }),
+    "utf8",
+  );
+
+  assert.deepEqual(checkLessonBudget(root), []);
+});
+
+/**
+ * invariant: reporting must not become injecting. `selectLessons` marks the picked lessons as accessed, which is
+ * correct at an injection and wrong here — a measurement that changes what it measures is not a measurement
+ * ([/decisions/ad-027.md](/decisions/ad-027.md)).
+ */
+test("asking what would be injected does not mark anything as accessed", async () => {
+  const root = projectWithBudget(20_000);
+  await upsertProjectLesson(
+    root,
+    lesson({ id: "project:a", instruction: "short", lastAccessedAt: undefined }),
+  );
+
+  checkLessonBudget(root);
+  checkLessonBudget(root);
+
+  const stored = readFileSync(join(root, ".tlc", "harness", "state", "lessons.json"), "utf8");
+  assert.doesNotMatch(stored, /lastAccessedAt/);
 });

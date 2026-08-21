@@ -61,6 +61,7 @@ import { formatLessonLink, isStaleLesson, lessonLinkVerdict, parseLessonLink } f
 import {
   appliesHere,
   isInjectable,
+  previewLessonSelection,
   renderLessonBlock,
   selectLessons as selectLessonsInner,
 } from "./lesson/lesson.select.ts";
@@ -316,6 +317,7 @@ export const coreFacade = {
     buildAuthoredLesson,
     authoredLessonId,
     selectLessons,
+    previewLessonSelection,
     touchAccessed,
     upsertProjectLesson,
     upsertLesson,
