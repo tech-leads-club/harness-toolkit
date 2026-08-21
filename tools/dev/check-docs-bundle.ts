@@ -1,5 +1,16 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+// invariant: one frontmatter reader, in platform. This file used to carry the implementation
+// ([/decisions/ad-100.md](/decisions/ad-100.md)).
+import {
+  type Frontmatter,
+  type FrontmatterValue,
+  type ParseResult,
+  parseFrontmatter,
+} from "../../src/platform/frontmatter.ts";
+
+export type { Frontmatter, FrontmatterValue, ParseResult };
+export { parseFrontmatter };
 
 export type Violation = {
   file: string;
@@ -21,71 +32,6 @@ export const OKF_TYPES = new Set(["Concept", "Runbook", "Provider", "Decision", 
 const REQUIRED_FIELDS = ["title", "description", "tags", "timestamp"] as const;
 
 const RESERVED_FILES = new Set(["index.md", "log.md"]);
-
-export type FrontmatterValue = string | string[];
-export type Frontmatter = Record<string, FrontmatterValue>;
-
-export type ParseResult = { frontmatter: Frontmatter | null; error: string | null };
-
-function extractFrontmatterBlock(content: string): string | null {
-  if (!content.startsWith("---\n") && !content.startsWith("---\r\n")) {
-    return null;
-  }
-  const firstBreak = content.indexOf("\n");
-  const rest = content.slice(firstBreak + 1);
-  const closingMatch = /^---\s*$/m.exec(rest);
-  if (!closingMatch) {
-    return null;
-  }
-  return rest.slice(0, closingMatch.index);
-}
-
-function stripQuotes(raw: string): string {
-  const trimmed = raw.trim();
-  if (trimmed.length >= 2) {
-    const first = trimmed[0];
-    const last = trimmed[trimmed.length - 1];
-    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-      return trimmed.slice(1, -1);
-    }
-  }
-  return trimmed;
-}
-
-function parseValue(raw: string): FrontmatterValue {
-  const trimmed = raw.trim();
-  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-    const inner = trimmed.slice(1, -1).trim();
-    if (inner === "") {
-      return [];
-    }
-    return inner.split(",").map((item) => stripQuotes(item));
-  }
-  return stripQuotes(trimmed);
-}
-
-export function parseFrontmatter(content: string): ParseResult {
-  const block = extractFrontmatterBlock(content);
-  if (block === null) {
-    return { frontmatter: null, error: "missing --- frontmatter block" };
-  }
-  const frontmatter: Frontmatter = {};
-  for (const line of block.split("\n")) {
-    if (line.trim() === "" || line.trim().startsWith("#")) {
-      continue;
-    }
-    const idx = line.indexOf(":");
-    if (idx === -1) {
-      return { frontmatter: null, error: `unparseable frontmatter line: "${line}"` };
-    }
-    const key = line.slice(0, idx).trim();
-    if (key === "") {
-      return { frontmatter: null, error: `frontmatter line has an empty key: "${line}"` };
-    }
-    frontmatter[key] = parseValue(line.slice(idx + 1));
-  }
-  return { frontmatter, error: null };
-}
 
 function isNonEmptyString(value: FrontmatterValue | undefined): value is string {
   return typeof value === "string" && value.trim() !== "";

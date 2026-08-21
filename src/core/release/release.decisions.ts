@@ -1,5 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+// invariant: one frontmatter reader, in platform. This file used to carry a private single-field copy
+// ([/decisions/ad-100.md](/decisions/ad-100.md)).
+import { frontmatterField } from "../../platform/frontmatter.ts";
 
 /**
  * why: the substance of a changelog already exists in this repository as thirty decision records, each carrying why,
@@ -21,19 +24,6 @@ export type DecisionSummary = {
   /** why: bundle-relative, so a link to an archived record points where the record actually is. */
   path: string;
 };
-
-function frontmatterField(text: string, field: string): string | undefined {
-  // why: line-scoped, matching how `check-docs-bundle` reads the same files. The values here are single-line
-  // quoted strings by convention, and the bundle check is what enforces that.
-  const match = new RegExp(`^${field}:\\s*"?(.+?)"?\\s*$`, "m").exec(text);
-  const value = match?.[1]?.trim();
-  if (value === undefined || value === "") {
-    return undefined;
-  }
-  // hazard: an escaped quote inside the value survived the outer-quote strip and reached the operator as a literal
-  // `\"` in their terminal. Seen in a real update run ([/decisions/ad-034.md](/decisions/ad-034.md)).
-  return value.replace(/\\(["'\\])/g, "$1");
-}
 
 export function decisionsDir(repoRoot: string): string {
   return join(repoRoot, "docs", "decisions");
