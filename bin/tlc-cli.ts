@@ -16,6 +16,7 @@ import { linkDir, linkFile, seedConfig } from "../src/platform/links.ts";
 import {
   EXECUTABLE_EXTENSIONS,
   executableOnPath,
+  findProjectRoot,
   flagsDir,
   isOnPath,
   launcherBinDir,
@@ -35,8 +36,17 @@ export class UsageError extends Error {}
 // single door into core and the two cannot drift apart.
 type Posture = ReturnType<typeof coreFacade.policy.resolveProjectPosture>;
 
+/**
+ * invariant: an explicit `TLC_PROJECT_DIR` still wins — the hooks set it from the host's own payload, which knows
+ * the workspace better than a directory walk can. Everything else discovers the project the way `git` does
+ * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
 export function resolveProjectRoot(): string {
-  return process.env.TLC_PROJECT_DIR ?? process.cwd();
+  const declared = process.env.TLC_PROJECT_DIR;
+  if (declared) {
+    return declared;
+  }
+  return findProjectRoot(process.cwd()) ?? process.cwd();
 }
 
 export function modeFilePath(root: string): string {
@@ -390,9 +400,18 @@ export function acceptPolicy(root: string, paths: string[], interactive: boolean
   const notHere = requested.filter((path) => !blocked.includes(path));
   const outcome = coreFacade.policy.acceptPolicySources(root, requested);
   if (outcome.kind === "not-a-source") {
+    /**
+     * hazard: this listed the sources and never said which project it had resolved. Run from a home directory,
+     * `projectConfigPath(root)` *is* the machine config path — so the list showed the same file twice, none of the
+     * repository's own paths, and no hint that the root was wrong. An operator read it as a defect in the product
+     * and lost the afternoon to it ([/decisions/ad-101.md](/decisions/ad-101.md)).
+     *
+     * invariant: the success path already names the project. The failure path is the one that needed it.
+     */
     throw new UsageError(
       [
         `not a policy source: ${outcome.paths.join(", ")}`,
+        `project: ${root} — pass TLC_PROJECT_DIR or run this from the repository whose session is blocked`,
         "The sources the loader reads are:",
         ...outcome.sources.map((source) => `  ${source}`),
       ].join("\n"),

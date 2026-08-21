@@ -1,97 +1,22 @@
-{
-  "version": 1,
-  "projectName": "tlc-agent-harness",
-  "mode": "focus",
-  "codePaths": [
-    "src",
-    "tools",
-    "bin"
-  ],
-  "format": {
-    "enabled": true,
-    "command": [
-      "npx",
-      "biome",
-      "check",
-      "--write"
-    ]
-  },
-  "grind": {
-    "enabled": true,
-    "maxLoops": 3,
-    "lintCommand": [
-      "npx",
-      "biome",
-      "check",
-      "."
-    ],
-    "testCommand": [
-      "node",
-      "--test",
-      "--import",
-      "./tools/test-env.mjs",
-      "src/**/__test__/*.test.ts",
-      "tools/__test__/*.test.ts"
-    ],
-    "appendFiles": "never"
-  },
-  "shipGate": {
-    "enabled": false
-  },
-  "subagents": {
-    "enforceAllowlist": true,
-    "requireModel": true,
-    "blockMode": "deny",
-    "blockParentFast": false,
-    "readOnlyTypes": [
-      "explore",
-      "Explore"
-    ]
-  },
-  "comments": {
-    "enabled": true,
-    "onViolation": "followup",
-    "mode": "declared"
-  },
-  "obs": {
-    "globalSpool": true,
-    "retentionDays": 14
-  },
-  "untrustedContent": {
-    "enabled": true
-  },
-  "planGate": {
-    "enabled": true,
-    "windowMinutes": 120
-  },
-  "shell": {
-    "catastrophicAsk": true,
-    "stallDetection": true,
-    "stallRepeatThreshold": 3
-  },
-  "intelligence": {
-    "gapFeedback": true,
-    "failureClassification": true,
-    "progressiveHandoff": true,
-    "progressiveContext": true,
-    "autopilot": true,
-    "idleTurnGate": true,
-    "budgetContinue": false,
-    "budgetContinueAfterLoops": 3,
-    "lessons": {
+  {
+    "version": 1,
+    "projectName": "tlc-agent-harness",
+    "mode": "focus",
+    "codePaths": ["src", "tools", "bin"],
+    "format": { "enabled": true, "command": ["npx", "biome", "check", "--write"] },
+    "grind": {
       "enabled": true,
-      "maxInjectSession": 5,
-      "maxInjectRetry": 8,
-      "maxCharsSession": 900,
-      "maxCharsRetry": 1400,
-      "promoteHitCount": 2,
-      "decayLambda": 0.02,
-      "projectBoost": 1.5,
-      "syncRulesFile": false,
-      "gardenOnSessionEnd": true
-    }
-  },
-  "bootstrapExtra": [
-    "This repository is the harness itself. A gate that misfires here is a defect in the product: fix the rule, do not work around it."
-  ]
-}
+      "maxLoops": 3,
+      "lintCommand": ["npx", "biome", "check", "."],
+      "testCommand": ["node", "--test", "--import", "./tools/test-env.mjs", "src/**/__test__/*.test.ts", "tools/__test__/*.test.ts"],
+      "appendFiles": "never"
+    },
+    "subagents": { "enforceAllowlist": true, "requireModel": true, "readOnlyTypes": ["explore", "Explore"] },
+    "comments": { "enabled": true },
+    "obs": { "globalSpool": true },
+    "untrustedContent": { "enabled": true },
+    "planGate": { "enabled": true },
+    "shell": { "stallDetection": true },
+    "intelligence": { "idleTurnGate": true, "lessons": { "enabled": true, "syncRulesFile": "auto" } },
+    "bootstrapExtra": ["This repository is the harness itself. A gate that misfires here is a defect in the product: fix the rule, do not work around it."]
+  }

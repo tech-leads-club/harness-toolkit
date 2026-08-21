@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   bootDir,
   conventionalRuntimeHome,
+  findProjectRoot,
   flagsDir,
   loopsDir,
   machineConfigPath,
@@ -121,5 +122,46 @@ describe("machineHome", () => {
       machineConfigPath({ TLC_HOME: "/somewhere/a-checkout", TLC_HOME_FROM_ENV: "0" }),
       join(conventionalRuntimeHome(), "config.json"),
     );
+  });
+});
+
+/**
+ * hazard: `resolveProjectRoot` was `TLC_PROJECT_DIR ?? process.cwd()`, so a command run from a subdirectory took
+ * the subdirectory as the project — found no config there, fell back to the machine tier, and printed a posture the
+ * project had not set. Measured: `tlc harness status` from `src/` reported `solo` in a project pinned to `focus`,
+ * and `policy accept` listed none of the repository's own paths. Every tool an operator already knows walks up
+ * instead: `git` for `.git`, npm and cargo for their manifests ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+describe("findProjectRoot", () => {
+  const project = join("/repo");
+  const harness = join(project, ".tlc", "harness");
+  const has = (path: string): boolean => path === harness;
+
+  test("a command run in the project root finds it", () => {
+    assert.equal(findProjectRoot(project, has), project);
+  });
+
+  test("a command run deep inside it finds the same root", () => {
+    assert.equal(findProjectRoot(join(project, "src", "core", "rules"), has), project);
+  });
+
+  /** invariant: null rather than an ancestor's project, so a first `init` lands where the operator is standing. */
+  test("nothing above is a project, so nothing is claimed", () => {
+    assert.equal(findProjectRoot("/somewhere/else", has), null);
+  });
+
+  test("the walk stops at the filesystem root instead of looping", () => {
+    assert.equal(
+      findProjectRoot("/", () => false),
+      null,
+    );
+  });
+
+  /** why the nearest wins: a project inside a project is the operator's business, and the nearer one is theirs. */
+  test("the nearest project wins over an outer one", () => {
+    const inner = join(project, "packages", "app");
+    const both = (path: string): boolean => path === harness || path === join(inner, ".tlc", "harness");
+
+    assert.equal(findProjectRoot(join(inner, "src"), both), inner);
   });
 });

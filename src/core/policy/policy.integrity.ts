@@ -43,7 +43,19 @@ export function policySourceFingerprint(root: string): PolicySource[] {
     join(projectStateDir(root), MODE_FILE),
     ...FLAG_FILES.map((flag) => join(flagsDir(root), flag)),
   ];
-  return paths.map((path) => ({ path, hash: hashOf(path) }));
+  /**
+   * hazard: listed as-is, and two of these collide. With the project root at a home directory,
+   * `projectConfigPath(root)` resolves to the machine config path — so the same file appeared twice in every
+   * listing, and `acceptPolicySources` would write the same entry twice. The duplicate carried no information and
+   * read as a defect ([/decisions/ad-101.md](/decisions/ad-101.md)).
+   *
+   * invariant: deduplicated by path, first occurrence winning, so the project tier keeps its position when it is
+   * also the machine tier. The hash is the same either way — it is one file.
+   */
+  const seen = new Set<string>();
+  return paths
+    .filter((path) => !seen.has(path) && seen.add(path) !== undefined)
+    .map((path) => ({ path, hash: hashOf(path) }));
 }
 
 function baselinePath(root: string, sessionKey: string): string {

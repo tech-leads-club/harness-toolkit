@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
@@ -1186,4 +1195,43 @@ describe("prices lookup carries the provider", () => {
   test("AC the usage names the optional provider", () => {
     assert.throws(() => route(["prices", "lookup"]), /<model-id> \[provider\]/);
   });
+});
+
+/**
+ * AC — the env still wins, because the hooks set it from the host's own payload, which knows the workspace better
+ * than a directory walk can ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+test("resolveProjectRoot prefers an explicit project dir over discovery", () => {
+  const previous = process.env.TLC_PROJECT_DIR;
+  process.env.TLC_PROJECT_DIR = "/declared/by/the/host";
+  try {
+    assert.equal(resolveProjectRoot(), "/declared/by/the/host");
+  } finally {
+    if (previous === undefined) {
+      delete process.env.TLC_PROJECT_DIR;
+    } else {
+      process.env.TLC_PROJECT_DIR = previous;
+    }
+  }
+});
+
+/** and without it, a subdirectory of a project resolves to the project — the defect this replaced. */
+test("resolveProjectRoot discovers the project from a subdirectory", () => {
+  const previous = process.env.TLC_PROJECT_DIR;
+  const cwd = process.cwd();
+  const root = mkdtempSync(join(tmpdir(), "tlc-discover-"));
+  mkdirSync(join(root, ".tlc", "harness"), { recursive: true });
+  mkdirSync(join(root, "src", "deep"), { recursive: true });
+  delete process.env.TLC_PROJECT_DIR;
+  try {
+    process.chdir(join(root, "src", "deep"));
+
+    assert.equal(resolveProjectRoot(), realpathSync(root));
+  } finally {
+    process.chdir(cwd);
+    if (previous !== undefined) {
+      process.env.TLC_PROJECT_DIR = previous;
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
 });

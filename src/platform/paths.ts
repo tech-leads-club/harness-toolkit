@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 
 function harnessDir(root: string): string {
   return join(root, ".tlc", "harness");
@@ -61,6 +61,33 @@ export function runtimeStateDir(): string {
 // cross-repo view, which cannot exist under any single project's state directory.
 export function runtimeSpoolPath(): string {
   return join(runtimeStateDir(), "obs-spool.jsonl");
+}
+
+/**
+ * The project a command is being run in: the nearest directory at or above `from` that holds a harness directory.
+ *
+ * why upward discovery: it is what every tool an operator already knows does — `git` walks up for `.git`, npm and
+ * cargo for their manifests, biome and eslint for their config. Anything else makes the operator's shell position
+ * part of the interface. Measured before this existed: `tlc harness status` run from `src/` reported the project as
+ * `src`, found no config there, fell back to the machine tier, and printed a posture the project had not set. Every
+ * command had that shape, and `policy accept` was only where it hurt enough to notice
+ * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ *
+ * invariant: `null` when there is none, so a first `init` still resolves to the working directory rather than to
+ * whichever ancestor happens to be a project.
+ */
+export function findProjectRoot(from: string, exists: (path: string) => boolean = existsSync): string | null {
+  let current = resolve(from);
+  for (;;) {
+    if (exists(harnessDir(current))) {
+      return current;
+    }
+    const parent = dirname(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
+  }
 }
 
 export function projectConfigPath(root: string): string {
