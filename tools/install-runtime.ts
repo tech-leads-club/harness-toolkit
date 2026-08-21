@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { NPM_MARKER, NPM_PACKAGE, wireRuntime } from "../bin/tlc-cli.ts";
 import { linkDir } from "../src/platform/links.ts";
@@ -71,8 +71,29 @@ export function originRoot(env: NodeJS.ProcessEnv = process.env): string {
   return home && home.length > 0 ? resolve(home) : conventionalRuntimeHome();
 }
 
+/**
+ * hazard: this compared `resolve(source)` with `resolve(dest)`, and `resolve` does not follow a symlink. An
+ * operator who installed with `--link` has a runtime home that *is* a link to their checkout, so the two paths
+ * differed lexically while naming the same directory — the in-place guard missed, `rmSync` followed the link, and
+ * the first entry of the payload deleted the checkout's own `bin/` before `cpSync` failed on the source it had
+ * just removed. Measured on this repository: the gate ate its own `bin/` ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ *
+ * why the fallback: a destination that does not exist yet has no real path, and a first install is exactly that
+ * case. Then the lexical answer is the only one there is, and it is correct — nothing is there to alias.
+ */
+function samePlace(a: string, b: string): boolean {
+  const real = (path: string): string => {
+    try {
+      return realpathSync(path);
+    } catch {
+      return resolve(path);
+    }
+  };
+  return real(a) === real(b);
+}
+
 export function installRuntime(source: string, dest: string): InstallReport {
-  if (resolve(source) === resolve(dest)) {
+  if (samePlace(source, dest)) {
     // why: the git route already has the code at the destination. Copying a directory onto itself is the one
     // input that turns a sync into data loss.
     return { kind: "in-place", source, dest, entries: [], missing: [] };

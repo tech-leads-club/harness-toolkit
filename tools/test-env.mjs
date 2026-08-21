@@ -10,7 +10,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PROJECT_SCOPED_ENV } from "./test-env.names.mjs";
+import { PROJECT_SCOPED_ENV, RUNTIME_SCOPED_ENV } from "./test-env.names.mjs";
 
 for (const name of PROJECT_SCOPED_ENV) {
   delete process.env[name];
@@ -26,3 +26,16 @@ for (const name of PROJECT_SCOPED_ENV) {
  * forgets gets an empty directory rather than a person's machine.
  */
 process.env.TLC_HOME = mkdtempSync(join(tmpdir(), "tlc-test-home-"));
+
+/**
+ * hazard: redirecting `TLC_HOME` is not enough, because the installer deliberately ignores it unless
+ * `TLC_HOME_FROM_ENV` says an operator chose it — and `TLC_ORIGIN` names the copy to install *from*. The gate
+ * runs the suite through the CLI, which sets both, so a test that spawned a shipped bundle had it resolve the
+ * real conventional home with the real repository as its source. On a machine installed with `--link` that home
+ * is a symlink to the checkout, and the install deleted the repository's own `bin/` mid-gate. Both names are
+ * scrubbed here, so a test that wants either sets it ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+for (const name of RUNTIME_SCOPED_ENV) {
+  delete process.env[name];
+}
+process.env.TLC_INSTALL_DEST = mkdtempSync(join(tmpdir(), "tlc-test-dest-"));

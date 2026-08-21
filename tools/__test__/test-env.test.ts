@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { buildTestSteps, TEST_ENV_IMPORT } from "../../bin/tlc-cli.ts";
-import { PROJECT_SCOPED_ENV } from "../test-env.names.mjs";
+import { PROJECT_SCOPED_ENV, RUNTIME_SCOPED_ENV } from "../test-env.names.mjs";
 
 // invariant: the names come from test-env.names.mjs, which has no side effect. Importing test-env.mjs here
 // would run its delete loop, so the guard would clean the environment it is asserting about and could never
@@ -105,4 +105,57 @@ test("the setup module removes each variable in a process that has them", () => 
   );
 
   assert.equal(result.status, 0, `a variable survived the setup module: ${result.stderr}`);
+});
+
+/**
+ * hazard: redirecting `TLC_HOME` was not enough. The installer honours it only when `TLC_HOME_FROM_ENV` says an
+ * operator chose it, and `TLC_ORIGIN` names the copy to install *from* — both of which the CLI sets for every
+ * child, and the gate runs the suite through the CLI. So a test that spawned a shipped bundle had it resolve the
+ * real conventional home with the real repository as its source. On a machine installed with `--link` that home
+ * is a symlink to the checkout: the install deleted this repository's own `bin/` in the middle of its own gate,
+ * and four suites then failed for want of a launcher ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+test("no variable naming a runtime copy reaches a test", () => {
+  for (const name of RUNTIME_SCOPED_ENV) {
+    if (name === "TLC_INSTALL_DEST") {
+      continue;
+    }
+    assert.equal(
+      process.env[name],
+      undefined,
+      `${name} leaked into the suite. The runner must be launched with ${TEST_ENV_IMPORT.join(" ")} — see tools/test-env.mjs.`,
+    );
+  }
+});
+
+/**
+ * invariant: and the destination is redirected rather than deleted, for the same reason `TLC_HOME` is. Deleting it
+ * sends an install that a test spawns at the conventional home, which is the machine's.
+ */
+test("a spawned install cannot reach the conventional runtime home", () => {
+  const dest = process.env.TLC_INSTALL_DEST;
+
+  assert.ok(dest, "the suite must run with a throwaway install destination");
+  assert.notEqual(dest, join(homedir(), ".tlc", "harness"));
+});
+
+// why a child: the two assertions above read ambient state, so they would pass with the module inert in a shell
+// that never had these set. This is the probe that fails when the scrubbing goes away.
+test("the setup module scrubs a runtime-scoped variable that is already set", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      "./tools/test-env.mjs",
+      "-e",
+      "console.log(JSON.stringify([process.env.TLC_ORIGIN ?? null, process.env.TLC_HOME_FROM_ENV ?? null]))",
+    ],
+    {
+      encoding: "utf8",
+      cwd: join(dirname(fileURLToPath(import.meta.url)), "..", ".."),
+      env: { ...process.env, TLC_ORIGIN: "/somewhere/real", TLC_HOME_FROM_ENV: "0" },
+    },
+  );
+
+  assert.deepEqual(JSON.parse(result.stdout.trim()), [null, null], result.stderr);
 });

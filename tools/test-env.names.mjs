@@ -12,3 +12,10 @@
 // root — the same hole this list exists to close, for the other provider. A suite launched from inside a Cursor
 // hook would have read the real repository exactly as the Claude case did.
 export const PROJECT_SCOPED_ENV = ["CLAUDE_PROJECT_DIR", "CURSOR_PROJECT_DIR", "TLC_PROJECT_DIR"];
+
+/**
+ * The other half: variables that name WHICH runtime copy, rather than which project. `TLC_ORIGIN` is the source
+ * to install from and `TLC_HOME_FROM_ENV` is what makes the installer honour `TLC_HOME` at all — so leaving them
+ * set let a spawned bundle resolve the operator's real home with the real checkout as its source.
+ */
+export const RUNTIME_SCOPED_ENV = ["TLC_ORIGIN", "TLC_HOME_FROM_ENV", "TLC_INSTALL_DEST"];

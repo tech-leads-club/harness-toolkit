@@ -7,6 +7,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -128,6 +129,30 @@ test("source equal to destination copies nothing", () => {
     assert.match(installReportText(report), /already at/);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * hazard: the guard above compared resolved paths, and `resolve` does not follow a symlink. An operator who
+ * installed with `--link` has a runtime home that *is* a link to their checkout, so the two paths differed
+ * lexically while naming one directory: the guard missed, `rmSync` followed the link, and the first payload entry
+ * deleted the checkout's own `bin/` before `cpSync` failed on the source it had just removed. Measured on this
+ * repository, mid-gate ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+test("a destination that is a link to the source copies nothing and deletes nothing", () => {
+  const source = fakePackage();
+  const link = join(tempDir("linked-"), "harness");
+  try {
+    symlinkSync(source, link, "junction");
+
+    const report = installRuntime(source, link);
+
+    assert.equal(report.kind, "in-place");
+    assert.ok(existsSync(join(source, "bin")), "the checkout still has its bin/");
+    assert.ok(existsSync(join(source, "dist")), "and everything else the payload names");
+  } finally {
+    rmSync(link, { recursive: true, force: true });
+    rmSync(source, { recursive: true, force: true });
   }
 });
 
