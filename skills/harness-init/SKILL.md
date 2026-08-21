@@ -153,6 +153,37 @@ Ask, in this order:
 The tool owns its own escape hatch — `drift` requires an explicit confirmation that the document was read
 before re-stamping — so the harness adds no skip token of its own.
 
+### Step 2e: Operator rules — the switch is half of it (capability `operatorRules`, default off)
+
+Every other capability is a boolean. This one is a boolean **plus at least one markdown file**, and
+`rules.enabled: true` with no file enforces nothing — the same shape as `enforceAllowlist: true` with an empty
+list. `doctor` reports that state rather than staying silent, but do not leave the user there.
+
+If they accept the capability, ask what the standing requirement actually is, then write the first rule with them.
+The vocabulary is closed, so read it out rather than inventing terms:
+
+```
+on:         pr-open | commit | push | stop | tool(<name>) | command(<pattern>)
+require:    subagent(<type>) | command(<pattern>) | gate(<name>) | file(<glob>)
+            each since HEAD (default) or since session
+otherwise:  deny | ask | follow-up | warn
+```
+
+A rule is one file in `<repo>/.tlc/harness/rules/<name>.md` for the team, or in the runtime home's `rules/` for
+every repository on this machine. The frontmatter is enforced; the body is their own text, injected verbatim when
+the rule fires. Full grammar and the verdict matrix: `tlc harness help rules`.
+
+Two things to say out loud, because both surprise people later:
+
+- **The proof has to be something the harness observed** — a subagent that ran, a command that completed, a gate
+  that passed, a file that changed. It cannot judge whether the review was any good, and the agent cannot create
+  a proof: that store is under the project state directory, which the floor refuses it.
+- **`since HEAD` means a new commit makes an old proof stale**, and a project with no git checkout cannot satisfy
+  `since HEAD` at all.
+
+If they accept the capability but have no requirement in mind, write `rules.enabled: false` and say why — a switch
+with no file is the shape that looks like protection and is not.
+
 ### Step 3: Confirm
 
 Show the **full proposed** `.tlc/harness/config.json` in a fenced block (English keys/strings only). Ask
@@ -224,8 +255,9 @@ Result: no files written
 
 ### Error: tlc not found
 
-Cause: CLI not on PATH.
-Solution: `ln -sfn ~/.tlc/harness/bin/tlc ~/.local/bin/tlc`
+Cause: the bin directory is not on PATH. `tlc harness install` links the command there and says so when that
+directory is unreachable — read the install output.
+Solution: add that directory to PATH, or re-run `tlc harness install`.
 
 ### Error: doctor fails Node / dist
 
