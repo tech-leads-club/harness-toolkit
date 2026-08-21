@@ -97,22 +97,31 @@ CLAUDE_PROJECT_DIR="$PWD" TLC_PROJECT_DIR="$PWD" tlc harness test
 ### What the gate deliberately cannot see
 
 The suite runs against the working tree with a fake home, which is what keeps it from writing into yours — and it is
-also what it cannot speak about. Two checks live outside it for that reason
-([/decisions/ad-102.md](/decisions/ad-102.md)):
+also what it cannot speak about. Three checks live outside it for that reason
+([/decisions/ad-102.md](/decisions/ad-102.md), [/decisions/ad-103.md](/decisions/ad-103.md)):
 
 ```bash
-node tools/dev/verify-package.mjs
+node tools/dev/verify-package.mjs                                  # the artefact, on this platform
+node tools/dev/verify-package.mjs --from <name@version>            # the published artefact, from the registry
+node tools/dev/check-scopes.ts --base origin/main                  # an inert scope that changes what ships
 ```
 
-Packs the tarball, asserts its payload, installs it into a container the way `npx` would, and drives the installed
-command. It is a release step, not a gate step: it resolves dependencies from the network. Without docker it falls
-back to a throwaway npm prefix and says so, because a weaker check reported as the stronger one is worse than none.
+The first packs the tarball, asserts its payload against npm's own file list, installs it into a throwaway npm
+prefix with a scratch home the way `npx` would, and drives `version`, `install` and `doctor`. It is a release step,
+not a gate step: it resolves dependencies from the network. It spawns one process per step and composes no shell,
+which is what lets the same script run on Linux, macOS and Windows — in the release pipeline it runs on all three
+before anything is published.
 
 Three install defects reached operators through this gap — 0.3.0 installed nothing, 0.3.2 shipped bundles where
-every entry answered as the CLI, 0.4.0 left `tlc` off `PATH`. Every one was found by a person on their own machine.
+every entry answered as the CLI, 0.4.0 left `tlc` off `PATH`. Every one was found by a person on their own machine,
+and until this ran on three platforms the artefact was only ever installed on one.
 
-The Windows leg of CI is the other one. A POSIX path assumption in a test passes on every developer machine here and
-fails there, which is exactly what happened — and the check worked.
+`check-scopes` reads a commit range, so it runs on the pull request rather than here. `fix(gate)` and the other
+inert scopes never release; this is what checks that a commit wearing one is really plumbing, and not a fix an
+operator needs that will now wait for somebody else's release to carry it.
+
+The Windows leg of CI is the third. A POSIX path assumption in a test passes on every developer machine here and
+fails there, which is exactly what happened — twice — and the check worked both times.
 
 ## Releasing
 
@@ -122,7 +131,13 @@ workflow filename, environment name — so there is no stored secret to steal an
 generated from that same identity ([/decisions/ad-102.md](/decisions/ad-102.md)).
 
 **What makes it safe is the gate, not a gate-keeper:** eighteen steps on four platforms, then the packed tarball
-installed into a container and driven as a real command, and only then `npm publish`.
+installed and driven as a real command on Linux, macOS and Windows, then a human approval, and only then
+`npm publish`. After it, the version that reached the registry is installed from the registry on the same three
+platforms — which cannot prevent anything, and turns "an operator finds it days later" into "the run goes red in
+minutes" ([/decisions/ad-103.md](/decisions/ad-103.md)).
+
+The order matters and is argued in the workflow itself: the artefact is proven **before** the approval, because the
+approval is a person deciding to make something irreversible.
 
 Two settings outside this repository decide whether "tokenless" is true or merely available:
 
