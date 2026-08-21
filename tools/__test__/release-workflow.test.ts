@@ -62,8 +62,8 @@ describe("the release commit stages only paths git will accept", () => {
    * why the step is named `Stage the release on npm`: the registry step is a *staging* now, so the ordering claim is
    * the same and the name it asserts moved ([/decisions/ad-102.md](/decisions/ad-102.md)).
    */
-  test("AC the registry step precedes the push, and the push precedes the GitHub release", () => {
-    const publish = workflow.indexOf("- name: Stage the release on npm");
+  test("AC npm publish precedes the push, and the push precedes the GitHub release", () => {
+    const publish = workflow.indexOf("- name: Publish to npm");
     const push = workflow.indexOf("- name: Push the commit and the tag");
     const release = workflow.indexOf("- name: Create the GitHub release");
 
@@ -204,7 +204,7 @@ describe("the packed artefact is verified before the irreversible step", () => {
      * "before" the verification and failed on a correct workflow.
      */
     const verify = workflow.indexOf("- name: Verify the packed artefact");
-    const registry = workflow.indexOf("- name: Stage the release on npm");
+    const registry = workflow.indexOf("- name: Publish to npm");
 
     assert.ok(verify > 0 && registry > 0, "both steps must exist");
     assert.ok(verify < registry, "verification must precede anything reaching the registry");
@@ -235,53 +235,77 @@ describe("the packed artefact is verified before the irreversible step", () => {
  * made the version installable, which is not what "not live yet" should mean
  * ([/decisions/ad-102.md](/decisions/ad-102.md)).
  */
-describe("a release is staged, not published", () => {
+/**
+ * A release is fully automated and holds no credential: trusted publishing mints a short-lived OIDC token per run
+ * and npm checks it against the registered publisher, so there is no stored secret and nothing to rotate.
+ *
+ * hazard: two shapes were tried before this. A `next` dist-tag needs an automation token, because trusted publishing
+ * covers `npm publish` and not `npm dist-tag`. `npm stage publish` is tokenless but deliberately cannot be finished
+ * by a workflow, which converts every release into a manual step. Neither bought safety the gate does not already
+ * provide ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
+describe("the release publishes without a credential and without a human", () => {
   const release = readFileSync(join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
 
-  test("the release stages the version", () => {
-    assert.match(release, /run: npm stage publish/);
-  });
+  function commands(): string[] {
+    return release.split("\n").filter((line) => /^\s*run:/.test(line) || /^\s{8,}npm /.test(line));
+  }
 
-  /** invariant: never a bare publish. A staged version is not installable; a published one is, immediately. */
-  test("and never publishes directly", () => {
-    assert.doesNotMatch(release, /^\s*run: npm publish/m);
-  });
-
-  /**
-   * invariant: no dist-tag is *executed* anywhere, because moving one needs an automation token this repository
-   * deliberately does not hold.
-   *
-   * hazard: the first version of this assertion matched the whole file, so it failed against the comment explaining
-   * why there is no dist-tag. Only the run lines are commands.
-   */
-  test("and moves no dist-tag", () => {
-    const commands = release
-      .split("\n")
-      .filter((line) => /^\s*(run:|- run:)/.test(line) || /^\s{6,}npm /.test(line));
-
-    assert.deepEqual(
-      commands.filter((line) => line.includes("dist-tag")),
-      [],
-      commands.join("\n"),
+  test("it publishes", () => {
+    assert.ok(
+      commands().some((line) => /npm publish\s*$/.test(line)),
+      commands().join("\n"),
     );
   });
 
-  test("the commit and tag are pushed after the staging, never before", () => {
-    const stage = release.indexOf("- name: Stage the release on npm");
-    const push = release.indexOf("- name: Push the commit and the tag");
+  /** invariant: no dist-tag is executed anywhere — moving one needs a token this repository does not hold. */
+  test("and moves no dist-tag", () => {
+    assert.deepEqual(
+      commands().filter((line) => line.includes("dist-tag")),
+      [],
+    );
+  });
 
-    assert.ok(stage > 0 && push > 0, "both steps must exist");
-    assert.ok(stage < push, "staging must precede the push");
+  /** invariant: no staging either, because a step no workflow can finish is a manual release wearing automation. */
+  test("and stages nothing", () => {
+    assert.deepEqual(
+      commands().filter((line) => line.includes("npm stage")),
+      [],
+    );
   });
 
   /**
-   * invariant: no workflow can finish a release. Every stage subcommand except `publish` needs interactive
-   * authentication, so approval is a maintainer with proof of presence — which is the whole point.
+   * invariant: the OIDC identity is what publishes, so the job must ask for it. Without `id-token: write` npm falls
+   * back to looking for a token, and there is none.
    */
-  test("no workflow can approve a stage", () => {
-    for (const file of readdirSync(join(repoRoot, ".github", "workflows"))) {
-      const body = readFileSync(join(repoRoot, ".github", "workflows", file), "utf8");
-      assert.doesNotMatch(body, /npm stage (approve|reject)/, file);
+  /**
+   * hazard: this matched `id-token: write` anywhere in the file, and the string also appears in a comment
+   * explaining it — so deleting the real permission left the assertion green. Scoped to the job that publishes
+   * ([/decisions/ad-102.md](/decisions/ad-102.md)).
+   */
+  test("the publishing job asks for the OIDC identity", () => {
+    const job = release.slice(release.indexOf("\n  release:"), release.indexOf("- name: Publish to npm"));
+
+    assert.match(job, /^\s+id-token: write$/m, job.slice(0, 400));
+  });
+
+  /**
+   * invariant: `NODE_AUTH_TOKEN` and friends must appear nowhere. A token in this workflow would be a stored
+   * credential in a repository whose whole release story is that it has none.
+   */
+  test("and no token is referenced anywhere in it", () => {
+    for (const name of ["NODE_AUTH_TOKEN", "NPM_TOKEN", "npm_config__authToken"]) {
+      assert.ok(!release.includes(name), `${name} appears in the release workflow`);
     }
+  });
+
+  /** why asserted here: provenance is what makes the tokenless publish auditable after the fact. */
+  test("the package asks for provenance and public access", () => {
+    const manifest = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as {
+      publishConfig?: { access?: string; provenance?: boolean };
+    };
+
+    assert.equal(manifest.publishConfig?.provenance, true);
+    assert.equal(manifest.publishConfig?.access, "public");
   });
 });

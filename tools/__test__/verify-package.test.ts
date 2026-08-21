@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { composeProbe, probeCommands } from "../dev/verify-package.mjs";
 
 /**
@@ -58,4 +61,41 @@ describe("composeProbe", () => {
   test("and a clean run is zero", () => {
     assert.equal(shell(composeProbe(["true", "echo fine"])).status, 0);
   });
+});
+
+/**
+ * hazard: this module's main flow ran at module scope, so importing it to test `probeCommands` executed `npm pack`
+ * and the whole container probe. It passed locally and failed the macOS leg of CI with a file-level error at line 1
+ * — the module, not a test. The rule already existed: no library module self-executes
+ * ([/decisions/ad-098.md](/decisions/ad-098.md), [/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
+test("importing the module runs nothing", () => {
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "dev", "verify-package.mjs"),
+    "utf8",
+  );
+  const guard = source.indexOf("if (import.meta.main) {");
+
+  assert.ok(guard > 0, "the main flow must sit behind an import.meta.main guard");
+  assert.doesNotMatch(
+    source.slice(0, guard),
+    /^(npm|const packed|const tarball)\b/m,
+    "nothing above the guard may act",
+  );
+});
+
+/**
+ * invariant: and the guard is asserted by behaviour too — a child process that imports the module must exit clean
+ * without packing anything, which is the failure CI saw.
+ */
+test("a process that only imports it exits clean", () => {
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const result = spawnSync(
+    process.execPath,
+    ["-e", 'import("./tools/dev/verify-package.mjs").then(() => process.exit(0))'],
+    { cwd: repoRoot, encoding: "utf8", timeout: 30_000 },
+  );
+
+  assert.equal(result.status, 0, `${result.stdout}${result.stderr}`);
+  assert.doesNotMatch(`${result.stdout}`, /payload ok|clean room/, "importing must not run the probe");
 });

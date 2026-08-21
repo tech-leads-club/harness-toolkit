@@ -291,10 +291,10 @@ ln -s ~/.tlc/harness/bin/tlc ~/.local/bin/tlc
 
 Update with `tlc harness update`, which bumps the package and re-materialises the runtime.
 
-A release is staged on npm and goes live only when a maintainer approves it with two-factor authentication, so a
-version reaches you because somebody decided it should ([`docs/decisions/ad-102.md`](docs/decisions/ad-102.md)).
-Nothing is installable before that, so there is no early channel to opt into — and no publishing credential is
-stored in the repository.
+Every release is published from CI with a short-lived OIDC credential — no token is stored in the repository — and
+carries a provenance attestation you can check on npmjs.com. What gates it is the test suite on four platforms plus
+an install of the packed tarball into a clean container, driven as a real command
+([`docs/decisions/ad-102.md`](docs/decisions/ad-102.md)).
 
 Overrides: `TLC_HOME`, `TLC_REPO_URL`, `TLC_BIN_DIR`.
 

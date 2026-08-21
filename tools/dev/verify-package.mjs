@@ -156,27 +156,35 @@ function dockerAvailable() {
   return run("docker", ["info"], { stdio: "ignore" }).status === 0;
 }
 
-const { version } = packageIdentity();
-const packed = run("npm", ["pack", "--silent"]);
-if (packed.status !== 0) {
-  fail(`npm pack failed: ${packed.stderr}`);
-}
-const tarball = packed.stdout.trim().split("\n").pop() ?? "";
-if (!existsSync(tarball)) {
-  fail(`npm pack reported ${tarball}, which is not there`);
-}
-
-try {
-  const entries = assertPayload(tarball);
-  const probe = dockerAvailable() ? inContainer(tarball, version) : inPrefix(tarball, version);
-  console.log(`verify-package: clean room = ${probe.room}, ${entries.length} entries`);
-  process.stdout.write(probe.stdout ?? "");
-  if ((probe.status ?? 1) !== 0) {
-    // invariant: the clean room's own stderr, which is the only place the real reason exists.
-    process.stderr.write(probe.stderr ?? "");
-    fail(`the installed command failed in the clean room (exit ${probe.status})`);
+/**
+ * hazard: this ran at module scope, so importing the module to test `probeCommands` executed `npm pack` and the
+ * whole container probe. It passed here and failed the macOS leg of CI with a file-level error at line 1 — the
+ * module, not a test. This repository already has the rule: no library module self-executes
+ * ([/decisions/ad-098.md](/decisions/ad-098.md), [/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
+if (import.meta.main) {
+  const { version } = packageIdentity();
+  const packed = run("npm", ["pack", "--silent"]);
+  if (packed.status !== 0) {
+    fail(`npm pack failed: ${packed.stderr}`);
   }
-  console.log(`verify-package: ok — ${version} installs and answers in a clean room`);
-} finally {
-  rmSync(tarball, { force: true });
+  const tarball = packed.stdout.trim().split("\n").pop() ?? "";
+  if (!existsSync(tarball)) {
+    fail(`npm pack reported ${tarball}, which is not there`);
+  }
+
+  try {
+    const entries = assertPayload(tarball);
+    const probe = dockerAvailable() ? inContainer(tarball, version) : inPrefix(tarball, version);
+    console.log(`verify-package: clean room = ${probe.room}, ${entries.length} entries`);
+    process.stdout.write(probe.stdout ?? "");
+    if ((probe.status ?? 1) !== 0) {
+      // invariant: the clean room's own stderr, which is the only place the real reason exists.
+      process.stderr.write(probe.stderr ?? "");
+      fail(`the installed command failed in the clean room (exit ${probe.status})`);
+    }
+    console.log(`verify-package: ok — ${version} installs and answers in a clean room`);
+  } finally {
+    rmSync(tarball, { force: true });
+  }
 }
