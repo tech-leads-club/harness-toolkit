@@ -28,4 +28,26 @@ export const RUNTIME_SCOPED_ENV = ["TLC_ORIGIN", "TLC_HOME_FROM_ENV"];
  * absent — failed against a value the setup had deliberately set. Two behaviours in one list is how that happens,
  * so they are two lists ([/decisions/ad-101.md](/decisions/ad-101.md)).
  */
-export const REDIRECTED_ENV = ["TLC_INSTALL_DEST", "TLC_BIN_DIR"];
+export const REDIRECTED_ENV = [
+  // why listed even though it predates this list: it is a redirected destination like the others, and leaving it
+  // undeclared meant the guards below never checked it. Found by the test that pairs declared with done
+  // ([/decisions/ad-102.md](/decisions/ad-102.md)).
+  "TLC_HOME",
+  "TLC_INSTALL_DEST",
+  "TLC_BIN_DIR",
+  // hazard: four paths derive from `homedir()` — the conventional runtime home, the launcher bin directory, and
+  // both provider config directories — and none of them was redirected. Two defects reached a live machine through
+  // that gap in one afternoon: a test deleted the repository's own `bin/`, and a wiring step wrote a launcher into
+  // the operator's `PATH` pointing at a temp directory it then removed. Each was patched by name. This is the
+  // class ([/decisions/ad-102.md](/decisions/ad-102.md)).
+  //
+  // why `USERPROFILE` too: it is what `os.homedir()` reads on Windows, so redirecting only `HOME` would leave the
+  // Windows leg of CI pointed at the runner's real profile.
+  "HOME",
+  "USERPROFILE",
+  // why these as well: `claudeConfigDir` and `cursorConfigDir` honour them when set, so redirecting them is how a
+  // test reaches a fake provider directory instead of the operator's own — and `wireRuntime` links skills and
+  // merges hook documents into whatever those resolve to.
+  "CLAUDE_CONFIG_DIR",
+  "CURSOR_CONFIG_DIR",
+];

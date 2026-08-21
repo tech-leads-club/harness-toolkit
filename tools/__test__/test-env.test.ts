@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { buildTestSteps, TEST_ENV_IMPORT } from "../../bin/tlc-cli.ts";
+import {
+  claudeConfigDir,
+  conventionalRuntimeHome,
+  cursorConfigDir,
+  launcherBinDir,
+} from "../../src/platform/paths.ts";
 import { PROJECT_SCOPED_ENV, REDIRECTED_ENV, RUNTIME_SCOPED_ENV } from "../test-env.names.mjs";
 
 // invariant: the names come from test-env.names.mjs, which has no side effect. Importing test-env.mjs here
@@ -166,3 +172,90 @@ test("the setup module scrubs a runtime-scoped variable that is already set", ()
  * test then removed — the live `tlc` became a dangling link into `/tmp`
  * ([/decisions/ad-101.md](/decisions/ad-101.md)).
  */
+
+/**
+ * The isolation asserted directly, not through its effect.
+ *
+ * hazard: every guard before this one asserted that a *variable* was redirected. None asserted that the API the
+ * production code actually calls answers the redirected value — so a name added to the list without the setup
+ * honouring it, or a path that reads `homedir()` instead of the variable, would pass. The published pattern for
+ * this is to assert on the resolver: that `homedir()` is the fake, that it differs from the real one, and that the
+ * real target does not exist ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
+test("the home the production code resolves is the fake one", () => {
+  const home = homedir();
+
+  assert.equal(home, process.env.HOME, "os.homedir() must answer the redirected value");
+  assert.match(home, /tlc-test-home-dir-/, `not a throwaway home: ${home}`);
+});
+
+test("every path derived from the home lands inside it", () => {
+  const home = homedir();
+
+  for (const [label, path] of [
+    ["runtime home", conventionalRuntimeHome()],
+    ["claude config", claudeConfigDir()],
+    ["cursor config", cursorConfigDir()],
+  ] as const) {
+    assert.ok(path.startsWith(home), `${label} escaped the fake home: ${path}`);
+  }
+});
+
+/** invariant: the launcher bin directory is redirected on its own, so it is throwaway without being under the home. */
+test("the launcher bin directory is a throwaway of its own", () => {
+  assert.match(launcherBinDir(), /tlc-test-bin-/, launcherBinDir());
+});
+
+/**
+ * hazard: the assertions above read ambient state, so they would pass with the setup inert in a shell that happened
+ * to have no `HOME`. This spawns a child that *does* have one and asks whether the module moved it.
+ */
+test("the setup module redirects a home that is already set", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      "./tools/test-env.mjs",
+      "-e",
+      "console.log(JSON.stringify([require('node:os').homedir(), process.env.CURSOR_CONFIG_DIR]))",
+    ],
+    {
+      encoding: "utf8",
+      cwd: join(dirname(fileURLToPath(import.meta.url)), "..", ".."),
+      env: { ...process.env, HOME: "/definitely/the/real/home", CURSOR_CONFIG_DIR: "/real/cursor" },
+    },
+  );
+  const [home, cursor] = JSON.parse(result.stdout.trim()) as [string, string];
+
+  assert.notEqual(home, "/definitely/the/real/home", result.stderr);
+  assert.notEqual(cursor, "/real/cursor", result.stderr);
+});
+
+/**
+ * invariant: nothing a suite writes can reach the operator's real directories, asserted as a negative — the shape
+ * the published isolation pattern uses, because a positive assertion about the fake says nothing about the real.
+ */
+test("the real provider directories are not what a test would write to", () => {
+  const realHome = process.env.TLC_TEST_REAL_HOME;
+  if (realHome === undefined) {
+    return;
+  }
+  for (const path of [claudeConfigDir(), cursorConfigDir(), conventionalRuntimeHome()]) {
+    assert.ok(!path.startsWith(realHome), `${path} is inside the real home ${realHome}`);
+  }
+});
+
+/**
+ * The list and the effect cannot drift.
+ *
+ * hazard: `REDIRECTED_ENV` is read by the guards above, and the redirect itself is a separate assignment in the
+ * setup module. So removing a name from the list made the guards check *fewer* names and everything stayed green —
+ * a mutation that did exactly that survived. Declared and done are two facts, and this is the one that pairs them
+ * ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
+test("every variable the setup redirects is declared, and every declared one is redirected", () => {
+  const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "test-env.mjs"), "utf8");
+  const assigned = [...source.matchAll(/process\.env\.([A-Z_]+)\s*=/g)].map((match) => match[1] as string);
+
+  assert.deepEqual([...new Set(assigned)].sort(), [...REDIRECTED_ENV].sort());
+});

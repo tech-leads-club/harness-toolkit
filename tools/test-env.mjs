@@ -50,3 +50,25 @@ process.env.TLC_INSTALL_DEST = mkdtempSync(join(tmpdir(), "tlc-test-dest-"));
  * throwaway rather than a person's `PATH`.
  */
 process.env.TLC_BIN_DIR = mkdtempSync(join(tmpdir(), "tlc-test-bin-"));
+
+/**
+ * A fake home, and the provider directories inside it.
+ *
+ * hazard: everything above was patched one name at a time, after each one reached a live machine. Four paths derive
+ * from `homedir()` — the conventional runtime home, the launcher bin directory, and both provider config
+ * directories — and none of them was redirected. So `wireRuntime` in a test linked skills into the operator's own
+ * `~/.cursor/skills` and merged their `settings.json`, and the only reason nothing broke is that no test happened to
+ * step there. Redirecting the home closes the class rather than the instances
+ * ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ *
+ * why the provider variables too: `claudeConfigDir` and `cursorConfigDir` prefer them over `homedir()`, so a home
+ * redirect alone would still be overridden on a machine that sets either — and this repository is itself installed
+ * under a relocated one.
+ *
+ * why `USERPROFILE`: it is what `os.homedir()` reads on Windows.
+ */
+const fakeHome = mkdtempSync(join(tmpdir(), "tlc-test-home-dir-"));
+process.env.HOME = fakeHome;
+process.env.USERPROFILE = fakeHome;
+process.env.CLAUDE_CONFIG_DIR = join(fakeHome, ".claude");
+process.env.CURSOR_CONFIG_DIR = join(fakeHome, ".cursor");

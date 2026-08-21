@@ -7,8 +7,37 @@ import { tokenizeShell } from "../floor.tokenize.ts";
 
 const PROJECT = "/home/dev/project";
 
+/**
+ * hazard: these tests read the ambient home. Once the suite became hermetic the fake home moved into the OS temp
+ * directory — which this rule treats as disposable *on purpose* — so `rm -rf ~/Documents` became an allow and two
+ * assertions about home-relative destruction went vacuous. The rule was right for the input it was given; the
+ * fixture had stopped representing a real machine ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ *
+ * why a literal and not a directory: the floor resolves paths lexically and never touches the filesystem, so a home
+ * that does not exist is a faithful input. Naming it here also stops the assertion depending on whose machine runs
+ * it.
+ */
+const HOME = "/home/someone";
+
 function shell(command: string) {
-  return evaluateFloor({ projectDir: PROJECT, command });
+  return withHome(() => evaluateFloor({ projectDir: PROJECT, command }));
+}
+
+function withHome<T>(fn: () => T): T {
+  const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+  process.env.HOME = HOME;
+  process.env.USERPROFILE = HOME;
+  try {
+    return fn();
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+  }
 }
 
 function ruleOf(decision: { kind: string; reason?: string }): string | null {
@@ -32,7 +61,7 @@ test("destruction outside the project is denied", () => {
   assertDenied("rm -rf /", "outside-project-destruction");
   assertDenied("rm -rf ~/Documents", "outside-project-destruction");
   assertDenied("rm -rf ../../other", "outside-project-destruction");
-  assertDenied(`rm -rf ${join(homedir(), "notes")}`, "outside-project-destruction");
+  assertDenied(`rm -rf ${join(HOME, "notes")}`, "outside-project-destruction");
   assertDenied("shred -u /etc/passwd", "outside-project-destruction");
 });
 
