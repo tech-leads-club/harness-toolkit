@@ -65,6 +65,7 @@ To give one project its own rules, open it and say **"setup harness"** to the ag
    - [Tier 1 — the floor](#tier-1--the-floor-no-configuration-reaches-it)
    - [Tier 2 — always on, no switch](#tier-2--always-on-no-switch)
    - [Tier 3 — the rails you choose](#tier-3--the-rails-you-choose)
+   - [One rail takes a rule you write](#one-rail-takes-a-rule-you-write)
 3. [How to see any of it](#how-to-see-any-of-it)
 4. [How to explain a decision](#how-to-explain-a-decision)
 5. [Providers](#providers)
@@ -180,6 +181,46 @@ Each rail's full benefit and trade-off — the long form, as the init wizard rea
 the agent surfaces and what earns an interruption. It switches no gate on and weakens no verification —
 the evidence bar is identical at all three ([`docs/decisions/ad-025.md`](docs/decisions/ad-025.md)).
 
+### One rail takes a rule you write
+
+Every other capability is a switch. **Operator rules** is a switch plus a file, because the trigger and the
+proof are yours: *on this trigger, this must have happened, otherwise do that.* No pull request without a
+review, for instance:
+
+```markdown
+---
+on: pr-open
+require:
+  - subagent(the-jury) since HEAD
+otherwise: deny
+---
+
+Convene the jury on this branch. Checklist: docs/review-checklist.md
+```
+
+Save it as one markdown file per rule in `.tlc/harness/rules/` for this repository, or in the runtime home's
+`rules/` for every repository on this machine, and set `rules.enabled: true`. The proof has to be something
+the harness observed — a subagent that ran, a command that completed, a gate that passed, a file that changed
+— so the agent cannot write one: that store is under the project state directory, which the floor refuses it.
+
+`tlc harness doctor` lists every rule it loaded, and says so when the switch is on and no file was found.
+The full grammar — six triggers, four proof kinds, four verdicts and how each lands at the stop — is
+`tlc harness help rules`.
+
+**Why not the editor's own rules?** Because a rule file there is context, not a gate: activation is a mode
+you pick, always-apply defaults to off, and one of the modes leaves it to the model to decide whether to load
+the rule at all. This is not a replacement for that file — it is the layer underneath it. The editor's rule
+says what the agent should do; this one says what must be provably true before it may.
+
+The fair comparison is with the editors' **hooks**, which are deterministic too. Three things separate them
+from this, taken from their own reference rather than from opinion: there is no prerequisite mechanism and no
+state store, so "X requires Y to have happened" is custom logic you write per event; the state you would keep
+lives in an ordinary repository path the agent can write, while a proof here lives where the floor refuses it;
+and one host's stop hook cannot refuse completion at all, so the same requirement has to mean something
+different on each — which is what the capability table and the degrade step already do. A hook is a program
+per host per repository, fail-open unless it opts out. A rule is five lines of frontmatter, two tiers, both
+hosts ([`docs/decisions/ad-100.md`](docs/decisions/ad-100.md)).
+
 ## How to see any of it
 
 Every row above names a command in its last column. These are those commands.
@@ -276,18 +317,10 @@ each provider it finds, because a provider only reads its own.
 
 1. Materialises the runtime at `~/.tlc/harness` from the installed package
 2. Creates `config.json` from `config.example.json` when missing
-3. Links the init skill into each detected provider's `skills/harness-init`
-4. Wires user-level hooks for every provider it detects installed, in that provider's resolved config
+3. Links `tlc` into `~/.local/bin`, and says so if that directory is not on `PATH`
+4. Links the init skill into each detected provider's `skills/harness-init`
+5. Wires user-level hooks for every provider it detects installed, in that provider's resolved config
    directory
-
-The `tlc` command itself comes from npm, not from this step: `npm i -g` generates the shim for the platform it
-runs on, and `npm link` does the same from a clone. If `tlc` is not found after installing, the shim is in the
-`bin` directory of the Node version npm installed under — which is not on `PATH` when a version manager later
-switches versions. A link solves it for good:
-
-```bash
-ln -s ~/.tlc/harness/bin/tlc ~/.local/bin/tlc
-```
 
 Update with `tlc harness update`, which bumps the package and re-materialises the runtime.
 

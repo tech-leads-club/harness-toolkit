@@ -296,6 +296,17 @@ tiers apply together, the way the lesson tiers do — one in the runtime home fo
 one in the project for the team — deduplicated by file name with the project winning. A project rule carrying
 `enabled: false` switches a global one off there, and its body is where the reason goes.
 
+Switching it on takes two things, and one without the other enforces nothing:
+
+```
+rules.enabled: true             in .tlc/harness/config.json
+<project>/.tlc/harness/rules/*.md   the team's rules, versioned with the repository
+<runtime home>/rules/*.md           this machine's rules, every repository — the path doctor prints
+```
+
+`tlc harness doctor` lists every active rule, its tier and its verdict; with the switch on and no file it says so
+rather than reporting nothing, because an inert mechanism and a working one otherwise look identical.
+
 ```markdown
 ---
 on: pr-open                            # pr-open | commit | push | stop | tool(<name>) | command(<pattern>)
