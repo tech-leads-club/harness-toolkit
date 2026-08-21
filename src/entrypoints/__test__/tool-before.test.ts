@@ -685,6 +685,11 @@ describe("operator rules", () => {
    * hazard: the session key is built by the provider, and the first version of this fixture invented
    * `cursor:conv-1` with a colon. The real one is `cursor-conv-1`, so the proof never matched and the test failed
    * for the wrong reason ([/decisions/ad-100.md](/decisions/ad-100.md)).
+   *
+   * hazard: and writing the store by hand is what let the feature ship with no producer at all — `observe` had no
+   * caller, so no proof could ever exist in production, and every test here still passed. This stub stays because
+   * these tests are about the consumer, but the loop is closed through the real rails in `rules.loop.test.ts`, and
+   * that is the file which fails when a producer goes away.
    */
   function observe(root: string, value: string, sessionKey = "cursor-conv-1"): void {
     const dir = join(root, ".tlc", "harness", "state");

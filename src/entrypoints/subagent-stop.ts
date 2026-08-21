@@ -2,10 +2,18 @@ import type { Decision, HarnessEvent } from "../contracts/index.ts";
 import { coreFacade } from "../core/index.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
+import { observeForRules } from "./support.ts";
 
 // why: no legacy predecessor covers subagent.stop verification — this reuses the same unfinished-work
 // signal (blockers/pending/in_progress/previous_gaps) already carried on the handoff slice.
-export const subagentStopHandler: Handler = (event: HarnessEvent, _ctx: HandlerContext): Decision => {
+export const subagentStopHandler: Handler = async (
+  event: HarnessEvent,
+  ctx: HandlerContext,
+): Promise<Decision> => {
+  // why before the verdict: this records that a subagent of this type finished, which is the proof an operator
+  // rule asks for. It cannot change the decision below ([/decisions/ad-100.md](/decisions/ad-100.md)).
+  await observeForRules(event, ctx);
+
   const handoff = coreFacade.handoff.readHandoff(event.projectDir, event.provider);
   const unfinishedWork =
     Boolean(handoff.blockers) ||

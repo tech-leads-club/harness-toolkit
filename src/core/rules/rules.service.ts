@@ -10,8 +10,15 @@
 import type { Decision } from "../../contracts/decision.ts";
 import type { OperatorMode } from "../policy/policy.types.ts";
 import { actionDecision, evaluateRules, type RuleOutcome, strictest } from "./rules.decide.ts";
-import { type ObservableEvent, type ObserveContext, observationFrom } from "./rules.observe.ts";
+import {
+  gateObservation,
+  type ObservableEvent,
+  type ObserveContext,
+  observationFrom,
+  observedFact,
+} from "./rules.observe.ts";
 import { buildRuleSet } from "./rules.parse.ts";
+import { kindIsRequired } from "./rules.proof.ts";
 import { readObservations, readRuleSources, recordObservation } from "./rules.store.ts";
 import { firingRules, type TriggerContext } from "./rules.trigger.ts";
 import type { RuleError, RuleSet } from "./rules.types.ts";
@@ -26,9 +33,23 @@ export function loadRules(root: string, config: RulesConfig): RuleSet {
 }
 
 /**
- * invariant: recorded only when a rule could ever want it. With the capability off nothing is written, so a
- * machine that never opted in carries no new file and pays no cost.
+ * Whether this event is worth a sha.
+ *
+ * hazard: nothing called `observe` at all in the first cut of this feature. The store was never written, so no
+ * proof could exist, so every rule that parsed denied for ever — and `require:` is mandatory, so that was every
+ * rule. The end-to-end run that appeared to show the loop working was a script calling `observe` by hand, which
+ * supplied the missing half and hid it ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ *
+ * why the question is asked before the answer is fetched: the observing rails fire on every tool call and the sha
+ * is a process spawn. An operator whose only rule wants `subagent(the-jury)` pays two directory reads per command
+ * and no git at all.
  */
+export function wantsObservation(root: string, config: RulesConfig, event: ObservableEvent): boolean {
+  const fact = observedFact(event);
+  return fact !== null && kindIsRequired(loadRules(root, config).rules, fact.kind);
+}
+
+/** invariant: with the capability off nothing is written, so a machine that never opted in carries no new file. */
 export function observe(
   root: string,
   config: RulesConfig,
@@ -42,6 +63,23 @@ export function observe(
   if (observation !== null) {
     recordObservation(root, observation);
   }
+}
+
+/**
+ * A gate is the one proof the harness decides rather than witnesses, so it is recorded where it is decided.
+ *
+ * invariant: only a gate that passed. Recording a failure as an observation would make "the gate ran" satisfy a
+ * rule that asked for "the gate passed".
+ */
+export function wantsGateObservation(root: string, config: RulesConfig): boolean {
+  return kindIsRequired(loadRules(root, config).rules, "gate");
+}
+
+export function observeGate(root: string, config: RulesConfig, gate: string, context: ObserveContext): void {
+  if (!config.enabled) {
+    return;
+  }
+  recordObservation(root, gateObservation(gate, context));
 }
 
 export type RulesVerdict = {

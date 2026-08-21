@@ -6,7 +6,7 @@ const CONTEXT = { sha: "abc1234", sessionKey: "hostA:sess-1", at: "2026-08-21T10
 
 describe("observationFrom", () => {
   test("AC5 a subagent stopping is proof that that subagent ran", () => {
-    const observation = observationFrom({ event: "subagent.stop", subagentType: "the-jury" }, CONTEXT);
+    const observation = observationFrom({ event: "subagent.stop", spawnSubagentType: "the-jury" }, CONTEXT);
 
     assert.deepEqual(observation, {
       kind: "subagent",
@@ -65,9 +65,12 @@ describe("observationFrom", () => {
 
   /** invariant: the sha travels with the observation, because freshness is part of the proof. */
   test("AC4 the observation carries the sha it was made against, including none", () => {
-    assert.equal(observationFrom({ event: "subagent.stop", subagentType: "x" }, CONTEXT)?.sha, "abc1234");
     assert.equal(
-      observationFrom({ event: "subagent.stop", subagentType: "x" }, { ...CONTEXT, sha: null })?.sha,
+      observationFrom({ event: "subagent.stop", spawnSubagentType: "x" }, CONTEXT)?.sha,
+      "abc1234",
+    );
+    assert.equal(
+      observationFrom({ event: "subagent.stop", spawnSubagentType: "x" }, { ...CONTEXT, sha: null })?.sha,
       null,
     );
   });

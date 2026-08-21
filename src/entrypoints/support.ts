@@ -180,3 +180,35 @@ export function formatLessonsBlock(lessons: HarnessLesson[], title: string, omit
   }
   return lines.join("\n");
 }
+
+/**
+ * The producer half of the feature: what the harness witnessed, written where only the harness can write it.
+ *
+ * hazard: this did not exist in the first cut. `observe` had no caller, so the store was never written, no proof
+ * could ever be satisfied, and every rule that parsed denied for ever — `require:` is mandatory, so that was
+ * every rule ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ *
+ * why `wants` first: this runs on every tool call and the sha is a process spawn. Nothing is asked of git unless
+ * a declared rule requires this kind of proof, so an operator whose only rule wants a subagent pays no git on any
+ * command.
+ *
+ * invariant: after the event, never able to change it. A rail that records what happened must not become a rail
+ * that decides whether it may.
+ */
+export async function observeForRules(
+  event: HarnessEvent,
+  // why the shape and not `HandlerContext`: `run.ts` already imports this module, so naming its type here would
+  // close an import cycle. Only the one field is needed.
+  ctx: { policy: { rules: Policy["rules"] } },
+): Promise<void> {
+  const config = ctx.policy.rules;
+  if (!coreFacade.rules.wants(event.projectDir, config, event)) {
+    return;
+  }
+  const sha = await currentGitSha(event.projectDir);
+  coreFacade.rules.observe(event.projectDir, config, event, {
+    sha,
+    sessionKey: event.sessionKey,
+    at: new Date().toISOString(),
+  });
+}

@@ -13,13 +13,38 @@ import {
 import { flagsDir } from "../platform/paths.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
-import { formatLessonsBlock, obsConfigFor, sessionIdFromKey } from "./support.ts";
+import { currentGitSha, formatLessonsBlock, obsConfigFor, sessionIdFromKey } from "./support.ts";
 
 const STAGNATION_FOLLOWUP = [
   "BLOCKED: identical validation fingerprint repeated — no progress between attempts.",
   "TRIED: same gate failure signature as the previous stop loop.",
   "NEED: change approach. Do not repeat the same fix. Inspect root cause, try a different path, or escalate with BLOCKED/TRIED/NEED.",
 ].join("\n");
+
+/**
+ * A gate is the one proof the harness decides rather than witnesses, so it is recorded where every gate already
+ * funnels through — the same argument `recordGateOutcome` makes for itself: a gate added later cannot be
+ * forgotten ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ *
+ * invariant: only a gate that passed. Recording a failure would let "the gate ran" satisfy a rule that asked for
+ * "the gate passed", which is the whole point of asking.
+ */
+async function observeGateForRules(args: {
+  root: string;
+  sessionKey: string;
+  policy: Policy;
+  gate: string;
+  passed: boolean;
+}): Promise<void> {
+  if (!args.passed || !coreFacade.rules.wantsGate(args.root, args.policy.rules)) {
+    return;
+  }
+  coreFacade.rules.observeGate(args.root, args.policy.rules, args.gate, {
+    sha: await currentGitSha(args.root),
+    sessionKey: args.sessionKey,
+    at: new Date().toISOString(),
+  });
+}
 
 /**
  * hazard: `gate.outcome` was consumed in two places — the rollup counter and the session report's
@@ -200,6 +225,7 @@ async function runLockedGate(args: {
 
   // invariant: recorded outside the lock. A measurement must not widen the window in which one gate blocks another.
   recordGateOutcome({ ...args, artifact, reused: cached !== null });
+  await observeGateForRules({ ...args, gate: args.gate, passed: artifact.passed });
   await creditPendingLessons({
     root: args.root,
     provider: args.provider,

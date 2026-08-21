@@ -98,6 +98,17 @@ export function proofLabel(proof: RuleProof): string {
 }
 
 /**
+ * Whether recording this kind could ever matter here.
+ *
+ * why: the observing rails fire on every tool call, and a fact nothing reads is a write and a process spawn for
+ * nothing. An operator whose only rule wants `subagent(the-jury)` pays no git on any command
+ * ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+export function kindIsRequired(rules: readonly Rule[], kind: RuleProof["kind"]): boolean {
+  return rules.some((rule) => rule.require.some((proof) => proof.kind === kind));
+}
+
+/**
  * What `doctor` needs to tell an operator that a rule can never be satisfied here.
  *
  * why this rather than a capability flag: both hosts report subagent types today, so a flag for it would be a flag

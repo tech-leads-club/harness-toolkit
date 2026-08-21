@@ -143,7 +143,14 @@ import { actionDecision, effectiveVerdict, evaluateRules, strictest } from "./ru
 import { gateObservation, observationFrom } from "./rules/rules.observe.ts";
 import { buildRuleSet } from "./rules/rules.parse.ts";
 import { unobservedKinds } from "./rules/rules.proof.ts";
-import { decideAction, loadRules, observe } from "./rules/rules.service.ts";
+import {
+  decideAction,
+  loadRules,
+  observe,
+  observeGate,
+  wantsGateObservation,
+  wantsObservation,
+} from "./rules/rules.service.ts";
 import { readObservations, readRuleSources, recordObservation } from "./rules/rules.store.ts";
 import { firingRules } from "./rules/rules.trigger.ts";
 import { evaluateShellCommand } from "./shell-policy/shell-policy.service.ts";
@@ -434,6 +441,9 @@ export const coreFacade = {
     // what the entrypoints call
     decideAction,
     observe,
+    observeGate,
+    wants: wantsObservation,
+    wantsGate: wantsGateObservation,
     load: loadRules,
     // the pieces, for doctor and for tests
     read: readRuleSources,
