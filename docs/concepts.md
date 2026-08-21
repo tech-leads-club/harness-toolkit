@@ -250,6 +250,41 @@ change-approach follow-up. Trade-off: stops loops; can block intentional retries
 | `intelligence.budgetContinue` | Under loop/context pressure **and** unfinished handoff work, follow-up says keep working — do not summarize |
 | `intelligence.idleTurnGate` | Blocks a turn that ends with open handoff work, zero recorded tool calls and zero file changes. It counts events the harness recorded rather than reading the reply, so no wording satisfies it |
 
+## operator rules
+
+`rules.enabled` (off by default). The operator writes a rule per markdown file, and the harness enforces it. Two
+tiers apply together, the way the lesson tiers do — one in the runtime home for every repository on this machine,
+one in the project for the team — deduplicated by file name with the project winning. A project rule carrying
+`enabled: false` switches a global one off there, and its body is where the reason goes.
+
+```markdown
+---
+on: pr-open                            # pr-open | commit | push | stop | tool(<name>) | command(<pattern>)
+require:
+  - subagent(the-jury) since HEAD      # subagent | command | gate | file, since HEAD or since session
+otherwise: deny                        # deny | ask | follow-up | warn
+---
+
+Convene the jury on this branch. Checklist: docs/review-checklist.md
+```
+
+The frontmatter is what the harness enforces; the body is the operator's own text, injected verbatim when the rule
+fires. A proof is satisfied only by something the harness observed: a subagent of that type finishing, a command
+that ran and did not fail, a gate that passed, a file that changed. The agent cannot create one — the observation
+store is under the project state directory, which the floor refuses to an agent, and the mutating `tlc harness`
+subcommands are refused from inside a session.
+
+`since HEAD` compares the sha the observation was made against with the current one, so a review followed by
+another commit is stale. A project with no git checkout cannot satisfy `since HEAD` at all.
+
+Posture reaches `ask` and nothing else: it interrupts under `paired` and hardens to `deny` under `solo` and
+`focus`. `deny`, `follow-up` and `warn` are verification and are identical at all three
+([/decisions/ad-025.md](/decisions/ad-025.md)).
+
+A pattern trigger is policy rather than containment. A script written to disk and executed later, a command name
+built at runtime, `gh api` instead of `gh pr create`, or a pull request opened in a browser all escape it — the
+rule covers the agent's shell path ([/decisions/ad-100.md](/decisions/ad-100.md)).
+
 ## plan gate
 
 `planGate.enabled` (off by default), with `planGate.windowMinutes` (default 120). The turn declares the paths

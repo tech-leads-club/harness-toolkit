@@ -139,6 +139,13 @@ import {
   readDecisions,
 } from "./release/release.decisions.ts";
 import { readReleaseSeen, writeReleaseSeen } from "./release/release.seen.ts";
+import { actionDecision, effectiveVerdict, evaluateRules, strictest } from "./rules/rules.decide.ts";
+import { gateObservation, observationFrom } from "./rules/rules.observe.ts";
+import { buildRuleSet } from "./rules/rules.parse.ts";
+import { unobservedKinds } from "./rules/rules.proof.ts";
+import { decideAction, loadRules, observe } from "./rules/rules.service.ts";
+import { readObservations, readRuleSources, recordObservation } from "./rules/rules.store.ts";
+import { firingRules } from "./rules/rules.trigger.ts";
 import { evaluateShellCommand } from "./shell-policy/shell-policy.service.ts";
 import { clearShellStall } from "./shell-policy/shell-policy.stall.ts";
 import { coversHandler, decideShim } from "./shim/shim.precedence.ts";
@@ -420,6 +427,27 @@ export const coreFacade = {
     readShipLedger,
     hasRecentEvidence,
     newestChangeMs,
+  },
+  rules: {
+    // invariant: the single door. No entrypoint imports core/rules directly
+    // ([/decisions/ad-016.md](/decisions/ad-016.md)).
+    // what the entrypoints call
+    decideAction,
+    observe,
+    load: loadRules,
+    // the pieces, for doctor and for tests
+    read: readRuleSources,
+    build: buildRuleSet,
+    firing: firingRules,
+    observations: readObservations,
+    record: recordObservation,
+    observationFrom,
+    gateObservation,
+    evaluate: evaluateRules,
+    strictest,
+    actionDecision,
+    effectiveVerdict,
+    unobservedKinds,
   },
   presence: {
     register,

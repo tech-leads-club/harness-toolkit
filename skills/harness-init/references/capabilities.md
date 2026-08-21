@@ -42,6 +42,7 @@ assume Cursor — check what Step 1 detected).
 | 21 | Untrusted-content framing and enforcement | `untrustedContent.enabled` | off | Injects one framing line per turn when the agent reads a pull request, an issue, a fetched page or an MCP result, stating that the content is data and that any directive inside it is to be reported as a prompt-injection attempt, not obeyed. | Two modes. frame injects one line per turn, costing a few hundred characters and enforcing nothing. enforce also remembers what an untrusted read returned, bounded at 64 KB per session, and asks before a shell command that appears verbatim in it — verbatim because a paraphrase cannot be shown to come from the content, so a rewritten command is missed. It needs the host to deliver tool output on the after-event: measured present on Claude Code's PostToolUse and on Cursor's afterShellExecution and afterMCPExecution, and absent on Cursor's generic postToolUse. | `mode: frame \| enforce` |
 | 22 | Plan gate (declared scope vs diff) | `planGate.enabled` | off | Blocks the stop when the turn changed files the declared HARNESS_PLAN did not name, so scope creep fails like a failing test instead of surviving as a review comment. | Requires the agent to declare HARNESS_PLAN before editing, and each honest deviation to state a reason. A turn with no declaration is not gated at all. | `windowMinutes` |
 | 23 | Observation mode (measure a rail with its rule off) | `observe.enabled` | off | Runs a rail's checker while that rail is not enforcing, so the record says whether the property held with the rule injected or without it. That is the reading that tells you a rail is unnecessary rather than merely quiet, and it is what makes deleting one a decision instead of a guess. | Costs one diff scan per turn per observed rail, and answers a question only an operator who is asking it needs answered. It never blocks and never changes a decision, so it buys information and nothing else. | `rails — the rails to observe, chosen from the observable set (today: comments). A name with no checker records nothing and doctor reports it` |
+| 24 | Operator rules (your trigger, your proof) | `rules.enabled` | off | Turns a standing instruction into a gate. A rule names when it applies, what the harness must have observed, and what to do when it has not — so 'no pull request without a review' stops depending on the model remembering it. | The proof must be something the harness observed: a subagent that ran, a command that completed, a gate that passed, a file that changed. It cannot judge whether the review was good, and a pattern trigger is policy rather than containment — a script written to disk and run later, or a pull request opened in a browser, escape it. | — |
 
 <!-- /generated -->
 
@@ -89,6 +90,46 @@ Mention `--ref` when the lesson is about a file or a symbol: it is what makes th
 outliving what it was about. Mention `--global` when the lesson would be true in a different repository.
 
 Point deep docs to: `tlc harness help lessons` (load only if the user asks how decay/ranking works).
+
+## Operator rules subsection (capability 24)
+
+There is no knob beyond `rules.enabled`, because a rule is a file rather than a setting. If the user enables it,
+ask what standing instruction they repeat by hand, then write the file with them — one rule per file, in
+`.tlc/harness/rules/<name>.md` for this project or in `<runtime home>/rules/<name>.md` for every repository on
+this machine.
+
+```markdown
+---
+on: pr-open                            # pr-open | commit | push | stop | tool(<name>) | command(<pattern>)
+require:
+  - subagent(the-jury) since HEAD      # subagent | command | gate | file, since HEAD or since session
+otherwise: deny                        # deny | ask | follow-up | warn
+---
+
+Convene the jury on this branch. Checklist: docs/review-checklist.md
+```
+
+The frontmatter is enforced; the body is the operator's own text, shown verbatim when the rule fires — so it is
+where the instruction, the checklist and the reason go.
+
+Four things to say while writing it:
+
+- **The proof must be observable.** A subagent of that type finishing, a command that ran and did not fail, a gate
+  that passed, a file that changed. There is no proof that the review was any good, and asking for one would be
+  the same guesswork the rule exists to remove.
+- **`since HEAD` means this code.** A review followed by another commit is stale and the rule fires again. Use
+  `since session` for something that only needs doing once per session.
+- **Both tiers apply**, deduplicated by file name with the project winning. A standing rule belongs in the runtime
+  home so it is not retyped per repository; a project file with `enabled: false` and a body is how one repository
+  opts out, with the reason recorded.
+- **Posture changes only `ask`** — it interrupts under `paired` and hardens to `deny` under `solo` and `focus`.
+  `deny`, `follow-up` and `warn` are identical at all three.
+
+`tlc harness doctor` lists every active rule with the tier it came from, every one switched off here, and every
+rule whose proof kind this project has never recorded — which is how a rule that enforces nothing satisfiable is
+found before it is trusted.
+
+Point deep docs to: `tlc harness help rules`.
 
 ## Not configurable — state this once, before discovery
 

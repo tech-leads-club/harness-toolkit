@@ -82,6 +82,9 @@ export const DEFAULTS: Policy = {
     enabled: false,
     windowMinutes: 120,
   },
+  rules: {
+    enabled: false,
+  },
   shell: {
     catastrophicAsk: true,
     stallDetection: false,

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -389,4 +389,40 @@ test("isUnderCodePaths matches an exact segment and a nested path, normalizing s
   assert.equal(isUnderCodePaths("src/core/foo.ts", ["src", "apps"]), true);
   assert.equal(isUnderCodePaths("src\\core\\foo.ts", ["src", "apps"]), true);
   assert.equal(isUnderCodePaths("docs/readme.md", ["src", "apps"]), false);
+});
+
+/**
+ * AC1 — a machine that never opted in must behave exactly as before, so the default is off and the shipped
+ * example config must not switch it on ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+test("operator rules are off by default and stay off through an unrelated config", () => {
+  assert.equal(DEFAULTS.rules.enabled, false);
+
+  const root = tempRoot();
+  writeProjectConfig(root, { version: 1, mode: "solo" });
+
+  assert.equal(
+    withTlcHome(root, () => loadPolicy(root).rules.enabled),
+    false,
+  );
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("an operator who declares the capability gets it, and nothing else changes", () => {
+  const root = tempRoot();
+  writeProjectConfig(root, { version: 1, rules: { enabled: true } });
+
+  const policy = withTlcHome(root, () => loadPolicy(root));
+
+  assert.equal(policy.rules.enabled, true);
+  assert.equal(policy.mode, DEFAULTS.mode);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("the shipped example config does not switch operator rules on", () => {
+  const example = JSON.parse(readFileSync("config.example.json", "utf8")) as {
+    rules?: { enabled?: boolean };
+  };
+
+  assert.notEqual(example.rules?.enabled, true);
 });

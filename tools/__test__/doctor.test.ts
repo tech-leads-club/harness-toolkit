@@ -19,6 +19,7 @@ import {
   checkPrices,
   checkProjectPolicy,
   checkProviders,
+  checkRules,
   exitCodeFor,
   formatReport,
   measureRuntimeStart,
@@ -804,4 +805,71 @@ test("AC the shipped config raises no fault on a fresh install", () => {
     false,
     "enforceAllowlist with no allowedModels is a rail declared on and enforcing nothing",
   );
+});
+
+/**
+ * AC14 — two tiers apply together, so "why did this fire?" and "why did it not?" are both answered by knowing
+ * which tier a rule came from ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+describe("checkRules", () => {
+  function project(rules: Record<string, string>, enabled = true): string {
+    const root = newRoot();
+    const config = projectConfigPath(root);
+    mkdirSync(dirname(config), { recursive: true });
+    writeFileSync(config, JSON.stringify({ version: 1, rules: { enabled } }), "utf8");
+    const dir = join(root, ".tlc", "harness", "rules");
+    mkdirSync(dir, { recursive: true });
+    for (const [name, text] of Object.entries(rules)) {
+      writeFileSync(join(dir, `${name}.md`), text, "utf8");
+    }
+    return root;
+  }
+
+  const VALID = `---\non: pr-open\nrequire:\n  - subagent(the-jury) since HEAD\notherwise: deny\n---\nConvene the jury.`;
+
+  /** invariant: silent when nobody opted in ([/decisions/ad-034.md](/decisions/ad-034.md)). */
+  test("AC1 nothing is reported when the capability is off", () => {
+    assert.deepEqual(checkRules(project({ "review-before-pr": VALID }, false)), []);
+  });
+
+  test("AC1 nothing is reported when no rule is declared", () => {
+    assert.deepEqual(checkRules(project({})), []);
+  });
+
+  test("AC14 an active rule is listed with its tier, trigger and verdict", () => {
+    const rows = checkRules(project({ "review-before-pr": VALID }));
+    const listed = rows.find((row) => row.name === "operator rules");
+
+    assert.equal(listed?.level, "ok");
+    assert.match(listed?.detail ?? "", /review-before-pr \(project\) on pr-open → deny/);
+  });
+
+  test("AC10 a malformed rule fails by name and says the others still apply", () => {
+    const rows = checkRules(project({ broken: "no frontmatter here", "review-before-pr": VALID }));
+    const failure = rows.find((row) => row.level === "fail");
+
+    assert.match(failure?.name ?? "", /broken/);
+    assert.match(failure?.detail ?? "", /the other rules still apply/);
+    assert.ok(
+      rows.some((row) => row.name === "operator rules"),
+      "and the valid one is still listed",
+    );
+  });
+
+  test("AC12 a rule switched off here is reported as such, not hidden", () => {
+    const off = `---\non: pr-open\nenabled: false\notherwise: deny\n---\nInfra repo: reviewed in the PR.`;
+    const rows = checkRules(project({ "review-before-pr": off }));
+
+    assert.ok(rows.some((row) => row.name === "operator rules (off here)"));
+  });
+
+  /** AC11 — factual, not a guess about the host: this kind has never been recorded here. */
+  test("AC11 a rule needing a kind never observed here is a warning that names both", () => {
+    const rows = checkRules(project({ "review-before-pr": VALID }));
+    const warning = rows.find((row) => row.level === "warn");
+
+    assert.match(warning?.name ?? "", /review-before-pr/);
+    assert.match(warning?.detail ?? "", /needs subagent/);
+    assert.match(warning?.detail ?? "", /no observation of that kind/);
+  });
 });

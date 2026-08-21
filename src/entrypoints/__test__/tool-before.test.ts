@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { after, before, test } from "node:test";
+import { after, before, describe, test } from "node:test";
 import { coreFacade } from "../../core/index.ts";
 import { projectConfigPath } from "../../platform/paths.ts";
 import { runHandler } from "../run.ts";
@@ -659,4 +659,178 @@ test("a non-shell refusal is recorded as a policy refusal, carrying the floor ru
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+/**
+ * The operator rules rail, driven through the real entrypoint.
+ *
+ * why `since session` here and `since HEAD` in the unit tests: the window semantics are decided in
+ * `rules.proof.ts` and tested there against a fixed sha, while this asserts the wiring — that a rule read from
+ * disk reaches a decision, carries the operator's own text, and stops carrying it once the proof exists
+ * ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+describe("operator rules", () => {
+  function withRule(root: string, body: string, otherwise = "deny"): void {
+    writeProjectPolicy(root, { version: 1, rules: { enabled: true } });
+    const dir = join(root, ".tlc", "harness", "rules");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "review-before-pr.md"),
+      `---\non: pr-open\nrequire:\n  - subagent(the-jury) since session\notherwise: ${otherwise}\n---\n${body}`,
+      "utf8",
+    );
+  }
+
+  /**
+   * hazard: the session key is built by the provider, and the first version of this fixture invented
+   * `cursor:conv-1` with a colon. The real one is `cursor-conv-1`, so the proof never matched and the test failed
+   * for the wrong reason ([/decisions/ad-100.md](/decisions/ad-100.md)).
+   */
+  function observe(root: string, value: string, sessionKey = "cursor-conv-1"): void {
+    const dir = join(root, ".tlc", "harness", "state");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "rule-observations.jsonl"),
+      `${JSON.stringify({ kind: "subagent", value, sha: null, sessionKey, at: "2026-08-21T10:00:00.000Z" })}\n`,
+      "utf8",
+    );
+  }
+
+  /**
+   * hazard: the first version of these tests put the command in `tool_input.command` on a Cursor `preToolUse`
+   * payload, and every one of them passed by allowing — because `event.command` comes from the top-level
+   * `command` on that host. Measured against 3,755 real records: Claude sends `tool_input.command` on a
+   * `PreToolUse` whose `tool_name` is Bash, and Cursor sends a top-level `command` on
+   * `beforeShellExecution`. Both shapes are exercised below, or this asserts nothing
+   * ([/decisions/ad-100.md](/decisions/ad-100.md)).
+   */
+  const OPENING = "npm test && gh pr create --fill";
+
+  function opensPr(root: string, host: "cursor" | "claude", command = OPENING): string {
+    return host === "cursor" ? cursorShell(root, command) : claudeShell(root, command);
+  }
+
+  test("AC2 a rule with no proof refuses the command and carries the operator's own text", async () => {
+    const root = tempRoot();
+    try {
+      withRule(root, "Convene the jury.\nChecklist: docs/review-checklist.md");
+
+      for (const host of ["cursor", "claude"] as const) {
+        const check = await runHandler(toolBeforeHandler, stdinOf(opensPr(root, host)));
+        assert.equal(check.decision.kind, "deny", host);
+      }
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(opensPr(root, "cursor")));
+      const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
+      assert.match(reason, /rule review-before-pr \(project\)/);
+      assert.match(reason, /subagent\(the-jury\) since session/);
+      assert.match(reason, /Convene the jury\./, "the body is verbatim");
+      assert.match(reason, /docs\/review-checklist\.md/, "including the attachment");
+      assert.equal(outcome.decision.kind === "deny" ? outcome.decision.rule : "", "rule:review-before-pr");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("AC3 the same command is allowed once the proof exists", async () => {
+    const root = tempRoot();
+    try {
+      withRule(root, "Convene the jury.");
+      observe(root, "the-jury");
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(opensPr(root, "cursor")));
+
+      assert.equal(outcome.decision.kind, "allow");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** invariant: another subagent having run is not this proof. */
+  test("AC5 an observation of a different subagent does not satisfy the rule", async () => {
+    const root = tempRoot();
+    try {
+      withRule(root, "Convene the jury.");
+      observe(root, "explore");
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(opensPr(root, "cursor")));
+
+      assert.equal(outcome.decision.kind, "deny");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a command the rule does not name is untouched", async () => {
+    const root = tempRoot();
+    try {
+      withRule(root, "Convene the jury.");
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(opensPr(root, "cursor", "npm test")));
+
+      assert.equal(outcome.decision.kind, "allow");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** AC1 — the capability off means the rule file is inert, not read-and-ignored. */
+  test("AC1 with rules.enabled false the rule does not fire", async () => {
+    const root = tempRoot();
+    try {
+      withRule(root, "Convene the jury.");
+      writeProjectPolicy(root, { version: 1, rules: { enabled: false } });
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(opensPr(root, "cursor")));
+
+      assert.equal(outcome.decision.kind, "allow");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** AC1 — and with no rule files at all, nothing changes for anybody. */
+  test("AC1 no rules directory changes nothing", async () => {
+    const root = tempRoot();
+    try {
+      writeProjectPolicy(root, { version: 1, rules: { enabled: true } });
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(opensPr(root, "cursor")));
+
+      assert.equal(outcome.decision.kind, "allow");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** AC8 — warn never blocks the action. */
+  test("AC8 a warn rule allows the command", async () => {
+    const root = tempRoot();
+    try {
+      withRule(root, "Convene the jury.", "warn");
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(opensPr(root, "cursor")));
+
+      assert.equal(outcome.decision.kind, "allow");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * AC13 — this host cannot ask, so `ask` degrades to deny for that reason too. The posture rule is asserted in
+   * `rules.decide.test.ts`; what matters here is that an `ask` rule still refuses rather than passing.
+   */
+  test("AC13 an ask rule does not let the command through on a host that cannot ask", async () => {
+    const root = tempRoot();
+    try {
+      withRule(root, "Convene the jury.", "ask");
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(opensPr(root, "cursor")));
+
+      assert.equal(outcome.decision.kind, "deny");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

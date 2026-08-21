@@ -110,6 +110,13 @@ export type Policy = {
     enabled: boolean;
     windowMinutes: number;
   };
+  /**
+   * Operator rules: the operator declares the trigger and the proof, and the harness enforces it. Off by default,
+   * and with no rule files the whole mechanism is inert ([/decisions/ad-100.md](/decisions/ad-100.md)).
+   */
+  rules: {
+    enabled: boolean;
+  };
   shell: {
     catastrophicAsk: boolean;
     stallDetection: boolean;
@@ -139,6 +146,7 @@ export type PartialPolicy = Partial<Policy> & {
   obs?: Partial<Policy["obs"]>;
   untrustedContent?: Partial<Policy["untrustedContent"]>;
   planGate?: Partial<Policy["planGate"]>;
+  rules?: Partial<Policy["rules"]>;
   shell?: Partial<Policy["shell"]>;
   intelligence?: Partial<Policy["intelligence"]> & {
     lessons?: Partial<LessonsPolicyConfig>;

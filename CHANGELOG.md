@@ -9,6 +9,7 @@ doctor reports against your own configuration.
 ## v0.3.6
 
 - **AD-099** — Reading a file claimed it, so a review agent locked the operator out of writing
+- **AD-100** — The operator declares the trigger and the proof; the harness enforces it
 
 ## v0.3.5
 

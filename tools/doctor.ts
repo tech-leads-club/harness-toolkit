@@ -244,6 +244,69 @@ export function resolveOnPath(
   return null;
 }
 
+/**
+ * The operator's own rules: which apply, where each came from, and any that can never be satisfied here.
+ *
+ * why the tier is printed: two tiers apply together, so "why did this fire?" and "why did it not?" are both
+ * answered by knowing whether the rule came from this project or from the machine
+ * ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ *
+ * invariant: silent when the capability is off, and silent when no rule is declared. A row about a mechanism
+ * nobody opted into is noise on every healthy install ([/decisions/ad-034.md](/decisions/ad-034.md)).
+ */
+export function checkRules(root: string): Check[] {
+  const policy = coreFacade.policy.loadPolicy(root);
+  // why the switch is not re-read here: `load` owns it, and a second copy of the same condition is a second
+  // thing to keep true ([/decisions/ad-100.md](/decisions/ad-100.md)).
+  const set = coreFacade.rules.load(root, policy.rules);
+  if (set.rules.length === 0 && set.disabled.length === 0 && set.errors.length === 0) {
+    return [];
+  }
+
+  const checks: Check[] = [];
+  if (set.rules.length > 0) {
+    checks.push({
+      level: "ok",
+      name: "operator rules",
+      detail: set.rules
+        .map((rule) => `${rule.name} (${rule.tier}) on ${rule.on.kind} → ${rule.otherwise}`)
+        .join("; "),
+    });
+  }
+
+  // why an `ok` row: switching a global off in one repository is a decision, not a fault. It is reported because
+  // an operator who forgot they did it would otherwise wonder why nothing fires.
+  if (set.disabled.length > 0) {
+    checks.push({
+      level: "ok",
+      name: "operator rules (off here)",
+      detail: set.disabled.map((rule) => rule.name).join(", "),
+    });
+  }
+
+  for (const error of set.errors) {
+    checks.push({
+      level: "fail",
+      name: `operator rule (${error.name})`,
+      detail: `${error.error} — the other rules still apply`,
+    });
+  }
+
+  /**
+   * hazard: a rule whose proof kind this project has never recorded reads as protection and enforces nothing an
+   * operator can satisfy. Saying so is factual; guessing at the host's capabilities would not be.
+   */
+  for (const entry of coreFacade.rules.unobservedKinds(set.rules, coreFacade.rules.observations(root))) {
+    checks.push({
+      level: "warn",
+      name: `operator rule (${entry.rule})`,
+      detail: `needs ${entry.kinds.join(", ")}, and no observation of that kind has been recorded in this project yet`,
+    });
+  }
+
+  return checks;
+}
+
 export function checkRuntimePaths(home: string, platform: NodeJS.Platform): Check[] {
   const launcher = join(home, "bin", "tlc-exec.mjs");
   const distSample = join(home, "dist", "stop.mjs");
@@ -643,6 +706,7 @@ export function runChecks(ctx: DoctorContext): Check[] {
     ...checkProjectPolicy(ctx.root),
     ...checkCapabilities(ctx.root, ctx.runtimeHome),
     ...checkPrices(),
+    ...checkRules(ctx.root),
     checkGlobalCommands(ctx.home),
   ];
 }

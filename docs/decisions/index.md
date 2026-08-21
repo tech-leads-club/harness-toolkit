@@ -107,6 +107,7 @@ Handoff section and a link back to this index.
 | [AD-097](/decisions/ad-097.md) | The shell layer goes, and with it every platform branch that only existed because of it | active |
 | [AD-098](/decisions/ad-098.md) | Code splitting cut dist/ ninefold and broke three commands, so it is reverted until no library module self-executes | active |
 | [AD-099](/decisions/ad-099.md) | Reading a file claimed it, so a review agent locked the operator out of writing | active |
+| [AD-100](/decisions/ad-100.md) | The operator declares the trigger and the proof; the harness enforces it | active |
 
 ## Archived
 

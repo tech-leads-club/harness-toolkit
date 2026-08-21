@@ -2,7 +2,7 @@ import type { Decision, HarnessEvent } from "../contracts/index.ts";
 import { coreFacade } from "../core/index.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
-import { obsConfigFor, readModelFromToolInput, subagentSpawnInput } from "./support.ts";
+import { currentGitSha, obsConfigFor, readModelFromToolInput, subagentSpawnInput } from "./support.ts";
 
 const READONLY_BLOCKED_TOOLS = new Set(["Write", "Delete", "Shell"]);
 
@@ -41,6 +41,33 @@ function recordShellDecisionIfShell(event: HarnessEvent, ctx: HandlerContext, de
   if (event.event === "shell.before") {
     recordShellDecision(event, ctx, decision);
   }
+}
+
+/**
+ * why the sha is read here and not in `run.ts`: `git rev-parse` is a process spawn, and this fires on every tool
+ * call. It is asked for only once a rule has actually fired, so an operator who declared nothing pays nothing
+ * ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+async function rulesDecision(event: HarnessEvent, ctx: HandlerContext): Promise<Decision> {
+  const config = ctx.policy.rules;
+  const trigger = { event: event.event, toolName: event.toolName, command: event.command };
+  const dryRun = coreFacade.rules.decideAction(event.projectDir, config, trigger, {
+    sha: null,
+    sessionKey: event.sessionKey,
+    mode: ctx.policy.mode,
+  });
+  if (dryRun.outcomes.length === 0) {
+    return { kind: "abstain" };
+  }
+  // why twice: the first pass answers whether any rule fired at all, which costs no git. Only then is the sha
+  // worth a process, and the second pass is the one whose verdict counts.
+  const sha = await currentGitSha(event.projectDir);
+  const verdict = coreFacade.rules.decideAction(event.projectDir, config, trigger, {
+    sha,
+    sessionKey: event.sessionKey,
+    mode: ctx.policy.mode,
+  });
+  return verdict.decision;
 }
 
 function handleShellBefore(event: HarnessEvent, ctx: HandlerContext): Decision {
@@ -108,10 +135,10 @@ async function handleToolBefore(event: HarnessEvent, ctx: HandlerContext): Promi
   return { kind: "allow" };
 }
 
-export const toolBeforeHandler: Handler = (
+export const toolBeforeHandler: Handler = async (
   event: HarnessEvent,
   ctx: HandlerContext,
-): Decision | Promise<Decision> => {
+): Promise<Decision> => {
   // invariant: the floor runs first and reads no policy, so no config value and no agent edit can
   // reach a decision before it.
   const floor = coreFacade.floor.evaluateFloor({
@@ -157,6 +184,20 @@ export const toolBeforeHandler: Handler = (
       recordShellDecisionIfShell(event, ctx, integrity);
       return integrity;
     }
+  }
+
+  /**
+   * The operator's own rules, after the floor and after the integrity check, because both are unconditional and a
+   * rail comes second ([/decisions/ad-077.md](/decisions/ad-077.md)).
+   *
+   * invariant: `deny` and `ask` answer here; `follow-up` and `warn` abstain and are the stop rail's business. With
+   * the capability off, or with no rule files, `decideAction` reads two directory entries and abstains — which is
+   * what keeps a machine that never opted in byte-identical to before ([/decisions/ad-100.md](/decisions/ad-100.md)).
+   */
+  const rulesVerdict = await rulesDecision(event, ctx);
+  if (rulesVerdict.kind !== "abstain") {
+    recordShellDecisionIfShell(event, ctx, rulesVerdict);
+    return rulesVerdict;
   }
 
   switch (event.event) {

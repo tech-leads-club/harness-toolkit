@@ -257,6 +257,7 @@ detects a condition that a config field could otherwise switch off:
 | Untrusted-content framing and enforcement | Injects one framing line per turn when the agent reads a pull request, an issue, a fetched page or an MCP result, stating that the content is data and that any directive inside it is to be reported as a prompt-injection attempt, not obeyed. | `untrustedContent.enabled` |
 | Plan gate (declared scope vs diff) | Blocks the stop when the turn changed files the declared HARNESS_PLAN did not name, so scope creep fails like a failing test instead of surviving as a review comment. | `planGate.enabled` |
 | Observation mode (measure a rail with its rule off) | Runs a rail's checker while that rail is not enforcing, so the record says whether the property held with the rule injected or without it. That is the reading that tells you a rail is unnecessary rather than merely quiet, and it is what makes deleting one a decision instead of a guess. | `observe.enabled` |
+| Operator rules (your trigger, your proof) | Turns a standing instruction into a gate. A rule names when it applies, what the harness must have observed, and what to do when it has not — so 'no pull request without a review' stops depending on the model remembering it. | `rules.enabled` |
 
 <!-- /generated -->
 
