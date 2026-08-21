@@ -8,8 +8,11 @@ doctor reports against your own configuration.
 
 ## Unreleased
 
-- **AD-102** — A green gate is not a working product, so four checks that look where it cannot
 - **AD-103** — The artefact is proven where operators install it, and an inert scope has to be telling the truth
+
+## v0.4.3
+
+- **AD-102** — A green gate is not a working product, so four checks that look where it cannot
 
 ## v0.4.2
 
