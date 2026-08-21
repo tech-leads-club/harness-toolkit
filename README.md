@@ -291,13 +291,10 @@ ln -s ~/.tlc/harness/bin/tlc ~/.local/bin/tlc
 
 Update with `tlc harness update`, which bumps the package and re-materialises the runtime.
 
-Releases land on the `next` dist-tag first and are promoted to `latest` deliberately, so a version reaches you
-because somebody decided it should ([`docs/decisions/ad-102.md`](docs/decisions/ad-102.md)). To take a release
-early:
-
-```bash
-npm i -g @tech-leads-club/harness-toolkit@next && tlc harness update
-```
+A release is staged on npm and goes live only when a maintainer approves it with two-factor authentication, so a
+version reaches you because somebody decided it should ([`docs/decisions/ad-102.md`](docs/decisions/ad-102.md)).
+Nothing is installable before that, so there is no early channel to opt into — and no publishing credential is
+stored in the repository.
 
 Overrides: `TLC_HOME`, `TLC_REPO_URL`, `TLC_BIN_DIR`.
 
