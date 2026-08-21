@@ -173,3 +173,42 @@ describe("the built bundles", () => {
     assert.match(`${result.stdout ?? ""}${result.stderr ?? ""}`, /harness/);
   });
 });
+
+/**
+ * hazard: every test in this repository runs against the working tree, which is not the package. Three install
+ * defects reached operators through that gap — 0.3.0 installed nothing, 0.3.2 shipped bundles where every entry
+ * answered as the CLI, and 0.4.0 left `tlc` off `PATH` ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
+describe("the packed artefact is verified before the irreversible step", () => {
+  const workflow = readFileSync(join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
+
+  test("the release job runs the clean-room verification", () => {
+    assert.match(workflow, /node tools\/dev\/verify-package\.mjs/);
+  });
+
+  /**
+   * invariant: before `npm publish`. After it the version is on the registry for good, so a verification that runs
+   * later is a report rather than a gate.
+   */
+  test("and runs it before publishing", () => {
+    /**
+     * why the step name and not the command string: `npm publish` appears in prose above the step that runs it — a
+     * comment explaining the recovery when the push after it fails. Matching the loose string put the publish
+     * "before" the verification and failed on a correct workflow.
+     */
+    const verify = workflow.indexOf("- name: Verify the packed artefact");
+    const publish = workflow.indexOf("- name: Publish to npm");
+
+    assert.ok(verify > 0 && publish > 0, "both steps must exist");
+    assert.ok(verify < publish, "verification must precede the publish");
+  });
+
+  /** why asserted: the payload list is the half that runs before anything is installed, and it is easy to gut. */
+  test("the verification asserts the payload and drives the installed command", () => {
+    const script = readFileSync(join(repoRoot, "tools", "dev", "verify-package.mjs"), "utf8");
+
+    for (const required of ["package/bin/tlc", "package/dist/tool-before.mjs", "tlc harness doctor"]) {
+      assert.ok(script.includes(required), `the verification no longer checks ${required}`);
+    }
+  });
+});
