@@ -269,8 +269,16 @@ jobs:
       # THE IRREVERSIBLE STEP. Nothing has reached the remote yet: the bump, the changelog and dist/ are local to
       # this runner. If this fails, the run stops here and the repository is untouched — no tag, no commit, no
       # release to clean up.
-      - name: Publish to npm
-        run: npm publish
+      #
+      # invariant: published to `next`, never to `latest`. `latest` is the only tag npm treats specially — it is what
+      # a bare `npm i` resolves — so leaving it where it is means a release cannot break anybody until somebody
+      # decides it should. Promotion is a separate tag move, which is how the npm CLI itself releases and what makes
+      # rollback a seconds-long operation rather than another version ([/decisions/ad-102.md](/decisions/ad-102.md)).
+      #
+      # hazard: 0.4.2 went straight to `latest` and shipped a defect that 0.4.3 fixed minutes later. Nothing was
+      # wrong with the gate; there was simply no window between "published" and "everybody gets it".
+      - name: Publish to npm on the next channel
+        run: npm publish --tag next
 
       # why: after the publish, and atomically. `--atomic` means the branch and the tag land together or neither
       # does; a tag without its commit points at a tree whose package.json says the previous version.
