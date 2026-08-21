@@ -17,6 +17,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 
 - **AD-100** — The operator declares the trigger and the proof; the harness enforces it ([/decisions/ad-100.md](/decisions/ad-100.md))
 - **AD-101** — Machine data belongs to the machine, not to the install ([/decisions/ad-101.md](/decisions/ad-101.md))
+- **AD-102** — A green gate is not a working product, so four checks that look where it cannot ([/decisions/ad-102.md](/decisions/ad-102.md))
 
 ## 2026-08-20
 

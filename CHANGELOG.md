@@ -6,6 +6,10 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## Unreleased
+
+- **AD-102** — A green gate is not a working product, so four checks that look where it cannot
+
 ## v0.4.2
 
 No decision records landed in this release.
