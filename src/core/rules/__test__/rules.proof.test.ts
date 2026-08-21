@@ -1,0 +1,171 @@
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
+import {
+  missingProofs,
+  type Observation,
+  proofLabel,
+  proofSatisfied,
+  unobservedKinds,
+} from "../rules.proof.ts";
+import type { Rule, RuleProof } from "../rules.types.ts";
+
+const SHA = "abc1234";
+const CONTEXT = { sha: SHA, sessionKey: "hostA:sess-1" };
+
+function observed(overrides: Partial<Observation> = {}): Observation {
+  return {
+    kind: "subagent",
+    value: "the-jury",
+    sha: SHA,
+    sessionKey: "hostA:sess-1",
+    at: "2026-08-21T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function rule(require: RuleProof[]): Rule {
+  return {
+    name: "r",
+    tier: "project",
+    enabled: true,
+    on: { kind: "pr-open" },
+    require,
+    otherwise: "deny",
+    body: "b",
+  };
+}
+
+describe("proofSatisfied", () => {
+  test("AC5 a subagent proof is satisfied by that subagent having run", () => {
+    const proof: RuleProof = { kind: "subagent", value: "the-jury", since: "head" };
+
+    assert.equal(proofSatisfied(proof, [observed()], CONTEXT), true);
+    assert.equal(proofSatisfied(proof, [observed({ value: "explore" })], CONTEXT), false);
+    assert.equal(proofSatisfied(proof, [], CONTEXT), false);
+  });
+
+  /**
+   * AC4 — freshness is part of the proof. A review of the code as it was two commits ago reviewed something else.
+   */
+  test("AC4 proof recorded against another HEAD does not satisfy `since HEAD`", () => {
+    const proof: RuleProof = { kind: "subagent", value: "the-jury", since: "head" };
+
+    assert.equal(proofSatisfied(proof, [observed({ sha: "0000000" })], CONTEXT), false);
+  });
+
+  test("AC4 `since session` accepts an older sha but only this session", () => {
+    const proof: RuleProof = { kind: "subagent", value: "the-jury", since: "session" };
+
+    assert.equal(proofSatisfied(proof, [observed({ sha: "0000000" })], CONTEXT), true);
+    assert.equal(
+      proofSatisfied(proof, [observed({ sessionKey: "hostA:other" })], CONTEXT),
+      false,
+      "another session's work is not this session's proof",
+    );
+  });
+
+  /**
+   * hazard: with no git checkout there is no HEAD to compare. Treating "no sha" as "any sha" would make every
+   * `since HEAD` rule satisfiable by anything ([/decisions/ad-100.md](/decisions/ad-100.md)).
+   */
+  test("AC4 a project with no sha cannot satisfy `since HEAD`", () => {
+    const proof: RuleProof = { kind: "subagent", value: "the-jury", since: "head" };
+
+    assert.equal(
+      proofSatisfied(proof, [observed({ sha: null })], { sha: null, sessionKey: "hostA:sess-1" }),
+      false,
+    );
+  });
+
+  test("AC5 a command proof matches the operator's phrase in the observed command", () => {
+    const proof: RuleProof = { kind: "command", value: "gh pr review", since: "head" };
+
+    assert.equal(
+      proofSatisfied(proof, [observed({ kind: "command", value: "gh pr review 42 --approve" })], CONTEXT),
+      true,
+    );
+    assert.equal(proofSatisfied(proof, [observed({ kind: "command", value: "gh pr list" })], CONTEXT), false);
+  });
+
+  test("AC5 a gate proof matches the gate's name", () => {
+    const proof: RuleProof = { kind: "gate", value: "test", since: "head" };
+
+    assert.equal(proofSatisfied(proof, [observed({ kind: "gate", value: "test" })], CONTEXT), true);
+    assert.equal(proofSatisfied(proof, [observed({ kind: "gate", value: "lint" })], CONTEXT), false);
+  });
+
+  /** why three shapes and no glob engine: nothing else here needs globs, and each shape is stated. */
+  test("AC5 a file proof matches an exact path, a *.ext suffix, or a dir/ prefix", () => {
+    const exact: RuleProof = { kind: "file", value: "docs/review.md", since: "head" };
+    const suffix: RuleProof = { kind: "file", value: "*.md", since: "head" };
+    const dir: RuleProof = { kind: "file", value: "docs/", since: "head" };
+
+    assert.equal(proofSatisfied(exact, [observed({ kind: "file", value: "docs/review.md" })], CONTEXT), true);
+    assert.equal(proofSatisfied(suffix, [observed({ kind: "file", value: "notes/x.md" })], CONTEXT), true);
+    assert.equal(proofSatisfied(suffix, [observed({ kind: "file", value: "notes/x.ts" })], CONTEXT), false);
+    assert.equal(proofSatisfied(dir, [observed({ kind: "file", value: "docs/deep/x.md" })], CONTEXT), true);
+    assert.equal(proofSatisfied(dir, [observed({ kind: "file", value: "src/x.md" })], CONTEXT), false);
+  });
+
+  /** invariant: kinds never cross. A command that mentions a subagent's name is not a subagent having run. */
+  test("AC5 an observation of another kind never satisfies a proof", () => {
+    const proof: RuleProof = { kind: "subagent", value: "the-jury", since: "head" };
+
+    assert.equal(proofSatisfied(proof, [observed({ kind: "command", value: "the-jury" })], CONTEXT), false);
+  });
+});
+
+describe("missingProofs", () => {
+  test("every proof must hold — the list is a conjunction", () => {
+    const target = rule([
+      { kind: "subagent", value: "the-jury", since: "head" },
+      { kind: "gate", value: "test", since: "head" },
+    ]);
+
+    const missing = missingProofs(target, [observed()], CONTEXT);
+
+    assert.equal(missing.length, 1);
+    assert.equal(missing[0]?.kind, "gate");
+  });
+
+  test("nothing missing when all proofs hold", () => {
+    const target = rule([
+      { kind: "subagent", value: "the-jury", since: "head" },
+      { kind: "gate", value: "test", since: "head" },
+    ]);
+
+    const missing = missingProofs(target, [observed(), observed({ kind: "gate", value: "test" })], CONTEXT);
+
+    assert.deepEqual(missing, []);
+  });
+
+  test("the label an operator reads names the kind, the value and the window", () => {
+    assert.equal(
+      proofLabel({ kind: "subagent", value: "the-jury", since: "head" }),
+      "subagent(the-jury) since HEAD",
+    );
+    assert.equal(proofLabel({ kind: "gate", value: "test", since: "session" }), "gate(test) since session");
+  });
+});
+
+/**
+ * AC11 — what `doctor` needs to say a rule can never be satisfied here. Factual, not a guess about the host: a
+ * kind of observation this project has never recorded ([/decisions/ad-034.md](/decisions/ad-034.md)).
+ */
+describe("unobservedKinds", () => {
+  test("AC11 a rule requiring a kind never recorded here is named, with the kind", () => {
+    const target = rule([{ kind: "subagent", value: "the-jury", since: "head" }]);
+
+    assert.deepEqual(unobservedKinds([target], []), [{ rule: "r", kinds: ["subagent"] }]);
+    assert.deepEqual(unobservedKinds([target], [observed()]), []);
+  });
+
+  test("AC11 only the kinds that were never seen are reported", () => {
+    const target = rule([
+      { kind: "subagent", value: "the-jury", since: "head" },
+      { kind: "gate", value: "test", since: "head" },
+    ]);
+
+    assert.deepEqual(unobservedKinds([target], [observed()]), [{ rule: "r", kinds: ["gate"] }]);
+  });
+});

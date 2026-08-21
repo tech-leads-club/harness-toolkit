@@ -61,7 +61,7 @@ function startsWithShape(words: readonly string[], shape: readonly string[]): bo
  * why a phrase and not a word: an operator writes `command(gh pr review)`, meaning those words in that order.
  * Matching the raw string against the whole command would let a heredoc or an unrelated argument satisfy it.
  */
-function matchesPhrase(words: readonly string[], pattern: string): boolean {
+export function matchesPhrase(words: readonly string[], pattern: string): boolean {
   const phrase = pattern.trim().split(/\s+/);
   if (phrase.length === 0) {
     return false;
