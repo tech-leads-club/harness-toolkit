@@ -6,6 +6,7 @@ import { afterEach, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import type { ProviderWiring } from "../../src/contracts/index.ts";
 import { coreFacade } from "../../src/core/index.ts";
+import { DEFAULTS } from "../../src/core/policy/policy.defaults.ts";
 import { projectConfigPath } from "../../src/platform/paths.ts";
 import { mergeClaudeSettings } from "../../src/providers/claude/claude.wiring.ts";
 import { cursorWiring, formatWiringProblems } from "../../src/providers/cursor/cursor.wiring.ts";
@@ -20,6 +21,7 @@ import {
   checkProjectPolicy,
   checkProviders,
   checkRules,
+  checkShadowedPolicy,
   exitCodeFor,
   formatReport,
   measureRuntimeStart,
@@ -871,5 +873,79 @@ describe("checkRules", () => {
     assert.match(warning?.name ?? "", /review-before-pr/);
     assert.match(warning?.detail ?? "", /needs subagent/);
     assert.match(warning?.detail ?? "", /no observation of that kind/);
+  });
+});
+
+/**
+ * hazard: `init` writes the whole default policy when there is no config yet, and the wizard writes every knob it
+ * collected — so a project config typically names dozens of values it did not choose, each shadowing the
+ * machine-wide tier for ever. Measured on this repository the day it was added: 29 keys
+ * ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+describe("checkShadowedPolicy", () => {
+  function projectWith(config: Record<string, unknown>, user: Record<string, unknown> = {}): string {
+    const root = newRoot();
+    const home = newRoot();
+    process.env.TLC_HOME = home;
+    writeFileSync(join(home, "config.json"), JSON.stringify(user), "utf8");
+    const path = projectConfigPath(root);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(config), "utf8");
+    return root;
+  }
+
+  test("no project config is nothing to report", () => {
+    assert.deepEqual(checkShadowedPolicy(newRoot()), []);
+  });
+
+  test("a project that only decides things is silent", () => {
+    const root = projectWith({ version: 1, mode: "focus" }, { mode: "solo" });
+
+    assert.deepEqual(checkShadowedPolicy(root), []);
+  });
+
+  test("a key restating the user tier is a warning that names the path and the file", () => {
+    const root = projectWith(
+      { version: 1, intelligence: { lessons: { maxCharsSession: 3000 } } },
+      { intelligence: { lessons: { maxCharsSession: 3000 } } },
+    );
+
+    const row = checkShadowedPolicy(root)[0];
+
+    assert.equal(row?.level, "warn");
+    assert.match(row?.detail ?? "", /intelligence\.lessons\.maxCharsSession/);
+    assert.match(row?.detail ?? "", /config\.json/);
+    assert.match(row?.detail ?? "", /machine-wide change will not reach this repository/);
+  });
+
+  test("a key restating a shipped default is reported too, with no user config at all", () => {
+    const root = projectWith({ version: 1, mode: DEFAULTS.mode });
+
+    assert.match(checkShadowedPolicy(root)[0]?.detail ?? "", /mode/);
+  });
+
+  /** invariant: the list is bounded and says how many it did not print, rather than trailing off. */
+  test("more than six restated keys are counted rather than dumped", () => {
+    const block = {
+      enabled: false,
+      emptyDiffAntiShip: false,
+      evidenceMaxAgeHours: DEFAULTS.shipGate.evidenceMaxAgeHours,
+      claimWindowMinutes: DEFAULTS.shipGate.claimWindowMinutes,
+    };
+    const root = projectWith({
+      version: 1,
+      mode: DEFAULTS.mode,
+      shipGate: block,
+      comments: { enabled: false, mode: DEFAULTS.comments.mode, onViolation: DEFAULTS.comments.onViolation },
+    });
+
+    const detail = checkShadowedPolicy(root)[0]?.detail ?? "";
+
+    assert.match(detail, /and \d+ more/);
+    // why the substring and not a split of the whole sentence: the closing prose contains dots too
+    // ("config.json", "repository."), so counting them over-reported and the first version of this
+    // assertion failed on correct output.
+    const listed = /have: (.+?), and \d+ more\./.exec(detail)?.[1] ?? "";
+    assert.equal(listed.split(", ").length, 6, listed);
   });
 });

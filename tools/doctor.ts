@@ -545,6 +545,38 @@ export function checkSubagentAllowlist(root: string): Check[] {
  * why the real selector rather than a size sum: pinning, staleness, validity windows and the mode all bind before
  * the budget does. Re-deriving the arithmetic here would be a second answer that drifts from the first.
  */
+/**
+ * Which keys this project restates instead of deciding.
+ *
+ * hazard: the layers are `DEFAULTS < user < project`, and `init` writes the whole default policy when there is no
+ * config yet while the wizard writes every knob it collected. So a project config typically names dozens of values
+ * it did not choose — and each one shadows the machine-wide tier for ever. An operator who raises
+ * `maxCharsSession` once, on the machine, sees no change in any repository that restated the old number, and
+ * nothing said why ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ *
+ * invariant: a warning, never a failure. Restating a value is legitimate — pinning a project to a number on
+ * purpose is a real intent. What is not legitimate is not knowing.
+ */
+export function checkShadowedPolicy(root: string): Check[] {
+  const project = coreFacade.capability.readProjectPolicyRaw(root);
+  if (!project) {
+    return [];
+  }
+  const shadowed = coreFacade.policy.shadowedKeys(project, coreFacade.policy.resolvedWithoutProjectTier());
+  if (shadowed.length === 0) {
+    return [];
+  }
+  const shown = shadowed.slice(0, 6).map((key) => key.path);
+  const rest = shadowed.length - shown.length;
+  return [
+    {
+      level: "warn",
+      name: "project policy restates lower tiers",
+      detail: `${plural(shadowed.length, "key")} in this project's config name the value ${shadowed.length === 1 ? "it" : "they"} would already have: ${shown.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}. Each one stops tracking ${join(runtimeHome(), "config.json")}, so a machine-wide change will not reach this repository. Delete what this project did not decide.`,
+    },
+  ];
+}
+
 export function checkLessonBudget(root: string): Check[] {
   const policy = coreFacade.policy.loadPolicy(root);
   const config = policy.intelligence.lessons;
@@ -717,6 +749,7 @@ export function checkProjectPolicy(root: string): Check[] {
     ...checkObservedRails(root),
     ...checkLessonHealth(root),
     ...checkLessonBudget(root),
+    ...checkShadowedPolicy(root),
     ...checkSubagentAllowlist(root),
     ...checkPolicyDivergence(root),
     ...checkGateScope(root),

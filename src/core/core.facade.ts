@@ -123,12 +123,14 @@ import {
 import {
   isUnderCodePaths,
   loadPolicy,
+  resolvedWithoutProjectTier,
   resolveProjectPosture,
   resolveProjectSyncMode,
 } from "./policy/policy.loader.ts";
 import { operatorBootstrapLines } from "./policy/policy.operator.ts";
 import { isOperatorMode, OPERATOR_MODES } from "./policy/policy.posture.ts";
 import { activeRails } from "./policy/policy.rails.ts";
+import { shadowedKeys } from "./policy/policy.shadow.ts";
 import { forProvider } from "./policy/policy.types.ts";
 import { checkCollision, heartbeat, register, release, sweepStale } from "./presence/presence.service.ts";
 import { freshness, freshnessMessage, mayReplace, shouldRefetch } from "./pricing/pricing.freshness.ts";
@@ -397,6 +399,8 @@ export const coreFacade = {
     activeRails,
     operatorBootstrapLines,
     loadPolicy,
+    resolvedWithoutProjectTier,
+    shadowedKeys,
     resolveProjectPosture,
     resolveProjectSyncMode,
     OPERATOR_MODES,

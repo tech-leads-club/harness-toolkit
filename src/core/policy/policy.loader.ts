@@ -112,6 +112,17 @@ export function loadPolicy(root: string): Policy {
   return merged;
 }
 
+/**
+ * The policy as it would be with this project's config absent — `DEFAULTS` merged with the user tier.
+ *
+ * why here: the merge lives in this module, and asking "what would this resolve to without the project file" with
+ * a second copy of the merge is how the two answers drift ([/decisions/ad-100.md](/decisions/ad-100.md)).
+ */
+export function resolvedWithoutProjectTier(): Record<string, unknown> {
+  const fromUser = readJsonFile<PartialPolicy>(join(runtimeHome(), "config.json")) ?? {};
+  return deepMerge(DEFAULTS, fromUser) as unknown as Record<string, unknown>;
+}
+
 export function isUnderCodePaths(relativePath: string, codePaths: string[]): boolean {
   const normalized = relativePath.replace(/\\/g, "/");
   return codePaths.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`));

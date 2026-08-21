@@ -8,6 +8,23 @@ timestamp: "2026-07-29"
 
 # Concepts
 
+## where a setting lives
+
+Three layers, and the nearer one wins: the shipped defaults, then the runtime home's own config for this machine,
+then the project's config. The machine tier is operator-owned — `install` and `update` never write it — so a
+preference that is true everywhere belongs there and is written once.
+
+The catch is that naming a value in the project file stops it tracking the machine tier, for ever. `init` writes
+the whole default policy when a project has no config yet, and the wizard writes every knob it collected, so a
+project config usually names dozens of values nobody chose. Raise a machine-wide number afterwards and none of
+those repositories see it.
+
+`tlc harness doctor` names the keys this project restates rather than decides, with the file they stopped
+tracking. Deleting them is safe: the value does not change, it goes back to being inherited.
+
+Both tiers are refused to an agent, on the write-tool path and through a shell redirect
+([/decisions/ad-022.md](/decisions/ad-022.md)).
+
 ## operator posture
 
 `mode`, or `tlc harness mode <paired|solo|focus>`. It sets how much the agent surfaces and what earns an
