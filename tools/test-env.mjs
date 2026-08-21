@@ -39,3 +39,14 @@ for (const name of RUNTIME_SCOPED_ENV) {
   delete process.env[name];
 }
 process.env.TLC_INSTALL_DEST = mkdtempSync(join(tmpdir(), "tlc-test-dest-"));
+
+/**
+ * hazard: `wireRuntime` links the `tlc` command into `TLC_BIN_DIR`, default `~/.local/bin`. The suite calls it with
+ * a temp runtime, so a test wrote a launcher into the operator's real bin directory pointing at a temp directory
+ * that the same test then deleted — `tlc` on a live machine became a dangling link to `/tmp`. Found on the machine
+ * it happened to ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ *
+ * invariant: redirected, not deleted. A test that wants a bin directory sets one; a test that forgets gets a
+ * throwaway rather than a person's `PATH`.
+ */
+process.env.TLC_BIN_DIR = mkdtempSync(join(tmpdir(), "tlc-test-bin-"));

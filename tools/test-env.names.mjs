@@ -18,4 +18,14 @@ export const PROJECT_SCOPED_ENV = ["CLAUDE_PROJECT_DIR", "CURSOR_PROJECT_DIR", "
  * to install from and `TLC_HOME_FROM_ENV` is what makes the installer honour `TLC_HOME` at all — so leaving them
  * set let a spawned bundle resolve the operator's real home with the real checkout as its source.
  */
-export const RUNTIME_SCOPED_ENV = ["TLC_ORIGIN", "TLC_HOME_FROM_ENV", "TLC_INSTALL_DEST"];
+export const RUNTIME_SCOPED_ENV = ["TLC_ORIGIN", "TLC_HOME_FROM_ENV"];
+
+/**
+ * The other half: variables that name a *destination*, which are redirected rather than deleted. Deleting them
+ * sends an install or a wiring step at the machine's real paths, which is the opposite of hermetic.
+ *
+ * hazard: `TLC_BIN_DIR` was put in the delete list above, and the guard test — which asserts every name there is
+ * absent — failed against a value the setup had deliberately set. Two behaviours in one list is how that happens,
+ * so they are two lists ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+export const REDIRECTED_ENV = ["TLC_INSTALL_DEST", "TLC_BIN_DIR"];

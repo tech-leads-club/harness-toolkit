@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { buildTestSteps, TEST_ENV_IMPORT } from "../../bin/tlc-cli.ts";
-import { PROJECT_SCOPED_ENV, RUNTIME_SCOPED_ENV } from "../test-env.names.mjs";
+import { PROJECT_SCOPED_ENV, REDIRECTED_ENV, RUNTIME_SCOPED_ENV } from "../test-env.names.mjs";
 
 // invariant: the names come from test-env.names.mjs, which has no side effect. Importing test-env.mjs here
 // would run its delete loop, so the guard would clean the environment it is asserting about and could never
@@ -117,9 +117,6 @@ test("the setup module removes each variable in a process that has them", () => 
  */
 test("no variable naming a runtime copy reaches a test", () => {
   for (const name of RUNTIME_SCOPED_ENV) {
-    if (name === "TLC_INSTALL_DEST") {
-      continue;
-    }
     assert.equal(
       process.env[name],
       undefined,
@@ -132,11 +129,14 @@ test("no variable naming a runtime copy reaches a test", () => {
  * invariant: and the destination is redirected rather than deleted, for the same reason `TLC_HOME` is. Deleting it
  * sends an install that a test spawns at the conventional home, which is the machine's.
  */
-test("a spawned install cannot reach the conventional runtime home", () => {
-  const dest = process.env.TLC_INSTALL_DEST;
+test("every destination variable is redirected somewhere throwaway", () => {
+  const real = [join(homedir(), ".tlc", "harness"), join(homedir(), ".local", "bin")];
 
-  assert.ok(dest, "the suite must run with a throwaway install destination");
-  assert.notEqual(dest, join(homedir(), ".tlc", "harness"));
+  for (const name of REDIRECTED_ENV) {
+    const value = process.env[name];
+    assert.ok(value, `${name} must be set to a throwaway path, not deleted`);
+    assert.ok(!real.includes(value), `${name} points at a real path on this machine: ${value}`);
+  }
 });
 
 // why a child: the two assertions above read ambient state, so they would pass with the module inert in a shell
@@ -159,3 +159,10 @@ test("the setup module scrubs a runtime-scoped variable that is already set", ()
 
   assert.deepEqual(JSON.parse(result.stdout.trim()), [null, null], result.stderr);
 });
+
+/**
+ * hazard: `wireRuntime` links `tlc` into `TLC_BIN_DIR`, default `~/.local/bin`. The suite calls it with a temp
+ * runtime, so a test wrote a launcher into the operator's real bin directory pointing at a temp directory the same
+ * test then removed — the live `tlc` became a dangling link into `/tmp`
+ * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
