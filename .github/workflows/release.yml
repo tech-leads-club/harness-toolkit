@@ -248,6 +248,16 @@ jobs:
         env:
           TLC_HOME: ${{ github.workspace }}
 
+      # invariant: the last thing before the irreversible step, and it validates the *artefact* rather than the tree.
+      # Three install defects reached operators through that gap — 0.3.0 installed nothing, 0.3.2 shipped bundles
+      # where every entry answered as the CLI, and 0.4.0 left `tlc` off `PATH`. Each was found by a person on their
+      # own machine, after publish ([/decisions/ad-102.md](/decisions/ad-102.md)).
+      #
+      # why here and not in the gate: it resolves dependencies from the network and installs globally in a container,
+      # which does not belong in the loop a contributor runs on every change.
+      - name: Verify the packed artefact in a clean room
+        run: node tools/dev/verify-package.mjs
+
       # Trusted publishing needs npm >= 11.5.1, which is newer than the npm bundled with Node 24.
       #
       # invariant: an exact version, for the same reason Bun is pinned above — `npm@latest` in the job that mints
