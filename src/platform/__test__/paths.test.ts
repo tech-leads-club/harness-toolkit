@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { afterEach, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
@@ -133,7 +133,12 @@ describe("machineHome", () => {
  * instead: `git` for `.git`, npm and cargo for their manifests ([/decisions/ad-101.md](/decisions/ad-101.md)).
  */
 describe("findProjectRoot", () => {
-  const project = join("/repo");
+  /**
+   * hazard: this was `join("/repo")`, which on Windows is `\repo` — and `findProjectRoot` resolves its input, so
+   * the drive letter got prefixed and the predicate never matched. Windows CI caught it; the function was right and
+   * the fixture was not absolute on every platform ([/decisions/ad-101.md](/decisions/ad-101.md)).
+   */
+  const project = resolve(join(tmpdir(), "tlc-find-root-fixture"));
   const harness = join(project, ".tlc", "harness");
   const has = (path: string): boolean => path === harness;
 
@@ -147,7 +152,7 @@ describe("findProjectRoot", () => {
 
   /** invariant: null rather than an ancestor's project, so a first `init` lands where the operator is standing. */
   test("nothing above is a project, so nothing is claimed", () => {
-    assert.equal(findProjectRoot("/somewhere/else", has), null);
+    assert.equal(findProjectRoot(resolve(join(tmpdir(), "somewhere-else")), has), null);
   });
 
   test("the walk stops at the filesystem root instead of looping", () => {
