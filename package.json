@@ -1,6 +1,6 @@
 {
   "name": "@tech-leads-club/harness-toolkit",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "type": "module",
   "description": "Multi-provider agent steering: gates, follow-up, handoff, policy",
   "keywords": [
