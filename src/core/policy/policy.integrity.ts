@@ -4,10 +4,10 @@ import { join } from "node:path";
 import type { Decision } from "../../contracts/decision.ts";
 import {
   flagsDir,
+  machineConfigPath,
   policyBaselineDir,
   projectConfigPath,
   projectStateDir,
-  runtimeHome,
 } from "../../platform/paths.ts";
 import { sanitizeSegment } from "../../platform/sanitize.ts";
 
@@ -39,7 +39,7 @@ function hashOf(path: string): string {
 export function policySourceFingerprint(root: string): PolicySource[] {
   const paths = [
     projectConfigPath(root),
-    join(runtimeHome(), "config.json"),
+    machineConfigPath(),
     join(projectStateDir(root), MODE_FILE),
     ...FLAG_FILES.map((flag) => join(flagsDir(root), flag)),
   ];

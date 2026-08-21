@@ -13,7 +13,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { runtimeHome } from "./paths.ts";
+import { machineHome } from "./paths.ts";
 
 export type VendorPool = "cursor_models" | "anthropic_models" | "other_models" | "auto" | "unknown";
 export type NeutralPool = "provider_native" | "other" | "auto" | "unknown";
@@ -163,7 +163,7 @@ function fuzzyFind(table: PriceTable, needle: string): { key: string; entry: Mod
 
 /** The catalogue the refresh writes. Not versioned, not packaged, per machine. */
 export function cataloguePath(): string {
-  return join(runtimeHome(), "model-prices.json");
+  return join(machineHome(), "model-prices.json");
 }
 
 /**
@@ -174,7 +174,7 @@ export function cataloguePath(): string {
  * refresh would replace. The refresh moves such a file here rather than overwriting it.
  */
 export function overridesPath(): string {
-  return join(runtimeHome(), "model-prices.local.json");
+  return join(machineHome(), "model-prices.local.json");
 }
 
 export type PriceResolution = {

@@ -6,8 +6,11 @@ import { afterEach, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   bootDir,
+  conventionalRuntimeHome,
   flagsDir,
   loopsDir,
+  machineConfigPath,
+  machineHome,
   presenceDir,
   projectConfigPath,
   projectStateDir,
@@ -81,4 +84,42 @@ describe("project paths", () => {
 test("source file contains zero occurrences of process.env.HOME", () => {
   const source = readFileSync(fileURLToPath(new URL("../paths.ts", import.meta.url)), "utf8");
   assert.equal(/process\.env\.HOME\b/.test(source), false);
+});
+
+/**
+ * The machine tier — user-tier config, the global lesson tier, global rules, prices, the cross-repo spool — used to
+ * resolve through `runtimeHome()`, which names where the *code* lives and moves with the install. Two installs on
+ * one machine meant two "global" tiers, and switching between them read as data loss
+ * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+describe("machineHome", () => {
+  test("the launcher's own resolution never invents a second machine", () => {
+    const derived = { TLC_HOME: "/somewhere/a-checkout", TLC_HOME_FROM_ENV: "0" };
+
+    assert.equal(machineHome(derived), conventionalRuntimeHome());
+    assert.equal(runtimeHome(derived), "/somewhere/a-checkout", "the code still comes from the checkout");
+  });
+
+  test("an operator who chose a home gets it", () => {
+    const chosen = { TLC_HOME: "/somewhere/chosen", TLC_HOME_FROM_ENV: "1" };
+
+    assert.equal(machineHome(chosen), "/somewhere/chosen");
+  });
+
+  /** invariant: the suite pins `TLC_HOME` without the marker, and must keep its own home rather than the real one. */
+  test("TLC_HOME with no marker is honoured, so a test stays hermetic", () => {
+    assert.equal(machineHome({ TLC_HOME: "/tmp/hermetic" }), "/tmp/hermetic");
+  });
+
+  test("nothing set at all is the conventional home", () => {
+    assert.equal(machineHome({}), conventionalRuntimeHome());
+  });
+
+  /** AC — the user-tier config is a machine path, so it follows the same rule. */
+  test("the machine config path follows the machine, not the install", () => {
+    assert.equal(
+      machineConfigPath({ TLC_HOME: "/somewhere/a-checkout", TLC_HOME_FROM_ENV: "0" }),
+      join(conventionalRuntimeHome(), "config.json"),
+    );
+  });
 });

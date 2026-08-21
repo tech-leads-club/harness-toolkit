@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
-import { isLink, LINK_TYPE, linkDir, seedConfig } from "../links.ts";
+import { isLink, LINK_TYPE, linkDir, linkFile, seedConfig } from "../links.ts";
 
 const dirs: string[] = [];
 
@@ -109,4 +109,73 @@ test("AC7 no example means nothing is seeded, and no throw", () => {
   assert.doesNotThrow(() => seedConfig(dest));
   assert.equal(seedConfig(dest).seeded, false);
   assert.equal(existsSync(join(dest, "config.json")), false);
+});
+
+/**
+ * The `tlc` command on `PATH`. Install never created it, `uninstall` removed it, `doctor` failed without it and the
+ * README claimed install added it — three halves of a thing that did not exist
+ * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+test("linkFile points a file target at a source", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tlc-linkfile-"));
+  dirs.push(dir);
+  const source = join(dir, "tlc");
+  writeFileSync(source, "#!/usr/bin/env bash\n", "utf8");
+
+  const outcome = linkFile(source, join(dir, "bin", "tlc"));
+
+  assert.equal(outcome.kind, "linked");
+  assert.equal(isLink(join(dir, "bin", "tlc")), true);
+  assert.equal(readFileSync(join(dir, "bin", "tlc"), "utf8"), "#!/usr/bin/env bash\n");
+});
+
+test("linkFile replaces an existing link rather than refusing", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tlc-linkfile-"));
+  dirs.push(dir);
+  writeFileSync(join(dir, "old"), "old", "utf8");
+  writeFileSync(join(dir, "new"), "new", "utf8");
+  linkFile(join(dir, "old"), join(dir, "tlc"));
+
+  const outcome = linkFile(join(dir, "new"), join(dir, "tlc"));
+
+  assert.equal(outcome.kind, "relinked");
+  assert.equal(readFileSync(join(dir, "tlc"), "utf8"), "new");
+});
+
+/** invariant: the same contract as `linkDir`. A real file called `tlc` in someone's bin directory is theirs. */
+test("linkFile refuses a target that is a real file", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tlc-linkfile-"));
+  dirs.push(dir);
+  writeFileSync(join(dir, "source"), "s", "utf8");
+  writeFileSync(join(dir, "tlc"), "somebody else's", "utf8");
+
+  const outcome = linkFile(join(dir, "source"), join(dir, "tlc"));
+
+  assert.equal(outcome.kind, "refused");
+  assert.match(outcome.kind === "refused" ? outcome.reason : "", /exists and is not a link/);
+  assert.equal(readFileSync(join(dir, "tlc"), "utf8"), "somebody else's", "and left it alone");
+});
+
+/**
+ * invariant: never fatal. A convenience link is not worth failing an install that otherwise worked, and on a
+ * platform that refuses to create one the reason has to reach the operator instead of a stack trace.
+ */
+test("linkFile reports a platform refusal instead of throwing", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tlc-linkfile-"));
+  dirs.push(dir);
+  writeFileSync(join(dir, "source"), "s", "utf8");
+  writeFileSync(join(dir, "blocker"), "not a directory", "utf8");
+
+  const outcome = linkFile(join(dir, "source"), join(dir, "blocker", "tlc"));
+
+  assert.equal(outcome.kind, "refused");
+});
+
+// why `LINK_TYPE` is not passed: it is `"junction"`, which Windows reads and which only means anything for a
+// directory. A file symlink takes no type on any platform.
+test("linkFile does not use the directory link type", () => {
+  const source = readFileSync(new URL("../links.ts", import.meta.url), "utf8");
+  const body = source.slice(source.indexOf("export function linkFile"));
+
+  assert.doesNotMatch(body.slice(0, body.indexOf("\n}")), /LINK_TYPE/);
 });

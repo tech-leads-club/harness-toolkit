@@ -13,7 +13,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { appendRecord, readTail } from "../../platform/fs-jsonl.ts";
-import { projectStateDir, runtimeHome } from "../../platform/paths.ts";
+import { machineHome, projectStateDir } from "../../platform/paths.ts";
 import type { RuleSource } from "./rules.parse.ts";
 import type { Observation } from "./rules.proof.ts";
 import type { RuleTier } from "./rules.types.ts";
@@ -35,7 +35,7 @@ export function projectRulesDir(root: string): string {
 
 /** This machine's rules, every repository — the tier that follows the operator across products. */
 export function globalRulesDir(): string {
-  return join(runtimeHome(), "rules");
+  return join(machineHome(), "rules");
 }
 
 function readDir(dir: string, tier: RuleTier): RuleSource[] {

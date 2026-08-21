@@ -49,6 +49,38 @@ export function linkDir(source: string, target: string): LinkOutcome {
 }
 
 /**
+ * Point a *file* `target` at `source`, for the `tlc` command on `PATH`.
+ *
+ * why not `linkDir`: its link type is `"junction"`, which Windows reads and which only means anything for a
+ * directory. A file gets no type argument, which is correct on every platform — and where a platform refuses to
+ * create one, the reason is reported rather than thrown, because a missing convenience link must not fail an
+ * install that otherwise worked ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ *
+ * invariant: the same contract as `linkDir` — an existing link is replaced, anything else is refused. A real file
+ * called `tlc` in someone's bin directory is theirs.
+ */
+export function linkFile(source: string, target: string): LinkOutcome {
+  let replaced = false;
+  if (isLink(target)) {
+    rmSync(target, { force: true });
+    replaced = true;
+  } else if (existsSync(target)) {
+    return {
+      kind: "refused",
+      target,
+      reason: `${target} exists and is not a link — move it aside and re-run`,
+    };
+  }
+  try {
+    mkdirSync(dirname(target), { recursive: true });
+    symlinkSync(source, target);
+  } catch (error) {
+    return { kind: "refused", target, reason: (error as Error).message };
+  }
+  return { kind: replaced ? "relinked" : "linked", target, source };
+}
+
+/**
  * why lstat: a link whose destination is gone is still a link, and `existsSync` says it is not there — so the
  * check has to come first, or a dangling link reads as free space. Node reports a Windows junction as a symbolic
  * link, so one call covers both kinds.

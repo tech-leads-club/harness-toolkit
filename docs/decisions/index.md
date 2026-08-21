@@ -108,6 +108,7 @@ Handoff section and a link back to this index.
 | [AD-098](/decisions/ad-098.md) | Code splitting cut dist/ ninefold and broke three commands, so it is reverted until no library module self-executes | active |
 | [AD-099](/decisions/ad-099.md) | Reading a file claimed it, so a review agent locked the operator out of writing | active |
 | [AD-100](/decisions/ad-100.md) | The operator declares the trigger and the proof; the harness enforces it | active |
+| [AD-101](/decisions/ad-101.md) | Machine data belongs to the machine, not to the install | active |
 
 ## Archived
 

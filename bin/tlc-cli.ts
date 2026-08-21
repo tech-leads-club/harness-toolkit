@@ -12,9 +12,11 @@ import {
 import { delimiter, join } from "node:path";
 import { coreFacade } from "../src/core/index.ts";
 import { emitJson, JSON_FLAG, takeJsonFlag, unknownFlags } from "../src/platform/cli-output.ts";
-import { linkDir, seedConfig } from "../src/platform/links.ts";
+import { linkDir, linkFile, seedConfig } from "../src/platform/links.ts";
 import {
   flagsDir,
+  isOnPath,
+  launcherBinDir,
   projectConfigPath,
   projectStateDir,
   providerConfigDirs,
@@ -977,6 +979,41 @@ export function npmRootFailureMessage(home: string): string {
  *
  * invariant: one function, no platform branch, and the launcher on PATH is npm's business.
  */
+/**
+ * The `tlc` command on `PATH`.
+ *
+ * hazard: install never created this. `uninstall` removed it, `doctor` failed without it, and the README claimed
+ * install added it — three halves of a thing that did not exist. The command came from npm's own shim instead,
+ * which lives in the `bin` directory of whichever Node version npm ran under and leaves `PATH` the moment a
+ * version manager switches. Measured on an operator's machine: a successful install followed immediately by
+ * `tlc: command not found` ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ *
+ * invariant: never fatal. A link is a convenience — npm's shim is still there — so a refusal is reported and the
+ * install continues.
+ *
+ * why the `PATH` check is separate from the link: a link nobody can reach is worse than none, because `doctor`
+ * then reports it healthy while the command still does not exist.
+ */
+export function launcherLines(dest: string): string[] {
+  const dir = launcherBinDir();
+  const source = join(dest, "bin", "tlc");
+  // hazard: `symlinkSync` happily creates a link to a path that is not there, and `existsSync` on a dangling link
+  // is false — so a broken launcher would report as linked and `doctor` would say no `tlc` on PATH with a healthy
+  // install beside it. Found by the test for this function ([/decisions/ad-101.md](/decisions/ad-101.md)).
+  if (!existsSync(source)) {
+    return [`tlc not linked — ${source} is missing from the runtime`];
+  }
+  const outcome = linkFile(source, join(dir, "tlc"));
+  if (outcome.kind === "refused") {
+    return [`tlc not linked — ${outcome.reason}`];
+  }
+  const lines = [`tlc → ${outcome.target}`];
+  if (!isOnPath(dir)) {
+    lines.push(`${dir} is not on PATH — add it, or use the shim npm installed`);
+  }
+  return lines;
+}
+
 export function wireRuntime(dest: string, home: string): { lines: string[]; missingSkill: boolean } {
   const lines: string[] = [];
   const seeded = seedConfig(dest);
@@ -998,6 +1035,8 @@ export function wireRuntime(dest: string, home: string): { lines: string[]; miss
       outcome.kind === "refused" ? `skill not linked — ${outcome.reason}` : `skill → ${outcome.target}`,
     );
   }
+
+  lines.push(...launcherLines(dest));
 
   const hooks = spawnSync(process.execPath, [join(dest, "bin", "write-user-hooks.mjs")], {
     stdio: "inherit",

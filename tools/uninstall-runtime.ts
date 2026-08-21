@@ -12,7 +12,13 @@ import {
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { NPM_MARKER, NPM_PACKAGE } from "../bin/tlc-cli.ts";
-import { claudeConfigDir, cursorConfigDir, runtimeHome } from "../src/platform/paths.ts";
+import {
+  claudeConfigDir,
+  cursorConfigDir,
+  launcherBinDir,
+  launcherNames,
+  runtimeHome,
+} from "../src/platform/paths.ts";
 import { type Row, render, type Screen } from "../src/platform/screen.ts";
 import { createStyle, PLAIN, type Style } from "../src/platform/style.ts";
 import { removeClaudeWiring, unmergeClaudeSettings } from "../src/providers/claude/claude.wiring.ts";
@@ -57,10 +63,12 @@ export type UninstallTargets = {
  */
 export function uninstallTargets(env: NodeJS.ProcessEnv = process.env): UninstallTargets {
   const userHome = homedir();
-  const binDir = env.TLC_BIN_DIR?.trim() || join(userHome, ".local", "bin");
+  // invariant: the same definition install links into, so what one creates the other removes
+  // ([/decisions/ad-101.md](/decisions/ad-101.md)).
+  const binDir = launcherBinDir(env);
   return {
     home: runtimeHome(env),
-    binLinks: [join(binDir, "tlc"), join(binDir, "tlc.cmd")],
+    binLinks: launcherNames().map((name) => join(binDir, name)),
     claudeSettings: join(claudeConfigDir(), "settings.json"),
     cursorHooks: join(cursorConfigDir(), "hooks.json"),
     skillLinks: [

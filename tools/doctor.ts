@@ -2,13 +2,14 @@ import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { homedir, platform as osPlatform } from "node:os";
 import { basename, delimiter, dirname, join } from "node:path";
-import { NPM_PACKAGE, runtimePathKind } from "../bin/tlc-cli.ts";
+import { runtimePathKind } from "../bin/tlc-cli.ts";
 import { findBunOnPath, writeRuntimeCache } from "../bin/tlc-exec.mjs";
 import { isCursorWired } from "../bin/write-user-hooks.mjs";
 import type { ProviderWiring } from "../src/contracts/index.ts";
 import { coreFacade } from "../src/core/index.ts";
 import { emitJson, takeJsonFlag } from "../src/platform/cli-output.ts";
 import {
+  launcherBinDir,
   projectConfigPath,
   projectStateDir,
   providerConfigDirs,
@@ -325,7 +326,12 @@ export function checkRuntimePaths(home: string, platform: NodeJS.Platform): Chec
     {
       level: onPath === null ? "fail" : "ok",
       name: "CLI on PATH",
-      detail: onPath ?? `no \`tlc\` on PATH — npm i -g ${NPM_PACKAGE}, or \`npm link\` from a clone`,
+      // hazard: this said "npm i -g <package>" — advice an operator who had just done exactly that could not act
+      // on. npm's shim lives in the bin directory of whichever Node version npm ran under, and leaves PATH the
+      // moment a version manager switches ([/decisions/ad-101.md](/decisions/ad-101.md)).
+      detail:
+        onPath ??
+        `no \`tlc\` on PATH — link it: ln -s ${join(home, "bin", "tlc")} ${join(launcherBinDir(), "tlc")} (or re-run \`tlc harness install\`, which does it)`,
     },
   ];
 }

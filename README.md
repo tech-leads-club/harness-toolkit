@@ -276,14 +276,49 @@ each provider it finds, because a provider only reads its own.
 
 1. Materialises the runtime at `~/.tlc/harness` from the installed package
 2. Creates `config.json` from `config.example.json` when missing
-3. Adds `tlc` to `~/.local/bin`
-4. Links the init skill into each detected provider's `skills/harness-init`
-5. Wires user-level hooks for every provider it detects installed, in that provider's resolved config
+3. Links the init skill into each detected provider's `skills/harness-init`
+4. Wires user-level hooks for every provider it detects installed, in that provider's resolved config
    directory
+
+The `tlc` command itself comes from npm, not from this step: `npm i -g` generates the shim for the platform it
+runs on, and `npm link` does the same from a clone. If `tlc` is not found after installing, the shim is in the
+`bin` directory of the Node version npm installed under — which is not on `PATH` when a version manager later
+switches versions. A link solves it for good:
+
+```bash
+ln -s ~/.tlc/harness/bin/tlc ~/.local/bin/tlc
+```
 
 Update with `tlc harness update`, which bumps the package and re-materialises the runtime.
 
 Overrides: `TLC_HOME`, `TLC_REPO_URL`, `TLC_BIN_DIR`.
+
+### Running a development copy
+
+The runtime that answers a hook is whichever one `TLC_HOME` names, and it wins over the location of the launcher
+that was invoked. So a checkout can be exercised without touching the machine's install:
+
+```bash
+# one command against the checkout
+TLC_HOME=/path/to/clone tlc harness doctor
+
+# a whole editor session on the checkout — everything else on the machine stays on the installed copy
+export TLC_HOME=/path/to/clone
+cursor .
+```
+
+Two things worth knowing before doing that:
+
+- **A checkout serves its hooks from source.** With Bun present the launcher runs `src/` directly, so a file saved
+  half-edited is live on the next hook — in that session only. Nothing needs building first, and nothing protects
+  you from a syntax error either.
+- **Do not install a clone with `--link` as the machine's runtime** unless you accept that your working tree *is*
+  what every session on the machine runs. That is the contributor route, and it is why `doctor` reports it
+  distinctly (`runtime ownership — link to a working clone`).
+
+Neither of those applies to the ordinary route: `tlc harness test` runs the whole gate hermetically, and the
+entrypoints can be driven with real hook payloads from a scratch directory, so most work needs no live session at
+all.
 
 Provider config directories are resolved, not assumed: `CLAUDE_CONFIG_DIR` and `CURSOR_CONFIG_DIR` are
 honoured when set, so a relocated config is wired correctly. `tlc harness doctor` prints the resolved

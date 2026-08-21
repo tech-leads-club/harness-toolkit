@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 
 function harnessDir(root: string): string {
   return join(root, ".tlc", "harness");
@@ -22,15 +22,38 @@ export function runtimeHome(env: NodeJS.ProcessEnv = process.env): string {
 
 /**
  * invariant: `tlc-exec` always sets `TLC_HOME` in the child, so the child cannot tell an operator's choice from
- * the launcher's own resolution. This flag is that difference, and only the installer needs it — everything else
- * wants the resolved home either way.
+ * the launcher's own resolution. This flag is that difference.
  */
 export function runtimeHomeWasChosen(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.TLC_HOME_FROM_ENV === "1";
 }
 
+/**
+ * Where this **machine's** operator data lives: the user-tier config, the global lesson tier, the global rules,
+ * the price catalogue, the cross-repo spool.
+ *
+ * hazard: all of that used to resolve through `runtimeHome()`, which names where the *code* lives and moves with
+ * the install. With two installs on one machine there were two "global" tiers, silently — and switching between
+ * them looked like data loss. Measured on an operator's machine: a lesson saved with `--global` landed in a
+ * checkout's state directory while the CLI printed "every product on this machine will read it", and a user-tier
+ * config with a subagent allowlist stopped being read the moment the runtime home changed
+ * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ *
+ * why the flag rather than always the conventional path: an operator who exports `TLC_HOME` is choosing a home and
+ * means it, and the test suite pins one for hermeticity. Only the launcher's own resolution — which marks itself
+ * `TLC_HOME_FROM_ENV=0` — must not be allowed to invent a second machine.
+ */
+export function machineHome(env: NodeJS.ProcessEnv = process.env): string {
+  return env.TLC_HOME_FROM_ENV === "0" ? conventionalRuntimeHome() : runtimeHome(env);
+}
+
+/** invariant: the one path install seeds and update never writes ([/decisions/ad-056.md](/decisions/ad-056.md)). */
+export function machineConfigPath(env: NodeJS.ProcessEnv = process.env): string {
+  return join(machineHome(env), "config.json");
+}
+
 export function runtimeStateDir(): string {
-  return join(runtimeHome(), "state");
+  return join(machineHome(), "state");
 }
 
 // why: one file for every repository on the machine. Per-repo state stays authoritative; this is the
@@ -104,4 +127,35 @@ export function userSettingsPaths(): string[] {
  */
 export function providerConfigDirs(): string[] {
   return [cursorConfigDir(), claudeConfigDir()];
+}
+
+/**
+ * Where the `tlc` command goes so a shell can find it.
+ *
+ * hazard: this lived only in `uninstall-runtime.ts`, which removed a launcher `install` never created. The command
+ * came from npm's own shim instead — and that shim sits in the `bin` directory of whichever Node version npm ran
+ * under, which leaves `PATH` the moment a version manager switches. Measured on an operator's machine: a
+ * successful install followed immediately by `tlc: command not found`
+ * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ *
+ * invariant: one definition, so what install creates and what uninstall removes cannot drift apart.
+ */
+export function launcherBinDir(env: NodeJS.ProcessEnv = process.env): string {
+  return env.TLC_BIN_DIR?.trim() || join(homedir(), ".local", "bin");
+}
+
+/** why the extensionless wrapper: it is what a shell runs. The `.cmd` beside it is Windows's copy of the same. */
+export function launcherNames(): readonly string[] {
+  return ["tlc", "tlc.cmd"];
+}
+
+/**
+ * Whether a shell would find something in this directory.
+ *
+ * why it matters at install time: a launcher nobody can reach is worse than none, because `doctor` then reports a
+ * healthy link while the command still does not exist.
+ */
+export function isOnPath(dir: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  const entries = (env.PATH ?? "").split(delimiter).filter((entry) => entry.length > 0);
+  return entries.some((entry) => resolve(entry) === resolve(dir));
 }

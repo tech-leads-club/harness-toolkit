@@ -2,9 +2,9 @@ import { homedir, tmpdir } from "node:os";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 import {
   flagsDir,
+  machineConfigPath,
   projectConfigPath,
   projectStateDir,
-  runtimeHome,
   runtimeStateDir,
 } from "../../platform/paths.ts";
 import { normalizeSeparators } from "../../platform/sanitize.ts";
@@ -37,7 +37,7 @@ export function isScratch(target: string, tmp = tmpdir()): boolean {
 // `echo '{}' > ~/.tlc/harness/config.json` allowed, which is the same defect one directory up.
 export function isRuntimePolicySurface(filePath: string): boolean {
   const target = resolve(filePath);
-  return target === resolve(runtimeHome(), "config.json") || isInside(runtimeStateDir(), target);
+  return target === resolve(machineConfigPath()) || isInside(runtimeStateDir(), target);
 }
 
 // invariant: the policy surface is defined here, next to the floor's other path predicates, because the

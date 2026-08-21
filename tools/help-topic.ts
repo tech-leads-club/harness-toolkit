@@ -29,6 +29,10 @@ const TOPICS: Record<string, Topic> = {
   lesson: { file: "lessons.md" },
   rules: { file: "concepts.md", section: "## operator rules" },
   rule: { file: "concepts.md", section: "## operator rules" },
+  runtime: { file: "concepts.md", section: "## which runtime answers a hook" },
+  dev: { file: "concepts.md", section: "## which runtime answers a hook" },
+  settings: { file: "concepts.md", section: "## where a setting lives" },
+  config: { file: "concepts.md", section: "## where a setting lives" },
 };
 
 function printIndex(): void {
@@ -39,6 +43,8 @@ TOPICS
   tlc harness help concepts
   tlc harness help lessons
   tlc harness help rules
+  tlc harness help settings
+  tlc harness help runtime
   tlc harness help measure
   tlc harness help prices
   tlc harness help diagnose

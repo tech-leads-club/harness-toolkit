@@ -14,7 +14,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { NPM_MARKER } from "../../bin/tlc-cli.ts";
+import { launcherLines, NPM_MARKER } from "../../bin/tlc-cli.ts";
+import { isLink } from "../../src/platform/links.ts";
 import {
   installDest,
   installReportText,
@@ -25,6 +26,7 @@ import {
   originRoot,
   RUNTIME_PAYLOAD,
 } from "../install-runtime.ts";
+import { uninstallTargets } from "../uninstall-runtime.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -42,6 +44,9 @@ function fakePackage(): string {
     mkdirSync(join(root, entry), { recursive: true });
     writeFileSync(join(root, entry, "marker.txt"), entry, "utf8");
   }
+  // why: the published package ships the launcher wrapper, and wiring links it. A fixture without it made the
+  // link dangle, which is how the missing-source guard was found.
+  writeFileSync(join(root, "bin", "tlc"), "#!/usr/bin/env bash\n", "utf8");
   return root;
 }
 
@@ -353,4 +358,111 @@ test("AC install wires the providers, not only the runtime directory", () => {
     "the runtime lands before it is wired",
   );
   assert.match(main, /fetchPrices\(/, "and the first price fetch stays");
+});
+
+/**
+ * hazard: install never created the `tlc` launcher. `uninstall` removed it, `doctor` failed without it, and the
+ * README said install added it — three halves of a thing that did not exist. The command came from npm's own shim,
+ * which lives in the bin directory of whichever Node version npm ran under and leaves `PATH` the moment a version
+ * manager switches. Measured on an operator's machine: a successful install, then `tlc: command not found`
+ * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+test("wiring links the tlc launcher into the bin directory and names it", () => {
+  const dest = fakePackage();
+  const bin = tempDir("bin-");
+  const previous = process.env.TLC_BIN_DIR;
+  process.env.TLC_BIN_DIR = bin;
+  try {
+    const lines = launcherLines(dest);
+
+    assert.equal(existsSync(join(bin, "tlc")), true);
+    assert.ok(
+      lines.some((line) => line.includes(join(bin, "tlc"))),
+      lines.join(" | "),
+    );
+  } finally {
+    if (previous === undefined) {
+      delete process.env.TLC_BIN_DIR;
+    } else {
+      process.env.TLC_BIN_DIR = previous;
+    }
+    rmSync(dest, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
+
+/**
+ * invariant: a link nobody can reach is worse than none, because `doctor` then reports it healthy while the command
+ * still does not exist.
+ */
+test("a bin directory that is not on PATH is said so", () => {
+  const dest = fakePackage();
+  const bin = tempDir("offpath-");
+  const previous = process.env.TLC_BIN_DIR;
+  process.env.TLC_BIN_DIR = bin;
+  try {
+    assert.ok(
+      launcherLines(dest).some((line) => line.includes("not on PATH")),
+      "the operator has to be told",
+    );
+  } finally {
+    if (previous === undefined) {
+      delete process.env.TLC_BIN_DIR;
+    } else {
+      process.env.TLC_BIN_DIR = previous;
+    }
+    rmSync(dest, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
+
+/** AC — install links what uninstall removes. One definition, so the two halves cannot drift apart. */
+test("the path install links is the path uninstall removes", () => {
+  const bin = tempDir("agree-");
+  try {
+    assert.ok(
+      uninstallTargets({ TLC_BIN_DIR: bin }).binLinks.includes(join(bin, "tlc")),
+      "uninstall must name the launcher install creates",
+    );
+  } finally {
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
+
+/**
+ * hazard: the two tests above call `launcherLines` directly, so removing its call from `wireRuntime` left them
+ * green — a function that works and is wired to nothing, which is the exact shape this repository keeps finding.
+ * `wireRuntime` cannot be run here: it spawns the hook writer, which reads the real provider config directories,
+ * so the wiring is asserted on the source instead ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+test("wireRuntime calls the launcher step", () => {
+  const source = readFileSync(join(repoRoot, "bin", "tlc-cli.ts"), "utf8");
+  const body = source.slice(source.indexOf("export function wireRuntime"));
+
+  assert.match(body.slice(0, body.indexOf("\n}")), /launcherLines\(dest\)/);
+});
+
+/** invariant: a launcher pointing at nothing must not be created — `existsSync` on a dangling link is false. */
+test("a runtime with no launcher wrapper is reported, not linked to nothing", () => {
+  const dest = tempDir("nolauncher-");
+  const bin = tempDir("bin2-");
+  const previous = process.env.TLC_BIN_DIR;
+  process.env.TLC_BIN_DIR = bin;
+  try {
+    const lines = launcherLines(dest);
+
+    assert.ok(
+      lines.some((line) => /not linked — .*is missing from the runtime/.test(line)),
+      lines.join(" | "),
+    );
+    assert.equal(isLink(join(bin, "tlc")), false, "nothing was created");
+  } finally {
+    if (previous === undefined) {
+      delete process.env.TLC_BIN_DIR;
+    } else {
+      process.env.TLC_BIN_DIR = previous;
+    }
+    rmSync(dest, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
+  }
 });

@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { coreFacade } from "../src/core/index.ts";
-import { runtimeHome } from "../src/platform/paths.ts";
+import { machineHome } from "../src/platform/paths.ts";
 import {
   cataloguePath,
   FALLBACK_PLANE,
@@ -23,7 +23,7 @@ import {
  *
  * invariant: written where it is read. One resolution, `runtimeHome()`, used by both sides.
  */
-const HARNESS_HOME = runtimeHome();
+const HARNESS_HOME = machineHome();
 
 /**
  * The plane a provider's own rates land in. It is the provider's id, because the catalogue is keyed by who bills

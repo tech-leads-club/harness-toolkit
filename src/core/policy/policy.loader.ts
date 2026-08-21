@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { flagsDir, projectConfigPath, runtimeHome } from "../../platform/paths.ts";
+import { flagsDir, machineConfigPath, projectConfigPath } from "../../platform/paths.ts";
 import { lessonsSyncMode, resolveSyncMode, type SyncModeResolution } from "../lesson/lesson.sync.ts";
 import { DEFAULTS } from "./policy.defaults.ts";
 import { type PostureResolution, resolvePosture } from "./policy.posture.ts";
@@ -55,7 +55,7 @@ type ConfigPair = { fromUser: PartialPolicy; fromProject: PartialPolicy };
 
 function readConfigPair(root: string): ConfigPair {
   return {
-    fromUser: readJsonFile<PartialPolicy>(join(runtimeHome(), "config.json")) ?? {},
+    fromUser: readJsonFile<PartialPolicy>(machineConfigPath()) ?? {},
     fromProject: readJsonFile<PartialPolicy>(projectConfigPath(root)) ?? {},
   };
 }
@@ -89,7 +89,7 @@ export function resolveProjectSyncMode(root: string): SyncModeResolution {
   if (resolution.coercedFrom === undefined) {
     return resolution;
   }
-  const path = fromProject === undefined ? join(runtimeHome(), "config.json") : projectConfigPath(root);
+  const path = fromProject === undefined ? machineConfigPath() : projectConfigPath(root);
   return { ...resolution, coercedIn: path };
 }
 
@@ -119,7 +119,7 @@ export function loadPolicy(root: string): Policy {
  * a second copy of the merge is how the two answers drift ([/decisions/ad-100.md](/decisions/ad-100.md)).
  */
 export function resolvedWithoutProjectTier(): Record<string, unknown> {
-  const fromUser = readJsonFile<PartialPolicy>(join(runtimeHome(), "config.json")) ?? {};
+  const fromUser = readJsonFile<PartialPolicy>(machineConfigPath()) ?? {};
   return deepMerge(DEFAULTS, fromUser) as unknown as Record<string, unknown>;
 }
 

@@ -25,6 +25,28 @@ tracking. Deleting them is safe: the value does not change, it goes back to bein
 Both tiers are refused to an agent, on the write-tool path and through a shell redirect
 ([/decisions/ad-022.md](/decisions/ad-022.md)).
 
+## which runtime answers a hook
+
+`TLC_HOME` names it, and it wins over the location of the launcher that was invoked. So one session can run a
+checkout while every other session on the machine keeps the installed copy:
+
+```bash
+export TLC_HOME=/path/to/clone
+```
+
+A checkout serves its hooks from `src/` when Bun is present, so a file saved half-edited is live on the next hook
+— in that session only. That isolation is the reason to do it this way rather than installing the clone as the
+machine's runtime: `tlc harness install --link` makes a working tree the runtime for *every* session, which is the
+contributor route and why `doctor` names it distinctly (`runtime ownership — link to a working clone`).
+
+Most work needs no live session at all: `tlc harness test` runs the gate hermetically, and the entrypoints can be
+driven with real hook payloads from a scratch directory.
+
+A machine with both — an installed copy and a checkout — is fine, but only one `tlc` should be on `PATH`, or which
+runtime you get depends on which one the shell resolved. `doctor` reports the resolved runtime and its ownership on
+every run, which is where a split shows up: the skill links and the wired hooks are checked against the runtime
+that answered, so pointing at the other one reads as a fault.
+
 ## operator posture
 
 `mode`, or `tlc harness mode <paired|solo|focus>`. It sets how much the agent surfaces and what earns an
