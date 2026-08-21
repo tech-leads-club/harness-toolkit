@@ -110,6 +110,7 @@ Handoff section and a link back to this index.
 | [AD-100](/decisions/ad-100.md) | The operator declares the trigger and the proof; the harness enforces it | active |
 | [AD-101](/decisions/ad-101.md) | Machine data belongs to the machine, not to the install | active |
 | [AD-102](/decisions/ad-102.md) | A green gate is not a working product, so four checks that look where it cannot | active |
+| [AD-103](/decisions/ad-103.md) | The artefact is proven where operators install it, and an inert scope has to be telling the truth | active |
 
 ## Archived
 
