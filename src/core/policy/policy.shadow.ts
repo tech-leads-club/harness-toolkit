@@ -55,3 +55,43 @@ export function shadowedKeys(
   }
   return found;
 }
+
+/**
+ * The project config with every restatement removed.
+ *
+ * why this and not just a report: `init` wrote the whole default policy when a project had no config yet, and the
+ * wizard wrote every knob it collected — so a fresh project shadowed the machine tier in dozens of places before
+ * anyone had chosen anything. Reporting it after the fact leaves the operator to undo it by hand; not writing it
+ * is the fix ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ *
+ * invariant: pruning cannot change the effective policy. A leaf is dropped only when the tiers below already
+ * resolve to it, so the merge produces the same value with the key absent.
+ *
+ * why empty objects go too: `{ shipGate: {} }` is a block that decides nothing, and leaving it behind would make
+ * a pruned config read as though it had opinions.
+ */
+export function pruneShadowed(
+  project: Record<string, unknown>,
+  resolved: Record<string, unknown>,
+  prefix = "",
+): Record<string, unknown> {
+  const kept: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(project)) {
+    if (prefix === "" && key === "version") {
+      kept[key] = value;
+      continue;
+    }
+    const below = resolved[key];
+    if (isPlainObject(value) && isPlainObject(below)) {
+      const inner = pruneShadowed(value, below, `${prefix}${key}.`);
+      if (Object.keys(inner).length > 0) {
+        kept[key] = inner;
+      }
+      continue;
+    }
+    if (!sameValue(value, below)) {
+      kept[key] = value;
+    }
+  }
+  return kept;
+}

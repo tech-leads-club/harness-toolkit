@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { afterEach, describe, test } from "node:test";
+import { coreFacade } from "../../src/core/index.ts";
+import { DEFAULTS } from "../../src/core/policy/policy.defaults.ts";
 import {
   applyPlan,
   buildPlan,
   claudeShimEntries,
+  configLine,
   cursorShimEntries,
   detectProviders,
   GITIGNORE_STATE,
@@ -93,13 +96,81 @@ describe("launcherPath", () => {
   });
 });
 
+function writeConfig(root: string, policy: Record<string, unknown>): void {
+  mkdirSync(join(root, ".tlc", "harness"), { recursive: true });
+  writeFileSync(join(root, ".tlc", "harness", "config.json"), JSON.stringify(policy), "utf8");
+}
+
 describe("resolvePolicy", () => {
-  test("returns DEFAULTS when minimal is set, ignoring an existing config", () => {
+  /**
+   * hazard: this asserted `mode === "solo"` — the default, written into the project file. That is what the whole
+   * default policy being written looked like from a test, and every key of it shadowed the machine tier for ever.
+   * The contract now is that a project decides what it decides and inherits the rest
+   * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+   */
+  test("minimal ignores an existing config and writes nothing it did not decide", () => {
     const root = newRoot();
     mkdirSync(join(root, ".tlc", "harness"), { recursive: true });
     writeFileSync(join(root, ".tlc", "harness", "config.json"), JSON.stringify({ mode: "paired" }));
-    const policy = resolvePolicy(root, parseFlags(["--minimal"]), null) as { mode: string };
-    assert.equal(policy.mode, "solo");
+
+    const policy = resolvePolicy(root, parseFlags(["--minimal"]), null) as Record<string, unknown>;
+
+    assert.equal(policy.mode, undefined, "the default posture is inherited, not restated");
+    assert.equal(policy.version, 1, "the shape marker is always written");
+  });
+
+  /**
+   * hazard: the first version of this test ran with an empty machine tier, where the shipped defaults and the
+   * resolved tiers are the same object — so pruning `DEFAULTS` produced `{version}` and the test passed for the
+   * wrong reason. Against a machine tier that enabled things, pruning kept `comments.enabled: false` and a fresh
+   * project turned off, in that repository, what the operator had switched on for the machine
+   * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+   *
+   * invariant: a project that decided nothing says nothing, whatever the machine tier holds.
+   */
+  test("a project that decides nothing is still a valid config", () => {
+    const home = newRoot();
+    writeFileSync(
+      join(home, "config.json"),
+      JSON.stringify({ comments: { enabled: true }, intelligence: { lessons: { maxCharsSession: 50_000 } } }),
+      "utf8",
+    );
+    const previous = process.env.TLC_HOME;
+    process.env.TLC_HOME = home;
+    try {
+      const policy = resolvePolicy(newRoot(), parseFlags(["--minimal"]), null) as Record<string, unknown>;
+
+      assert.deepEqual(Object.keys(policy), ["version"]);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.TLC_HOME;
+      } else {
+        process.env.TLC_HOME = previous;
+      }
+    }
+  });
+
+  /**
+   * The invariant that makes pruning safe: dropping a restatement cannot change what the policy resolves to,
+   * because a leaf is dropped only when the tiers below already produce it.
+   */
+  test("pruning does not change the effective policy", () => {
+    const full = newRoot();
+    const pruned = newRoot();
+    writeConfig(full, DEFAULTS as unknown as Record<string, unknown>);
+    writeConfig(pruned, resolvePolicy(pruned, parseFlags(["--minimal"]), null) as Record<string, unknown>);
+
+    assert.deepEqual(coreFacade.policy.loadPolicy(pruned), coreFacade.policy.loadPolicy(full));
+  });
+
+  test("a value that differs from the tiers below is kept", () => {
+    const root = newRoot();
+
+    const policy = resolvePolicy(root, parseFlags(["--write", "--stdin-json"]), '{"mode":"focus"}') as {
+      mode: string;
+    };
+
+    assert.equal(policy.mode, "focus");
   });
 
   test("reuses an existing project config when present and not minimal/stdin", () => {
@@ -122,6 +193,20 @@ describe("resolvePolicy", () => {
       mode: string;
     };
     assert.equal(policy.mode, "paired");
+  });
+
+  /** AC — the wizard writes every knob it collected, and the ones that restate the tiers below are dropped. */
+  test("a wizard answer that restates the tiers below is not written", () => {
+    const root = newRoot();
+    const collected = JSON.stringify({ version: 1, mode: DEFAULTS.mode, grind: { enabled: true } });
+
+    const policy = resolvePolicy(root, parseFlags(["--write", "--stdin-json"]), collected) as Record<
+      string,
+      unknown
+    >;
+
+    assert.equal(policy.mode, undefined, "the posture they did not change is inherited");
+    assert.deepEqual(policy.grind, { enabled: true }, "and the one they did is kept");
   });
 
   test("throws on empty stdin with --stdin-json", () => {
@@ -317,5 +402,63 @@ describe("usage error", () => {
         process.env.TLC_PROJECT_DIR = originalEnv;
       }
     }
+  });
+});
+
+/**
+ * hazard: `applyPlan` wrote the config unconditionally, so `init --minimal` on a configured project replaced the
+ * operator's file — with the whole default policy before, with a bare version marker after that changed. Both
+ * destroy choices nobody asked to undo, and neither said so ([/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+describe("applyPlan and an existing config", () => {
+  const MINE = '{\n  "version": 1,\n  "mode": "paired",\n  "grind": { "enabled": true }\n}\n';
+
+  function configured(): { root: string; path: string } {
+    const root = newRoot();
+    const path = join(root, ".tlc", "harness", "config.json");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, MINE, "utf8");
+    return { root, path };
+  }
+
+  test("minimal keeps the operator's file byte for byte", () => {
+    const { root, path } = configured();
+
+    const outcome = applyPlan(root, parseFlags(["--minimal"]), { cursor: false, claude: false }, null);
+
+    assert.equal(outcome.configKept, true);
+    assert.equal(readFileSync(path, "utf8"), MINE, "not one byte of it may change");
+  });
+
+  test("and says it kept it, because silence reads as having written it", () => {
+    const { root } = configured();
+
+    const outcome = applyPlan(root, parseFlags(["--minimal"]), { cursor: false, claude: false }, null);
+
+    assert.match(configLine(outcome), /kept .*already configured/);
+  });
+
+  /** invariant: the one route that carries consent is the wizard supplying a policy to replace it with. */
+  test("the wizard's own answers do replace it", () => {
+    const { root, path } = configured();
+
+    const outcome = applyPlan(
+      root,
+      parseFlags(["--write", "--stdin-json"]),
+      { cursor: false, claude: false },
+      '{"version":1,"mode":"focus"}',
+    );
+
+    assert.equal(outcome.configKept, false);
+    assert.match(readFileSync(path, "utf8"), /"focus"/);
+  });
+
+  test("a project with no config still gets one", () => {
+    const root = newRoot();
+
+    const outcome = applyPlan(root, parseFlags(["--minimal"]), { cursor: false, claude: false }, null);
+
+    assert.equal(outcome.configKept, false);
+    assert.equal(existsSync(outcome.configPath), true);
   });
 });
