@@ -76,10 +76,24 @@ export function runtimeSpoolPath(): string {
  * invariant: `null` when there is none, so a first `init` still resolves to the working directory rather than to
  * whichever ancestor happens to be a project.
  */
-export function findProjectRoot(from: string, exists: (path: string) => boolean = existsSync): string | null {
+export function findProjectRoot(
+  from: string,
+  exists: (path: string) => boolean = existsSync,
+  machine: string = machineHome(),
+): string | null {
   let current = resolve(from);
   for (;;) {
-    if (exists(harnessDir(current))) {
+    /**
+     * hazard: the machine's runtime home has the exact shape of a project's harness directory, so the walk claimed
+     * the home directory as a project. A repository under it that had never been initialised then resolved its root
+     * to the home, and its "project config" *was* the machine config — the machine tier read as the project tier,
+     * and every uninitialised repository's flags, presence and baselines landed in one shared state directory
+     * ([/decisions/ad-101.md](/decisions/ad-101.md)).
+     *
+     * invariant: skipped rather than stopped on. An operator who relocated the runtime home elsewhere can have a
+     * real project at that path, and then it is claimable again.
+     */
+    if (exists(harnessDir(current)) && harnessDir(current) !== machine) {
       return current;
     }
     const parent = dirname(current);

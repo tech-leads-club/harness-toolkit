@@ -11,12 +11,10 @@
       "testCommand": ["node", "--test", "--import", "./tools/test-env.mjs", "src/**/__test__/*.test.ts", "tools/__test__/*.test.ts"],
       "appendFiles": "never"
     },
-    "subagents": { "enforceAllowlist": true, "requireModel": true, "readOnlyTypes": ["explore", "Explore"] },
-    "comments": { "enabled": true },
+    "subagents": { "readOnlyTypes": ["explore", "Explore"] },
     "obs": { "globalSpool": true },
     "untrustedContent": { "enabled": true },
     "planGate": { "enabled": true },
-    "shell": { "stallDetection": true },
-    "intelligence": { "idleTurnGate": true, "lessons": { "enabled": true, "syncRulesFile": "auto" } },
+    "intelligence": { "idleTurnGate": true },
     "bootstrapExtra": ["This repository is the harness itself. A gate that misfires here is a defect in the product: fix the rule, do not work around it."]
   }

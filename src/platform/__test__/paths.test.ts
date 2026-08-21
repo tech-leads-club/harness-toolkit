@@ -163,6 +163,59 @@ describe("findProjectRoot", () => {
   });
 
   /** why the nearest wins: a project inside a project is the operator's business, and the nearer one is theirs. */
+  /**
+   * hazard: the machine's runtime home has the exact shape of a project's harness directory, so the walk claimed
+   * the home directory as a project. A repository under it that had never been initialised resolved its root to the
+   * home, and its "project config" *was* the machine config ([/decisions/ad-101.md](/decisions/ad-101.md)).
+   */
+  test("the machine's runtime home is not a project", () => {
+    const home = resolve(join(tmpdir(), "tlc-home-fixture"));
+    const machine = join(home, ".tlc", "harness");
+
+    assert.equal(
+      findProjectRoot(home, (path) => path === machine, machine),
+      null,
+    );
+  });
+
+  test("and a repository under it does not inherit the home as its project", () => {
+    const home = resolve(join(tmpdir(), "tlc-home-fixture"));
+    const machine = join(home, ".tlc", "harness");
+
+    assert.equal(
+      findProjectRoot(join(home, "repos", "fresh"), (path) => path === machine, machine),
+      null,
+    );
+  });
+
+  /**
+   * invariant: skipped, not stopped on — the walk continues past it.
+   *
+   * hazard: returning `null` on reaching the machine home gives the same answer in the common case, so a mutation
+   * that stopped there survived. The two differ only when a real project sits above the home, which is the case
+   * that pins the word "skip" ([/decisions/ad-101.md](/decisions/ad-101.md)).
+   */
+  test("a project above the machine home is still reached", () => {
+    const outer = resolve(join(tmpdir(), "tlc-outer"));
+    const home = join(outer, "home", "someone");
+    const machine = join(home, ".tlc", "harness");
+    const has = (path: string): boolean => path === machine || path === join(outer, ".tlc", "harness");
+
+    assert.equal(findProjectRoot(join(home, "repos", "fresh"), has, machine), outer);
+  });
+
+  /** invariant: relocate the runtime home and that path is a claimable project again. */
+  test("a project at that path is claimable once the runtime home moved", () => {
+    const home = resolve(join(tmpdir(), "tlc-home-fixture"));
+    const asProject = join(home, ".tlc", "harness");
+    const elsewhere = resolve(join(tmpdir(), "relocated", ".tlc", "harness"));
+
+    assert.equal(
+      findProjectRoot(home, (path) => path === asProject, elsewhere),
+      home,
+    );
+  });
+
   test("the nearest project wins over an outer one", () => {
     const inner = join(project, "packages", "app");
     const both = (path: string): boolean => path === harness || path === join(inner, ".tlc", "harness");
