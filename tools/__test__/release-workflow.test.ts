@@ -210,12 +210,98 @@ describe("the packed artefact is verified before the irreversible step", () => {
     assert.ok(verify < registry, "verification must precede anything reaching the registry");
   });
 
-  /** why asserted: the payload list is the half that runs before anything is installed, and it is easy to gut. */
-  test("the verification asserts the payload and drives the installed command", () => {
+  /**
+   * why the payload assertion is executed and not read: this test used to search the script's source for the paths
+   * it requires, which is the pattern an independent review already broke twice — and when the payload list moved
+   * from tar's `package/…` prefix to npm's own answer, the source search failed on a correct script
+   * ([/decisions/ad-102.md](/decisions/ad-102.md), [/decisions/ad-103.md](/decisions/ad-103.md)).
+   *
+   * why a child process: the check exits rather than throwing, because it guards a release rather than a caller.
+   */
+  function payloadVerdict(entries: string[]) {
+    const script = join(repoRoot, "tools", "dev", "verify-package.mjs").replaceAll("\\", "/");
+    const probe = spawnSync(
+      process.execPath,
+      ["-e", `import("file://${script}").then((m) => m.assertPayload(${JSON.stringify(entries)}))`],
+      { encoding: "utf8" },
+    );
+    return { status: probe.status, output: `${probe.stdout ?? ""}${probe.stderr ?? ""}` };
+  }
+
+  const complete = [
+    "package.json",
+    "bin/tlc",
+    "bin/tlc.mjs",
+    "bin/tlc-exec.mjs",
+    "dist/tool-before.mjs",
+    "skills/harness-init/SKILL.md",
+  ];
+
+  test("a payload with everything the runtime needs passes", () => {
+    assert.equal(payloadVerdict(complete).status, 0);
+  });
+
+  test("a payload missing the launcher fails, and says which path", () => {
+    const verdict = payloadVerdict(complete.filter((path) => path !== "bin/tlc"));
+
+    assert.notEqual(verdict.status, 0);
+    assert.match(verdict.output, /bin\/tlc/);
+  });
+
+  test("a payload that ships this repository's own checks fails", () => {
+    const verdict = payloadVerdict([...complete, "tools/dev/check-scopes.ts"]);
+
+    assert.notEqual(verdict.status, 0);
+    assert.match(verdict.output, /must not/);
+  });
+
+  /** invariant: the command an operator is told to trust is driven, not merely installed. */
+  test("and the clean room drives doctor", () => {
     const script = readFileSync(join(repoRoot, "tools", "dev", "verify-package.mjs"), "utf8");
 
-    for (const required of ["package/bin/tlc", "package/dist/tool-before.mjs", "tlc harness doctor"]) {
-      assert.ok(script.includes(required), `the verification no longer checks ${required}`);
+    assert.match(script, /command: "tlc harness doctor"/);
+  });
+});
+
+/**
+ * The artefact used to be installed and driven on Linux alone, in a container that exists nowhere else — while every
+ * defect that reached an operator was an install defect, and install is the most platform-shaped code in the package
+ * ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ */
+describe("the artefact is proven on every platform the package claims", () => {
+  test("a job packs and drives it on all three", () => {
+    const verify = workflow.indexOf("\n  verify:");
+    assert.ok(verify > 0, "there is a verify job");
+
+    const job = workflow.slice(verify, workflow.indexOf("\n  release:"));
+    for (const runner of ["ubuntu-latest", "macos-latest", "windows-latest"]) {
+      assert.ok(job.includes(runner), `${runner} is not verified`);
+    }
+    assert.match(job, /node tools\/dev\/verify-package\.mjs/);
+  });
+
+  /**
+   * invariant: the approval lives on `release`, so making `release` depend on the matrix is what puts the proof
+   * before the person. A job that runs in parallel with the publish would prove nothing in time.
+   */
+  test("and the job that publishes cannot start without it", () => {
+    assert.match(workflow, /release:\n\s+needs: \[gate, decide, verify\]/);
+  });
+
+  /**
+   * why after the publish too: everything before it reads a tarball built here, and what an operator installs is
+   * what the registry serves. It cannot prevent — there is no rollback — but it turns "a person finds it days
+   * later" into "the run goes red in minutes".
+   */
+  test("the published version is installed from the registry and driven", () => {
+    const smoke = workflow.indexOf("\n  smoke:");
+    assert.ok(smoke > 0, "there is a smoke job");
+
+    const job = workflow.slice(smoke);
+    assert.match(job, /needs: \[decide, release\]/);
+    assert.match(job, /verify-package\.mjs --from/);
+    for (const runner of ["ubuntu-latest", "macos-latest", "windows-latest"]) {
+      assert.ok(job.includes(runner), `${runner} never drives the published version`);
     }
   });
 });

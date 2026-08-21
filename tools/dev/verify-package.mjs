@@ -7,11 +7,16 @@
  * their own machine, after publish. The published practice is to pack, install the tarball the way `npx` would, and
  * drive the real binary ([/decisions/ad-102.md](/decisions/ad-102.md)).
  *
- * why a container when one is available: it is the clean room for free — no ambient `node_modules`, no global
- * state, no `PATH` leakage, and no chance of touching the operator's own install. Without docker the same script
- * runs against a throwaway npm prefix, which covers packaging and the command's own behaviour but shares the host's
- * filesystem. The output says which of the two ran, because a weaker check reported as the stronger one is worse
- * than no check.
+ * why one room on every platform instead of a container on one: the container was the stronger clean room and it
+ * only exists on Linux, so the artefact that reaches operators was installed and driven on Linux and nowhere else —
+ * while every defect that reached them was an install defect, and install is the most platform-shaped code in the
+ * package (`~/.local/bin` against a `.cmd` shim, `PATH` against `PATHEXT`, a link against a copy). On a CI runner
+ * the whole machine is already throwaway, so the container's extra isolation bought little; a third platform buys a
+ * class of defect nothing else here can see ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ *
+ * invariant: no shell composition. Each step is its own process with its own exit status, so there is no `&&` chain
+ * for a trailing `||` to swallow and no POSIX-only script for Windows to choke on. A shell is still what resolves
+ * `npm` and `tlc` from `PATH`, which is all `shell: true` per step is for.
  *
  * invariant: this is a release step, not a gate step. It needs the network to resolve dependencies, so it does not
  * belong in the loop a contributor runs on every change.
@@ -19,13 +24,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-
-const NODE_IMAGE = "node:24-alpine";
-
-function run(command, args, options = {}) {
-  return spawnSync(command, args, { encoding: "utf8", ...options });
-}
+import { delimiter, join, resolve } from "node:path";
 
 function fail(message) {
   console.error(`verify-package: ${message}`);
@@ -41,20 +40,18 @@ function packageIdentity() {
 /**
  * invariant: the file list is asserted before anything is installed. A tarball missing `bin/` installs a command
  * that cannot run, and that is cheaper to catch here than after the registry has it for good.
+ *
+ * why npm's own list and not `tar -tzf`: `tar` is not a command on Windows, and what npm prints is what npm packed
+ * rather than a second reading of it.
  */
-export function assertPayload(tarball) {
-  const listed = run("tar", ["-tzf", tarball]);
-  if (listed.status !== 0) {
-    fail(`cannot read ${tarball}: ${listed.stderr}`);
-  }
-  const entries = listed.stdout.split("\n");
+export function assertPayload(entries) {
   const required = [
-    "package/package.json",
-    "package/bin/tlc",
-    "package/bin/tlc.mjs",
-    "package/bin/tlc-exec.mjs",
-    "package/dist/tool-before.mjs",
-    "package/skills/harness-init/SKILL.md",
+    "package.json",
+    "bin/tlc",
+    "bin/tlc.mjs",
+    "bin/tlc-exec.mjs",
+    "dist/tool-before.mjs",
+    "skills/harness-init/SKILL.md",
   ];
   const missing = required.filter((path) => !entries.includes(path));
   if (missing.length > 0) {
@@ -63,127 +60,222 @@ export function assertPayload(tarball) {
   // hazard: `tools/dev` holds the checks that validate *this* repository, and with Bun present the launcher
   // resolves an entry straight from source — so shipping them would put runnable repo-only commands on a user's
   // machine ([/decisions/ad-068.md](/decisions/ad-068.md)).
-  const leaked = entries.filter((path) => path.startsWith("package/tools/dev/") || path.includes("/__test__/"));
+  const leaked = entries.filter((path) => path.startsWith("tools/dev/") || path.includes("/__test__/"));
   if (leaked.length > 0) {
     fail(`the tarball ships what it must not: ${leaked.slice(0, 5).join(", ")}`);
   }
-  const kept = entries.filter(Boolean);
-  console.log(`verify-package: payload ok (${kept.length} entries)`);
+  console.log(`verify-package: payload ok (${entries.length} entries)`);
   /**
    * why the entries are returned and used: an independent review deleted the call to this function and every test
    * stayed green, because the assertions read the script's *source* for the strings it checks. Handing the caller a
    * value it needs makes removing the call a runtime error rather than a convention nobody enforces
    * ([/decisions/ad-102.md](/decisions/ad-102.md)).
    */
-  return kept;
+  return entries;
 }
 
 /**
- * The commands the clean room runs, as data.
+ * The clean room's steps, as data.
  *
- * why a list and not a string: an independent review deleted the `tlc harness doctor` line and the test stayed
- * green, because it asserted the script's source *contained* that text — and the version check on the next line
- * contains it too. A list can be asserted element by element ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ * why a list of records and not one script: an independent review deleted the `tlc harness doctor` line and the
+ * test stayed green, because it asserted the script's source *contained* that text — and the version check on the
+ * next line contained it too. A list can be asserted element by element
+ * ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ *
+ * why `expect` is a field rather than a `grep` step: `grep` is not a command on Windows, and a pipeline's exit
+ * status was the other half of the swallowed-failure defect. The runner reads the captured output instead.
  */
-export function probeCommands(tarball, version) {
+export function probeSteps(tarball, version) {
   return [
-    `npm i -g /work/${tarball} --silent`,
+    { label: "the tarball installs globally, the way npx would", command: `npm i -g "${tarball}" --silent` },
     // why version first: it is the one command that fails loudly when the shim exists but the runtime does not.
-    "tlc harness version",
-    "tlc harness install",
+    { label: "the installed command answers", command: "tlc harness version" },
+    { label: "a fresh install completes", command: "tlc harness install" },
     // why doctor: it is the reading an operator is told to trust, so it has to survive a fresh install with no
-    // project, no config and no prior state.
-    "tlc harness doctor",
-    // why the version is read back out of `doctor`: the tarball says one thing, and the runtime an operator reads
-    // is what matters. A shim resolving an older runtime reports the older version.
-    `tlc harness doctor | grep -q "harness version — ${version}"`,
+    // project, no config and no prior state. The version is read back out of it because the tarball says one thing
+    // and the runtime an operator reads is what matters — a shim resolving an older runtime reports the older one.
+    {
+      label: "doctor survives a fresh install and reports this version",
+      command: "tlc harness doctor",
+      expect: `harness version — ${version}`,
+    },
   ];
 }
 
 /**
- * hazard: these were joined with ` && ` and ended in `|| echo "<message>"`. `&&` and `||` share precedence, so any
- * failure anywhere in the chain fell into the `||` and the compound command exited 0 — which made the status check
- * below unreachable, hid the clean room's stderr entirely, and reported every possible failure as the same wrong
- * message. Proven: `sh -c 'true && false && echo x | grep -q y || echo swallowed'` exits 0
- * ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ * npm's own report of what it packed, out of a stream that is not only that report.
  *
- * invariant: `set -e` and one command per line, so the first failure is the exit status and the reason reaches the
- * operator as itself.
+ * hazard: `prepack` runs the bundler, so `JSON.parse` on the whole stdout dies on the letter `l` of `tlc-build`.
+ * `--silent` does not help: it silences npm, not the script npm runs. Nor does scanning for the first `[`, because
+ * the bundler colours its output and an ANSI escape *starts* with one — which is the second thing this function was
+ * written wrong as.
+ *
+ * why from the end: npm's report is the last document on the stream. Both shapes it has used are handled — an array
+ * of reports, and an object keyed by package name ([/decisions/ad-103.md](/decisions/ad-103.md)).
  */
-export function composeProbe(commands) {
-  return ["set -e", ...commands].join("\n");
-}
-
-function inContainer(tarball, version) {
-  const probe = run("docker", [
-    "run",
-    "--rm",
-    "-v",
-    `${process.cwd()}:/work:ro`,
-    "-w",
-    "/tmp",
-    NODE_IMAGE,
-    "sh",
-    "-c",
-    composeProbe(probeCommands(tarball, version)),
-  ]);
-  return { ...probe, room: `container (${NODE_IMAGE})` };
+export function parsePackReport(stdout) {
+  const lines = stdout.split("\n");
+  for (let start = lines.length - 1; start >= 0; start -= 1) {
+    const opener = (lines[start] ?? "").trim();
+    if (opener !== "[" && opener !== "{") {
+      continue;
+    }
+    try {
+      return Object.values(JSON.parse(lines.slice(start).join("\n")))[0] ?? null;
+    } catch {
+      // why swallowed: a line that merely looks like the start of the report is not one, and the next candidate
+      // further up is the answer. Throwing here would report a parse error about the wrong text.
+    }
+  }
+  return null;
 }
 
 /**
- * why a prefix and not just `npm i -g`: a real global install would replace the operator's own command, which is
+ * Runs the steps in order and stops at the first failure.
+ *
+ * hazard: these used to be joined with ` && ` and ended in `|| echo "<message>"`. `&&` and `||` share precedence,
+ * so any failure anywhere in the chain fell into the `||` and the compound command exited 0 — which made the status
+ * check unreachable, hid the clean room's stderr entirely, and reported every possible failure as the same wrong
+ * message. Proven: `sh -c 'true && false && echo x | grep -q y || echo swallowed'` exits 0. One process per step
+ * removes the composition that made it possible ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
+export function runSteps(steps, options) {
+  for (const [index, step] of steps.entries()) {
+    const result = spawnSync(step.command, { ...options, shell: true, encoding: "utf8" });
+    const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+    if (result.status !== 0) {
+      return { ok: false, step, index, output, reason: `exit ${result.status ?? "signal"}` };
+    }
+    if (step.expect !== undefined && !output.includes(step.expect)) {
+      return { ok: false, step, index, output, reason: `output does not contain ${JSON.stringify(step.expect)}` };
+    }
+    console.log(`verify-package: ok — ${step.label}`);
+  }
+  return { ok: true };
+}
+
+/**
+ * why a prefix and not a real `npm i -g`: a real global install would replace the operator's own command, which is
  * exactly the class of defect this script exists to catch. The prefix keeps it to a throwaway directory.
+ *
+ * why both `<prefix>` and `<prefix>/bin` are on PATH: npm puts the shim directly in the prefix on Windows and in
+ * `bin/` everywhere else. Naming one of them is how a check passes on the platform it was written on and fails on
+ * the other.
+ *
+ * why HOME and USERPROFILE both: `os.homedir()` reads the first on POSIX and the second on Windows, and the install
+ * writes the runtime, the provider config and the launcher link under it.
  */
 function inPrefix(tarball, version) {
   const prefix = mkdtempSync(join(tmpdir(), "tlc-verify-prefix-"));
+  const home = mkdtempSync(join(tmpdir(), "tlc-verify-home-"));
   try {
-    const probe = run("sh", ["-c", composeProbe(probeCommands(tarball, version))], {
+    const result = runSteps(probeSteps(tarball, version), {
       cwd: process.cwd(),
       env: {
         ...process.env,
         npm_config_prefix: prefix,
-        PATH: `${join(prefix, "bin")}:${process.env.PATH ?? ""}`,
-        HOME: mkdtempSync(join(tmpdir(), "tlc-verify-home-")),
+        PATH: [prefix, join(prefix, "bin"), process.env.PATH ?? ""].join(delimiter),
+        HOME: home,
+        USERPROFILE: home,
       },
     });
-    return { ...probe, room: `npm prefix ${prefix} (no container — weaker: shares the host filesystem)` };
+    return { ...result, room: `npm prefix ${prefix}, home ${home}` };
   } finally {
     rmSync(prefix, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   }
-}
-
-function dockerAvailable() {
-  return run("docker", ["info"], { stdio: "ignore" }).status === 0;
 }
 
 /**
- * hazard: this ran at module scope, so importing the module to test `probeCommands` executed `npm pack` and the
- * whole container probe. It passed here and failed the macOS leg of CI with a file-level error at line 1 — the
- * module, not a test. This repository already has the rule: no library module self-executes
+ * hazard: this module's main flow ran at module scope, so importing it to test the steps executed `npm pack` and
+ * the whole probe. It passed here and failed the macOS leg of CI with a file-level error at line 1 — the module,
+ * not a test. This repository already has the rule: no library module self-executes
  * ([/decisions/ad-098.md](/decisions/ad-098.md), [/decisions/ad-102.md](/decisions/ad-102.md)).
  */
+/**
+ * `--from <name@version>` drives the *published* version instead of a local tarball.
+ *
+ * why after the publish as well as before: everything before it reads a tarball this repository produced. What an
+ * operator installs is what the registry serves, and the two have differed — 0.3.2 shipped bundles where every
+ * entry answered as the CLI. This is the only step that can see that, and it can only see it too late: there is no
+ * rollback, so the value is a red run within minutes instead of a person on their own machine days later
+ * ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ */
+export function registrySpec(argv) {
+  const at = argv.indexOf("--from");
+  const spec = at < 0 ? null : (argv[at + 1] ?? null);
+  if (spec === null) {
+    return null;
+  }
+  const version = spec.slice(spec.lastIndexOf("@") + 1);
+  if (version === "" || version === spec) {
+    fail(`--from needs <name@version>, got ${spec}`);
+  }
+  return { spec, version };
+}
+
+/**
+ * why a bounded retry and not a fixed sleep: a registry is eventually consistent across its CDN, so the version can
+ * be seconds behind the publish that created it. A failure here has to mean the package is broken, not that it is
+ * new — and a sleep long enough to be safe is a sleep every green run pays.
+ *
+ * invariant: only the install step is retried, and only for as long as the caller allows. Anything after the install
+ * succeeded is a real failure and returns immediately.
+ */
+export function attempts(argv) {
+  const at = argv.indexOf("--retries");
+  const parsed = at < 0 ? 0 : Number.parseInt(argv[at + 1] ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function sleepSeconds(seconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, seconds * 1000);
+}
+
 if (import.meta.main) {
+  const published = registrySpec(process.argv);
+  if (published !== null) {
+    const retries = attempts(process.argv);
+    let probe = inPrefix(published.spec, published.version);
+    // invariant: only step 0 — resolving and installing the spec — is retried. A runtime that installed and then
+    // failed to answer is broken, and waiting will not change that.
+    for (let attempt = 1; attempt <= retries && !probe.ok && probe.index === 0; attempt += 1) {
+      console.log(`verify-package: ${published.spec} not installable yet — attempt ${attempt} of ${retries}`);
+      sleepSeconds(10);
+      probe = inPrefix(published.spec, published.version);
+    }
+    console.log(`verify-package: clean room = ${probe.room}`);
+    if (!probe.ok) {
+      process.stderr.write(probe.output ?? "");
+      fail(`${probe.step.label} — ${probe.reason}`);
+    }
+    console.log(`verify-package: ok — ${published.spec} installs from the registry and answers on ${process.platform}`);
+    process.exit(0);
+  }
+
   const { version } = packageIdentity();
-  const packed = run("npm", ["pack", "--silent"]);
+  // why `--json`: it writes the tarball and prints what went into it, so the payload assertion reads npm's own
+  // answer instead of shelling out to a second tool Windows does not have.
+  const packed = spawnSync("npm", ["pack", "--json"], { encoding: "utf8", shell: true });
   if (packed.status !== 0) {
     fail(`npm pack failed: ${packed.stderr}`);
   }
-  const tarball = packed.stdout.trim().split("\n").pop() ?? "";
-  if (!existsSync(tarball)) {
-    fail(`npm pack reported ${tarball}, which is not there`);
+  const report = parsePackReport(packed.stdout ?? "");
+  const tarball = resolve(report?.filename ?? "");
+  if (report === null || !existsSync(tarball)) {
+    fail(`npm pack reported ${report?.filename}, which is not there`);
   }
 
   try {
-    const entries = assertPayload(tarball);
-    const probe = dockerAvailable() ? inContainer(tarball, version) : inPrefix(tarball, version);
+    const entries = assertPayload((report.files ?? []).map((file) => file.path));
+    const probe = inPrefix(tarball, version);
     console.log(`verify-package: clean room = ${probe.room}, ${entries.length} entries`);
-    process.stdout.write(probe.stdout ?? "");
-    if ((probe.status ?? 1) !== 0) {
-      // invariant: the clean room's own stderr, which is the only place the real reason exists.
-      process.stderr.write(probe.stderr ?? "");
-      fail(`the installed command failed in the clean room (exit ${probe.status})`);
+    if (!probe.ok) {
+      // invariant: the clean room's own output, which is the only place the real reason exists.
+      process.stderr.write(probe.output ?? "");
+      fail(`${probe.step.label} — ${probe.reason}`);
     }
-    console.log(`verify-package: ok — ${version} installs and answers in a clean room`);
+    console.log(`verify-package: ok — ${version} installs and answers on ${process.platform}`);
   } finally {
     rmSync(tarball, { force: true });
   }
