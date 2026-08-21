@@ -24,6 +24,7 @@ import {
   grindFlagPath,
   grindOn,
   helpText,
+  KNIP_EXPORTS_CEILING,
   linkedRuntimeMessage,
   modeFilePath,
   npmRootFailureMessage,
@@ -443,6 +444,8 @@ describe("harness test — step plan and runner", () => {
         "tsc --noEmit",
         "src suite",
         "tools suite",
+        "knip: dead files and dependencies",
+        "knip: unused exports do not grow",
         "check-boundaries",
         "check-suppressions",
         "check-wiring",
@@ -477,15 +480,36 @@ describe("harness test — step plan and runner", () => {
       "--test",
       "tools/__test__/*.test.ts",
     ]);
-    assert.deepEqual(steps[4]?.args, ["tools/dev/check-boundaries.ts"]);
-    assert.deepEqual(steps[5]?.args, ["tools/dev/check-suppressions.ts"]);
-    assert.deepEqual(steps[6]?.args, ["tools/dev/check-wiring.ts"]);
-    assert.deepEqual(steps[7]?.args, ["tools/dev/check-docs-bundle.ts"]);
-    assert.deepEqual(steps[9]?.args, ["tools/dev/check-screens.ts"]);
-    assert.deepEqual(steps[10]?.args, ["tools/dev/check-obs-contract.ts"]);
-    assert.deepEqual(steps[11]?.args, ["tools/dev/check-manifest.ts"]);
-    assert.deepEqual(steps[12]?.args, ["tools/dev/render-capabilities.ts", "--check"]);
-    assert.deepEqual(steps[13]?.args, ["tools/dev/render-changelog.ts", "--check"]);
+    /**
+     * hazard: these were asserted by position, so inserting a step rewrote a dozen unrelated lines and the diff said
+     * nothing about what changed. Looked up by label, each assertion states the one fact it owns — this step runs
+     * that script ([/decisions/ad-102.md](/decisions/ad-102.md)).
+     */
+    const argsOf = (label: string): string[] | undefined => steps.find((step) => step.label === label)?.args;
+
+    for (const [label, args] of [
+      ["check-boundaries", ["tools/dev/check-boundaries.ts"]],
+      ["check-suppressions", ["tools/dev/check-suppressions.ts"]],
+      ["check-wiring", ["tools/dev/check-wiring.ts"]],
+      ["check-docs-bundle", ["tools/dev/check-docs-bundle.ts"]],
+      ["check-screens", ["tools/dev/check-screens.ts"]],
+      ["check-obs-contract", ["tools/dev/check-obs-contract.ts"]],
+      ["check-manifest", ["tools/dev/check-manifest.ts"]],
+      ["capabilities in sync", ["tools/dev/render-capabilities.ts", "--check"]],
+      ["changelog in sync", ["tools/dev/render-changelog.ts", "--check"]],
+    ] as const) {
+      assert.deepEqual(argsOf(label), [...args], label);
+    }
+
+    // why the ceiling is asserted and not just the flag: a step that reports without failing is a signal that never
+    // fires, and the number is what makes this one fire on growth.
+    assert.deepEqual(argsOf("knip: dead files and dependencies"), ["knip", "--files", "--dependencies"]);
+    assert.deepEqual(argsOf("knip: unused exports do not grow"), [
+      "knip",
+      "--exports",
+      "--max-issues",
+      String(KNIP_EXPORTS_CEILING),
+    ]);
   });
 
   test("stops at the first failing step and does not run the rest", () => {

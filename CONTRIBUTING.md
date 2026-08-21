@@ -36,7 +36,7 @@ The gate is a single command:
 tlc harness test
 ```
 
-Sixteen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
+Eighteen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
 source of truth, and this table is here to say what each step is for.
 
 | # | Step | Fails on |
@@ -45,18 +45,20 @@ source of truth, and this table is here to say what each step is for.
 | 2 | `tsc --noEmit` | a type error |
 | 3 | src suite | `src/**/__test__/*.test.ts` |
 | 4 | tools suite | `tools/__test__/*.test.ts` — a flat glob, so a new tool test must sit directly in `tools/__test__/` |
-| 5 | `check-boundaries` | `core/` importing `providers/`, or a vendor identifier under `src/core` or `src/contracts` |
-| 6 | `check-suppressions` | a lint suppression whose reason is not a reason — step 1 cannot see a rule that was silenced rather than fixed |
-| 7 | `check-wiring` | a declared union member that is read and never written |
-| 8 | `check-docs-bundle` | a broken link or a doc outside the bundle's shape |
-| 9 | `check-decisions` | a decision record off the required shape, a status outside the closed set, or an AD cited by bare number instead of a link |
-| 10 | `check-screens` | a terminal renderer that paints its own strings instead of going through the shared one |
-| 11 | `check-obs-contract` | a kind a consumer counts and no producer emits, or one landing on a plane the consumer does not read |
-| 12 | `check-manifest` | a `package.json` npm would rewrite on publish, or a `bin` entry pointing at a file that is not there |
-| 13 | `render-capabilities --check` | a generated README region that no longer matches `capabilities/catalog.json` |
-| 14 | `render-changelog --check` | a `CHANGELOG.md` that no longer matches `docs/decisions/` |
-| 15 | `render-log --check` | a `docs/log.md` that no longer matches `docs/decisions/` |
-| 16 | `render-coverage --check` | a control named in `docs/coverage.md` that is neither a floor rule nor a capability id, or a row short of `covered` that states no limit |
+| 5 | `knip --files --dependencies` | a file nothing imports, or a dependency nothing uses — both are at zero, so both block |
+| 6 | `knip --exports --max-issues N` | the count of unused exports growing past the ceiling in `bin/tlc-cli.ts`. `observe` was exported, wired into the facade and called by nothing while 113 tests passed; this is the check that sees that. **Measured limit:** a dead export added to `src/platform/paths.ts` or `links.ts` is not reported, while four other files probed are — cause not found, so do not read this step as complete coverage ([/decisions/ad-102.md](/decisions/ad-102.md)) |
+| 7 | `check-boundaries` | `core/` importing `providers/`, or a vendor identifier under `src/core` or `src/contracts` |
+| 8 | `check-suppressions` | a lint suppression whose reason is not a reason — step 1 cannot see a rule that was silenced rather than fixed |
+| 9 | `check-wiring` | a declared union member that is read and never written |
+| 10 | `check-docs-bundle` | a broken link or a doc outside the bundle's shape |
+| 11 | `check-decisions` | a decision record off the required shape, a status outside the closed set, or an AD cited by bare number instead of a link |
+| 12 | `check-screens` | a terminal renderer that paints its own strings instead of going through the shared one |
+| 13 | `check-obs-contract` | a kind a consumer counts and no producer emits, or one landing on a plane the consumer does not read |
+| 14 | `check-manifest` | a `package.json` npm would rewrite on publish, or a `bin` entry pointing at a file that is not there |
+| 15 | `render-capabilities --check` | a generated README region that no longer matches `capabilities/catalog.json` |
+| 16 | `render-changelog --check` | a `CHANGELOG.md` that no longer matches `docs/decisions/` |
+| 17 | `render-log --check` | a `docs/log.md` that no longer matches `docs/decisions/` |
+| 18 | `render-coverage --check` | a control named in `docs/coverage.md` that is neither a floor rule nor a capability id, or a row short of `covered` that states no limit |
 
 Equivalent by hand, for local debugging:
 
