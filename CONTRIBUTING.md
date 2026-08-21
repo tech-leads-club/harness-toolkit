@@ -116,16 +116,30 @@ fails there, which is exactly what happened — and the check worked.
 
 ## Releasing
 
-A push to `main` publishes to the **`next`** dist-tag and stops. `latest` — the tag a bare `npm i` resolves — does
-not move on its own, so a release cannot reach everybody until somebody decides it should.
+A push to `main` **stages** the version on npm. Staged means queued and not installable: `npx` cannot reach it, no
+dist-tag moves, and nothing on any machine changes. The release becomes real only when a maintainer approves it
+with proof of presence.
 
-To make it everybody's: **Actions → Promote →** version, `latest`, tick *apply*. Dry run is the default. It refuses
-to promote a version npm does not have, or one whose git tag or GitHub release is missing, because that means the
-previous run stopped in the window between `npm publish` and the push.
+From your own terminal:
 
-Rollback is the same lever pointed at the previous version — seconds, not another release. It reaches **new installs
-only**: anyone who already has the command keeps it until they run `tlc harness update`, so a bad `latest` still
-needs a patch behind it.
+```bash
+npm stage list @tech-leads-club/harness-toolkit   # what is waiting
+npm stage view <stage-id>                          # inspect the staged tarball
+npm stage approve <stage-id>                       # 2FA, and it goes live
+npm stage reject <stage-id>                        # it never existed
+```
+
+Why it works this way: OIDC covers `npm publish` and `npm stage publish` and nothing else. Every other stage
+subcommand needs interactive authentication, so **no workflow can finish a release** — that is the design, not a
+limitation, and it means this repository holds no npm credential at all
+([/decisions/ad-102.md](/decisions/ad-102.md)).
+
+The commit and the tag are pushed right after staging, before approval, because nothing in CI can wait for an
+interactive action — and a staged version whose commit is not on `main` is the worse state, since approving it would
+make a version live from a tree nobody can see. If you reject a stage, delete its tag.
+
+`0.4.2` shipped a defect that `0.4.3` fixed minutes later. Nothing was wrong with the gate; there was simply nowhere
+for a release to sit.
 
 ## Decision records
 

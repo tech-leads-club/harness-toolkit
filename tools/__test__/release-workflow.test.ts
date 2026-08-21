@@ -58,13 +58,20 @@ describe("the release commit stages only paths git will accept", () => {
    * branch is not. This asserts the order in the file, which is the only place it is expressed
    * ([/decisions/ad-087.md](/decisions/ad-087.md)).
    */
-  test("AC npm publish precedes the push, and the push precedes the GitHub release", () => {
-    const publish = workflow.indexOf("- name: Publish to npm");
+  /**
+   * why the step is named `Stage the release on npm`: the registry step is a *staging* now, so the ordering claim is
+   * the same and the name it asserts moved ([/decisions/ad-102.md](/decisions/ad-102.md)).
+   */
+  test("AC the registry step precedes the push, and the push precedes the GitHub release", () => {
+    const publish = workflow.indexOf("- name: Stage the release on npm");
     const push = workflow.indexOf("- name: Push the commit and the tag");
     const release = workflow.indexOf("- name: Create the GitHub release");
 
     assert.ok(publish > 0 && push > 0 && release > 0, "all three steps must exist");
-    assert.ok(publish < push, "publishing after the push is the ordering that stranded three tags");
+    assert.ok(
+      publish < push,
+      "reaching the registry after the push is the ordering that stranded three tags",
+    );
     assert.ok(push < release, "a GitHub release names a tag, so the tag has to be there first");
   });
 
@@ -190,17 +197,17 @@ describe("the packed artefact is verified before the irreversible step", () => {
    * invariant: before `npm publish`. After it the version is on the registry for good, so a verification that runs
    * later is a report rather than a gate.
    */
-  test("and runs it before publishing", () => {
+  test("and runs it before the version reaches the registry", () => {
     /**
-     * why the step name and not the command string: `npm publish` appears in prose above the step that runs it — a
-     * comment explaining the recovery when the push after it fails. Matching the loose string put the publish
+     * why the step name and not the command string: the command appears in prose above the step that runs it — a
+     * comment explaining the recovery when the push after it fails. Matching the loose string put the registry step
      * "before" the verification and failed on a correct workflow.
      */
     const verify = workflow.indexOf("- name: Verify the packed artefact");
-    const publish = workflow.indexOf("- name: Publish to npm");
+    const registry = workflow.indexOf("- name: Stage the release on npm");
 
-    assert.ok(verify > 0 && publish > 0, "both steps must exist");
-    assert.ok(verify < publish, "verification must precede the publish");
+    assert.ok(verify > 0 && registry > 0, "both steps must exist");
+    assert.ok(verify < registry, "verification must precede anything reaching the registry");
   });
 
   /** why asserted: the payload list is the half that runs before anything is installed, and it is easy to gut. */
@@ -219,48 +226,62 @@ describe("the packed artefact is verified before the irreversible step", () => {
  * 0.4.2 shipped a defect that 0.4.3 fixed minutes later, and nothing was wrong with the gate
  * ([/decisions/ad-102.md](/decisions/ad-102.md)).
  */
-describe("a release does not become everybody's install by itself", () => {
+/**
+ * A release must not become everybody's install by itself, and it must not need a credential in this repository to
+ * have that property.
+ *
+ * hazard: the first shape of this published to a `next` dist-tag and promoted with `npm dist-tag add`, which needs
+ * an automation token — trusted publishing covers `npm publish` and `npm stage publish` and nothing else. It also
+ * made the version installable, which is not what "not live yet" should mean
+ * ([/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
+describe("a release is staged, not published", () => {
   const release = readFileSync(join(repoRoot, ".github", "workflows", "release.yml"), "utf8");
-  const promote = readFileSync(join(repoRoot, ".github", "workflows", "promote.yml"), "utf8");
 
-  test("the release publishes to next, never to latest", () => {
-    assert.match(release, /npm publish --tag next/);
-    assert.doesNotMatch(release, /^\s*run: npm publish\s*$/m);
+  test("the release stages the version", () => {
+    assert.match(release, /run: npm stage publish/);
   });
 
-  test("and a separate workflow moves the tag", () => {
-    assert.match(promote, /npm dist-tag add/);
-  });
-
-  /** invariant: the default is a dry run, so the destructive reading is the one somebody had to ask for. */
-  test("promotion defaults to changing nothing", () => {
-    assert.match(promote, /apply:[\s\S]*?default: false/);
-    assert.match(promote, /if: \$\{\{ inputs\.apply \}\}/);
+  /** invariant: never a bare publish. A staged version is not installable; a published one is, immediately. */
+  test("and never publishes directly", () => {
+    assert.doesNotMatch(release, /^\s*run: npm publish/m);
   });
 
   /**
-   * invariant: promoting from a release that did not finish is how a half-published version becomes the one
-   * everybody installs, so all three facts are checked before anything moves.
+   * invariant: no dist-tag is *executed* anywhere, because moving one needs an automation token this repository
+   * deliberately does not hold.
+   *
+   * hazard: the first version of this assertion matched the whole file, so it failed against the comment explaining
+   * why there is no dist-tag. Only the run lines are commands.
    */
-  /**
-   * hazard: this asserted the three shell commands were present, which a probe defeated by wrapping one in
-   * `false &&` — the string stayed. The decision moved into `verify-promotable.mjs`, where it is executed against
-   * inputs, and this only checks the workflow still calls it ([/decisions/ad-102.md](/decisions/ad-102.md)).
-   */
-  test("it refuses to promote from an unfinished release", () => {
-    assert.match(promote, /node tools\/dev\/verify-promotable\.mjs/);
+  test("and moves no dist-tag", () => {
+    const commands = release
+      .split("\n")
+      .filter((line) => /^\s*(run:|- run:)/.test(line) || /^\s{6,}npm /.test(line));
+
+    assert.deepEqual(
+      commands.filter((line) => line.includes("dist-tag")),
+      [],
+      commands.join("\n"),
+    );
   });
 
-  /** why asserted: the same authority as publishing, so the same approval. */
-  test("it sits behind the publish environment", () => {
-    assert.match(promote, /environment: publish/);
+  test("the commit and tag are pushed after the staging, never before", () => {
+    const stage = release.indexOf("- name: Stage the release on npm");
+    const push = release.indexOf("- name: Push the commit and the tag");
+
+    assert.ok(stage > 0 && push > 0, "both steps must exist");
+    assert.ok(stage < push, "staging must precede the push");
   });
 
   /**
-   * hazard: a tag move reaches new installs only. Anyone who already has the command keeps it until they update, so
-   * a bad `latest` still needs a patch behind it — said on every run rather than left to be rediscovered.
+   * invariant: no workflow can finish a release. Every stage subcommand except `publish` needs interactive
+   * authentication, so approval is a maintainer with proof of presence — which is the whole point.
    */
-  test("it says a tag move does not reach existing installs", () => {
-    assert.match(promote, /new installs only/);
+  test("no workflow can approve a stage", () => {
+    for (const file of readdirSync(join(repoRoot, ".github", "workflows"))) {
+      const body = readFileSync(join(repoRoot, ".github", "workflows", file), "utf8");
+      assert.doesNotMatch(body, /npm stage (approve|reject)/, file);
+    }
   });
 });

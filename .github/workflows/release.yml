@@ -7,7 +7,8 @@ name: Release
 #
 # ORDER, and why it is this order:
 #
-#   gate → decide → [approval] → assert → bump + changelog + dist (local) → npm publish → push commit+tag → release
+#   gate → decide → [approval] → assert → bump + changelog + dist (local) → verify the artefact →
+#   npm stage publish → push commit+tag → release → [a maintainer approves the stage, with 2FA]
 #
 # `decide` reads and writes nothing, so the approval is requested only when there is a version to publish. The
 # approval is the `publish` environment on the one job that writes — structural, not a condition: GitHub does not
@@ -266,27 +267,31 @@ jobs:
       - name: Use an npm that speaks OIDC
         run: npm install -g npm@12.0.2
 
-      # THE IRREVERSIBLE STEP. Nothing has reached the remote yet: the bump, the changelog and dist/ are local to
-      # this runner. If this fails, the run stops here and the repository is untouched — no tag, no commit, no
-      # release to clean up.
+      # invariant: staged, not published. `npm stage publish` queues the version — it is not installable, `npx`
+      # cannot reach it, and no `latest` moves — and the release becomes real only when a maintainer approves it with
+      # proof of presence. That is the window a release needs, and it needs no credential in this repository to have
+      # one: OIDC covers `npm publish` and `npm stage publish`, and nothing else
+      # ([/decisions/ad-102.md](/decisions/ad-102.md)).
       #
-      # invariant: published to `next`, never to `latest`. `latest` is the only tag npm treats specially — it is what
-      # a bare `npm i` resolves — so leaving it where it is means a release cannot break anybody until somebody
-      # decides it should. Promotion is a separate tag move, which is how the npm CLI itself releases and what makes
-      # rollback a seconds-long operation rather than another version ([/decisions/ad-102.md](/decisions/ad-102.md)).
+      # why not a `next` dist-tag: that was the first shape of this, and it required an automation token, because
+      # trusted publishing does not cover `npm dist-tag`. It also made the version installable. Staging is both
+      # tokenless and genuinely not live.
       #
-      # hazard: 0.4.2 went straight to `latest` and shipped a defect that 0.4.3 fixed minutes later. Nothing was
-      # wrong with the gate; there was simply no window between "published" and "everybody gets it".
-      - name: Publish to npm on the next channel
-        run: npm publish --tag next
+      # hazard: `approve` is deliberately not automatable — every stage subcommand other than `publish` needs
+      # interactive authentication. So this workflow cannot finish a release on its own, by design.
+      - name: Stage the release on npm
+        run: npm stage publish
 
-      # why: after the publish, and atomically. `--atomic` means the branch and the tag land together or neither
+      # why: after the staging, and atomically. `--atomic` means the branch and the tag land together or neither
       # does; a tag without its commit points at a tree whose package.json says the previous version.
       #
-      # hazard: this is the one window that needs a human. If the publish succeeded and this push fails, npm has the
-      # version and `main` does not. The recovery is to re-run this job: `npm publish` will refuse the existing
-      # version, so re-running is not idempotent — the operator pushes the commit and tag by hand instead. That is
-      # written in the failure message rather than left to be rediscovered.
+      # hazard: this is the one window that needs a human. If the staging succeeded and this push fails, npm holds a
+      # staged version and `main` does not have its commit. The recovery is to reject the stage and re-run, or to
+      # push the commit and tag by hand — written in the failure message rather than left to be rediscovered.
+      #
+      # why the tag is pushed before approval rather than after: nothing in CI can wait for an interactive 2FA
+      # action. A staged version whose commit is not on `main` is the worse of the two states, because the approval
+      # would make a version live from a tree nobody can see.
       - name: Push the commit and the tag
         env:
           VERSION: ${{ needs.decide.outputs.version }}
