@@ -418,11 +418,17 @@ export function checkProviders(registry: readonly ProviderPort[], home: string):
  */
 export function checkCapabilities(root: string, runtimeRoot: string): Check[] {
   const catalog = coreFacade.capability.loadCatalog(runtimeRoot);
-  const policy = coreFacade.capability.readProjectPolicyRaw(root);
-  if (!catalog || !policy) {
+  // why the project file is still read: its absence means this repository is not connected, and inventory about a
+  // repository nobody wired is noise. What decides *enabled* is the effective policy, which includes the machine
+  // tier ([/decisions/ad-103.md](/decisions/ad-103.md)).
+  const connected = coreFacade.capability.readProjectPolicyRaw(root);
+  if (!catalog || !connected) {
     return [];
   }
-  const available = coreFacade.capability.listAvailableNotEnabled(policy, catalog);
+  const available = coreFacade.capability.listAvailableNotEnabled(
+    coreFacade.policy.loadPolicy(root),
+    catalog,
+  );
   if (available.length === 0) {
     return [];
   }

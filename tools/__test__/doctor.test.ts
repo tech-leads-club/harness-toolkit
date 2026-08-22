@@ -32,6 +32,7 @@ import {
   toReport,
   wiringProblems,
 } from "../doctor.ts";
+import { withEnv } from "../test-env.scope.mjs";
 
 function fixtureRoot(): string {
   return mkdtempSync(join(tmpdir(), "doctor-"));
@@ -987,4 +988,43 @@ describe("the version row", () => {
     assert.equal(row?.level, "warn");
     assert.match(row?.detail ?? "", /unknown/);
   });
+});
+
+/**
+ * hazard: the inventory read the project's config file alone, so a capability switched on in the machine tier was
+ * reported as "available and not enabled" while it was being enforced. `doctor`'s neighbouring row tells the
+ * operator to delete restatements, which is precisely what produces that state — so following one row made the
+ * other lie ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ */
+test("AC a capability enabled only by the machine tier is not reported as off", () => {
+  const machine = mkdtempSync(join(tmpdir(), "tlc-machine-"));
+  const runtime = mkdtempSync(join(tmpdir(), "tlc-runtime-"));
+  mkdirSync(join(runtime, "capabilities"), { recursive: true });
+  writeFileSync(
+    join(runtime, "capabilities", "catalog.json"),
+    JSON.stringify({
+      catalogVersion: 1,
+      capabilities: [
+        { id: "operatorRules", configPath: "rules.enabled", title: "Rules", benefit: "b", tradeOff: "t" },
+        { id: "shipGate", configPath: "shipGate.enabled", title: "Ship gate", benefit: "b", tradeOff: "t" },
+      ],
+    }),
+  );
+  const root = newRoot();
+  mkdirSync(dirname(projectConfigPath(root)), { recursive: true });
+  writeFileSync(projectConfigPath(root), JSON.stringify({ version: 1 }), "utf8");
+  writeFileSync(
+    join(machine, "config.json"),
+    JSON.stringify({ version: 1, rules: { enabled: true } }),
+    "utf8",
+  );
+
+  const rows = withEnv({ TLC_HOME: machine, TLC_HOME_FROM_ENV: "1" }, () => checkCapabilities(root, runtime));
+
+  assert.doesNotMatch(
+    rows[0]?.detail ?? "",
+    /operatorRules/,
+    "a rail the machine tier switched on must not read as off",
+  );
+  assert.match(rows[0]?.detail ?? "", /shipGate/, "and one nobody enabled anywhere still reads as available");
 });

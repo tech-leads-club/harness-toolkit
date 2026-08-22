@@ -1,6 +1,11 @@
 import { type CapabilityCatalog, type CatalogCapability, ENABLE_HINT } from "./capability.types.ts";
 
-export function resolveConfigPath(policy: Record<string, unknown>, configPath: string): unknown {
+/**
+ * why `object` and not `Record<string, unknown>`: the callers hand this the *effective* policy, which is a typed
+ * `Policy` rather than a bag of unknowns. Narrowing the parameter forced a cast at every call site, and a cast is
+ * where a wrong argument stops being a type error ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ */
+export function resolveConfigPath(policy: object, configPath: string): unknown {
   let current: unknown = policy;
   for (const part of configPath.split(".").filter(Boolean)) {
     if (!current || typeof current !== "object") {
@@ -11,20 +16,23 @@ export function resolveConfigPath(policy: Record<string, unknown>, configPath: s
   return current;
 }
 
-export function isAvailableNotEnabled(policy: Record<string, unknown>, cap: CatalogCapability): boolean {
+export function isAvailableNotEnabled(policy: object, cap: CatalogCapability): boolean {
   const value = resolveConfigPath(policy, cap.configPath);
   return cap.defaultOn ? value === false : value !== true;
 }
 
-export function listAvailableNotEnabled(
-  policy: Record<string, unknown>,
-  catalog: CapabilityCatalog,
-): CatalogCapability[] {
+/**
+ * hazard: this used to be handed the project's config file alone, so a capability switched on in the machine tier
+ * was reported as "available and not enabled" while it was being enforced — and `doctor`'s neighbouring row tells
+ * the operator to delete restatements, which is what produces exactly that state. A row that says a rail is off
+ * while the rail is on is worse than no row ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ */
+export function listAvailableNotEnabled(policy: object, catalog: CapabilityCatalog): CatalogCapability[] {
   return catalog.capabilities.filter((cap) => isAvailableNotEnabled(policy, cap));
 }
 
 export function listNewlyAnnounceable(
-  policy: Record<string, unknown>,
+  policy: object,
   catalog: CapabilityCatalog,
   seenCatalogVersion: number,
 ): CatalogCapability[] {

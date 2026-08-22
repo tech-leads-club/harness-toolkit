@@ -1382,12 +1382,18 @@ export function runTestSteps(
 
 function announceNewCapabilities(root: string, runtimeRoot: string): void {
   const catalog = coreFacade.capability.loadCatalog(runtimeRoot);
-  const policy = coreFacade.capability.readProjectPolicyRaw(root);
-  if (!catalog || !policy) {
+  // why the effective policy and not the project file: announcing a capability the operator already switched on
+  // machine-wide is noise, and the file alone cannot see that ([/decisions/ad-103.md](/decisions/ad-103.md)).
+  const connected = coreFacade.capability.readProjectPolicyRaw(root);
+  if (!catalog || !connected) {
     return;
   }
   const seen = coreFacade.capability.readRuntimeSeen(root);
-  const fresh = coreFacade.capability.listNewlyAnnounceable(policy, catalog, seen.catalogVersion);
+  const fresh = coreFacade.capability.listNewlyAnnounceable(
+    coreFacade.policy.loadPolicy(root),
+    catalog,
+    seen.catalogVersion,
+  );
   if (fresh.length === 0) {
     return;
   }
