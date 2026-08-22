@@ -6,6 +6,10 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## v0.4.5
+
+No decision records landed in this release.
+
 ## v0.4.4
 
 - **AD-103** — The artefact is proven where operators install it, and an inert scope has to be telling the truth
