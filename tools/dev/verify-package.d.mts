@@ -15,5 +15,10 @@ export function assertPayload(entries: string[]): string[];
 export function probeSteps(tarball: string, version: string): ProbeStep[];
 export function parsePackReport(stdout: string): PackReport | null;
 export function runSteps(steps: ProbeStep[], options: Record<string, unknown>): ProbeResult;
+export function probeEnv(
+  base: Record<string, string | undefined>,
+  prefix: string,
+  home: string,
+): Record<string, string | undefined>;
 export function registrySpec(argv: string[]): { spec: string; version: string } | null;
 export function attempts(argv: string[]): number;

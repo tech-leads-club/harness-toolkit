@@ -25,6 +25,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
+import { PROJECT_SCOPED_ENV, REDIRECTED_ENV, RUNTIME_SCOPED_ENV } from "../test-env.names.mjs";
 
 function fail(message) {
   console.error(`verify-package: ${message}`);
@@ -155,15 +156,47 @@ export function runSteps(steps, options) {
 }
 
 /**
- * why a prefix and not a real `npm i -g`: a real global install would replace the operator's own command, which is
- * exactly the class of defect this script exists to catch. The prefix keeps it to a throwaway directory.
+ * The child's environment: every name that says *where* pointed at the throwaway, and every name that says *which
+ * project* or *which runtime source* removed.
+ *
+ * hazard: this used to be `{...process.env, HOME, USERPROFILE}`. `tlc harness install` writes provider hooks into
+ * whatever `CLAUDE_CONFIG_DIR` and `CURSOR_CONFIG_DIR` resolve to, and this script inherited them from the shell —
+ * so a run inside an agent session rewrote the operator's real `settings.json` to point at a temp directory this
+ * function then deleted, and every hook on that machine failed to load. The suite has had a list for exactly this
+ * since two defects of the same shape landed in one afternoon; the release script built its environment by hand and
+ * used none of it ([/decisions/ad-102.md](/decisions/ad-102.md), [/decisions/ad-103.md](/decisions/ad-103.md)).
  *
  * why both `<prefix>` and `<prefix>/bin` are on PATH: npm puts the shim directly in the prefix on Windows and in
  * `bin/` everywhere else. Naming one of them is how a check passes on the platform it was written on and fails on
  * the other.
- *
- * why HOME and USERPROFILE both: `os.homedir()` reads the first on POSIX and the second on Windows, and the install
- * writes the runtime, the provider config and the launcher link under it.
+ */
+export function probeEnv(base, prefix, home) {
+  const env = { ...base };
+  for (const name of [...PROJECT_SCOPED_ENV, ...RUNTIME_SCOPED_ENV]) {
+    delete env[name];
+  }
+  const destinations = {
+    HOME: home,
+    USERPROFILE: home,
+    TLC_HOME: join(home, ".tlc", "harness"),
+    TLC_INSTALL_DEST: join(home, ".tlc", "harness"),
+    TLC_BIN_DIR: join(home, ".local", "bin"),
+    CLAUDE_CONFIG_DIR: join(home, ".claude"),
+    CURSOR_CONFIG_DIR: join(home, ".cursor"),
+  };
+  for (const name of REDIRECTED_ENV) {
+    // invariant: every declared destination gets a value here. A name added to the list and not to the map would
+    // otherwise stay pointed at the operator's own path, which is the defect above.
+    env[name] = destinations[name] ?? home;
+  }
+  env.npm_config_prefix = prefix;
+  env.PATH = [prefix, join(prefix, "bin"), base.PATH ?? ""].join(delimiter);
+  return env;
+}
+
+/**
+ * why a prefix and not a real `npm i -g`: a real global install would replace the operator's own command, which is
+ * exactly the class of defect this script exists to catch. The prefix keeps it to a throwaway directory.
  */
 function inPrefix(tarball, version) {
   const prefix = mkdtempSync(join(tmpdir(), "tlc-verify-prefix-"));
@@ -171,13 +204,7 @@ function inPrefix(tarball, version) {
   try {
     const result = runSteps(probeSteps(tarball, version), {
       cwd: process.cwd(),
-      env: {
-        ...process.env,
-        npm_config_prefix: prefix,
-        PATH: [prefix, join(prefix, "bin"), process.env.PATH ?? ""].join(delimiter),
-        HOME: home,
-        USERPROFILE: home,
-      },
+      env: probeEnv(process.env, prefix, home),
     });
     return { ...result, room: `npm prefix ${prefix}, home ${home}` };
   } finally {

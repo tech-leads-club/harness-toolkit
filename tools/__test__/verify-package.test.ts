@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { attempts, parsePackReport, probeSteps, registrySpec, runSteps } from "../dev/verify-package.mjs";
+import { attempts, parsePackReport, probeEnv, probeSteps, registrySpec, runSteps } from "../dev/verify-package.mjs";
+import { REDIRECTED_ENV } from "../test-env.names.mjs";
 
 /**
  * hazard: an independent review deleted the `tlc harness doctor` line from the probe and every test stayed green,
@@ -133,6 +134,67 @@ describe("parsePackReport", () => {
 
   test("no report at all is null rather than a throw", () => {
     assert.equal(parsePackReport("npm error code E404\n"), null);
+  });
+});
+
+/**
+ * hazard: the probe's environment was `{...process.env, HOME, USERPROFILE}`. `tlc harness install` writes provider
+ * hooks into whatever `CLAUDE_CONFIG_DIR` and `CURSOR_CONFIG_DIR` resolve to, and those were inherited from the
+ * shell — so running this script inside an agent session rewrote the operator's real `settings.json` to point at a
+ * temp directory the script then deleted, and every hook on that machine failed to load. The suite's own list of
+ * these names already existed ([/decisions/ad-102.md](/decisions/ad-102.md), [/decisions/ad-103.md](/decisions/ad-103.md)).
+ */
+describe("probeEnv", () => {
+  const real = {
+    HOME: "/home/operator",
+    USERPROFILE: "C:\\Users\\operator",
+    CLAUDE_CONFIG_DIR: "/home/operator/.claude-work",
+    CURSOR_CONFIG_DIR: "/home/operator/.cursor",
+    TLC_HOME: "/home/operator/.tlc/harness",
+    TLC_INSTALL_DEST: "/home/operator/.tlc/harness",
+    TLC_BIN_DIR: "/home/operator/.local/bin",
+    TLC_ORIGIN: "/repo",
+    TLC_HOME_FROM_ENV: "1",
+    CLAUDE_PROJECT_DIR: "/repo",
+    CURSOR_PROJECT_DIR: "/repo",
+    TLC_PROJECT_DIR: "/repo",
+    PATH: "/usr/bin",
+  };
+  const env = probeEnv(real, "/tmp/prefix", "/tmp/home") as Record<string, string | undefined>;
+
+  /** invariant: nothing the child can write may name a path outside the throwaway. */
+  test("no destination still points at the operator's own paths", () => {
+    for (const [name, value] of Object.entries(env)) {
+      if (name === "PATH") {
+        continue;
+      }
+      assert.doesNotMatch(value ?? "", /operator/, `${name} still names the operator's own path`);
+    }
+  });
+
+  test("the provider config directories are redirected, not inherited", () => {
+    assert.equal(env.CLAUDE_CONFIG_DIR, join("/tmp/home", ".claude"));
+    assert.equal(env.CURSOR_CONFIG_DIR, join("/tmp/home", ".cursor"));
+  });
+
+  test("which-project and which-source names are removed rather than pointed somewhere", () => {
+    for (const name of ["CLAUDE_PROJECT_DIR", "CURSOR_PROJECT_DIR", "TLC_PROJECT_DIR", "TLC_ORIGIN"]) {
+      assert.equal(env[name], undefined, `${name} survived`);
+    }
+  });
+
+  /**
+   * invariant: every name the suite declares as a redirected destination gets a value here. A name added to that
+   * list and not to this map would keep pointing at the operator's own path.
+   */
+  test("every declared destination is covered", () => {
+    for (const name of REDIRECTED_ENV) {
+      assert.ok((env[name] ?? "").startsWith("/tmp/"), `${name} is not inside the throwaway`);
+    }
+  });
+
+  test("and the installed command is found before anything already on PATH", () => {
+    assert.match(env.PATH ?? "", /^\/tmp\/prefix/);
   });
 });
 
