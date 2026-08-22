@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { normalizeSeparators } from "../../src/platform/sanitize.ts";
 import {
   attempts,
   parsePackReport,
@@ -209,9 +210,12 @@ describe("probeEnv", () => {
   test("every declared destination is covered", () => {
     for (const name of REDIRECTED_ENV) {
       const value = env[name];
+      // why normalised: `join` spells these with the platform's separator, so a `/tmp/` prefix test is an
+      // assertion about the developer's platform rather than about the value — which is the third time this
+      // separator class has been caught by the Windows leg ([/decisions/ad-102.md](/decisions/ad-102.md)).
       assert.ok(
-        value === undefined || value.startsWith("/tmp/"),
-        `${name} is neither absent nor inside the throwaway`,
+        value === undefined || normalizeSeparators(value).startsWith("/tmp/"),
+        `${name} is neither absent nor inside the throwaway: ${value}`,
       );
     }
   });
