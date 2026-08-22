@@ -20,5 +20,9 @@ export function probeEnv(
   prefix: string,
   home: string,
 ): Record<string, string | undefined>;
+export function manifestSpec(
+  argv: string[],
+  identity: { name: string; version: string },
+): { spec: string; version: string } | null;
 export function registrySpec(argv: string[]): { spec: string; version: string } | null;
 export function attempts(argv: string[]): number;

@@ -93,6 +93,13 @@ jobs:
       - name: Pack it, install it, drive it
         run: node tools/dev/verify-package.mjs
 
+      # invariant: the post-publish leg runs here too, against the version this tree claims — which is the last
+      # published one, because the bump happens inside the release job. Without this, its first execution on macOS
+      # or Windows would be *after* the irreversible step, which is the one place a surprise is worthless
+      # ([/decisions/ad-103.md](/decisions/ad-103.md)).
+      - name: Drive the published version the same way the release will
+        run: node tools/dev/verify-package.mjs --from-manifest --retries 3
+
   test:
     permissions:
       contents: read

@@ -239,6 +239,22 @@ function inPrefix(tarball, version) {
  * to stop it. That is this package's own shape. The search starts at index 1 now, where a separator can actually
  * be ([/decisions/ad-103.md](/decisions/ad-103.md)).
  */
+/**
+ * `--from-manifest` is the same probe against the version this tree claims, which is the last published one until
+ * the release job bumps it.
+ *
+ * why a flag and not `--from "$(node -p …)"` in the workflow: composing that in a `run:` block puts a shell
+ * substitution on three platforms with two different shells, which is the class this script removed on purpose.
+ * It exists so the post-publish leg can be proven on every platform *before* a release depends on it — otherwise
+ * its first execution anywhere is after the irreversible step ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ */
+export function manifestSpec(argv, identity) {
+  if (!argv.includes("--from-manifest")) {
+    return null;
+  }
+  return { spec: `${identity.name}@${identity.version}`, version: identity.version };
+}
+
 export function registrySpec(argv) {
   const at = argv.indexOf("--from");
   const spec = at < 0 ? null : (argv[at + 1] ?? null);
@@ -289,7 +305,7 @@ function sleepSeconds(seconds) {
  * ([/decisions/ad-098.md](/decisions/ad-098.md), [/decisions/ad-102.md](/decisions/ad-102.md)).
  */
 if (import.meta.main) {
-  const published = registrySpec(process.argv);
+  const published = registrySpec(process.argv) ?? manifestSpec(process.argv, packageIdentity());
   if (published !== null) {
     const retries = attempts(process.argv);
     let probe = inPrefix(published.spec, published.version);

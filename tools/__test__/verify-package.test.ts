@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { normalizeSeparators } from "../../src/platform/sanitize.ts";
 import {
   attempts,
+  manifestSpec,
   parsePackReport,
   probeEnv,
   probeSteps,
@@ -249,6 +250,21 @@ describe("the published-version probe", () => {
 
     assert.equal(parsed.spec, "@scope/pkg@1.2.3");
     assert.equal(parsed.version, "1.2.3");
+  });
+
+  /**
+   * why this flag exists at all: the alternative was `--from "$(node -p …)"` in a `run:` block, which is a shell
+   * substitution across three platforms and two shells — the class this script removed on purpose.
+   */
+  test("--from-manifest names the version this tree claims", () => {
+    const identity = { name: "@scope/pkg", version: "1.2.3" };
+
+    assert.deepEqual(manifestSpec(["--from-manifest"], identity), {
+      spec: "@scope/pkg@1.2.3",
+      version: "1.2.3",
+    });
+    assert.equal(manifestSpec(["--from", "@scope/pkg@1.2.3"], identity), null);
+    assert.equal(manifestSpec([], identity), null);
   });
 
   test("no --retries means no retries, which is not the same as an unreadable one", () => {
