@@ -191,12 +191,28 @@ describe("probeEnv", () => {
   });
 
   /**
-   * invariant: every name the suite declares as a redirected destination gets a value here. A name added to that
-   * list and not to this map would keep pointing at the operator's own path.
+   * hazard: pointing these at the throwaway made the launcher look for the runtime there — an empty directory,
+   * because `install` has not run yet at that step — and the probe died with "dist/tlc-cli.mjs is missing" on all
+   * three platforms. An installed command has to resolve its own runtime out of the package it came from, and any
+   * value here answers that question for it ([/decisions/ad-103.md](/decisions/ad-103.md)).
+   */
+  test("the names that would tell the launcher where its runtime is are absent, not redirected", () => {
+    assert.equal(env.TLC_HOME, undefined);
+    assert.equal(env.TLC_INSTALL_DEST, undefined);
+  });
+
+  /**
+   * invariant: every name the suite declares as a redirected destination is either inside the throwaway or
+   * deliberately absent. A name added to that list and handled by neither would keep pointing at the operator's
+   * own path.
    */
   test("every declared destination is covered", () => {
     for (const name of REDIRECTED_ENV) {
-      assert.ok((env[name] ?? "").startsWith("/tmp/"), `${name} is not inside the throwaway`);
+      const value = env[name];
+      assert.ok(
+        value === undefined || value.startsWith("/tmp/"),
+        `${name} is neither absent nor inside the throwaway`,
+      );
     }
   });
 
