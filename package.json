@@ -11,7 +11,7 @@
     "policy",
     "governance"
   ],
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "Elastic-2.0",
   "engines": {
     "node": ">=24"
   },

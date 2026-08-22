@@ -2,7 +2,9 @@
 
 ## License
 
-PolyForm Noncommercial 1.0.0 (`LICENSE`, `NOTICE`).
+Elastic License 2.0 (`LICENSE`, `NOTICE`). Free to use and change, including commercially and inside a company;
+not to be offered to third parties as a hosted service, and the notices travel with every copy
+([/decisions/ad-105.md](/decisions/ad-105.md)).
 
 ## Install
 

@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/npm/v/@tech-leads-club/harness-toolkit?style=flat-square&color=blue" alt="npm version" />
   <img src="https://img.shields.io/npm/dt/@tech-leads-club/harness-toolkit?style=flat-square&color=blue" alt="total downloads" />
   <img src="https://img.shields.io/npm/dm/@tech-leads-club/harness-toolkit?style=flat-square&color=blue" alt="monthly downloads" />
-  <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue?style=flat-square" alt="license" />
+  <img src="https://img.shields.io/badge/license-Elastic%202.0-blue?style=flat-square" alt="license" />
   <img src="https://img.shields.io/github/actions/workflow/status/tech-leads-club/harness-toolkit/release.yml?style=flat-square" alt="build status" />
 </p>
 
@@ -577,9 +577,15 @@ Full OKF v0.1 documentation bundle: [`docs/index.md`](docs/index.md).
 
 ## License
 
-**PolyForm Noncommercial 1.0.0** — [`LICENSE`](./LICENSE), [`NOTICE`](./NOTICE).
+**Elastic License 2.0** — [`LICENSE`](./LICENSE), [`NOTICE`](./NOTICE).
 
-| Allowed | Requires separate license |
-|---------|---------------------------|
-| Noncommercial use, change, distribute with attribution | Commercial use |
-| Keep `Required Notice` + license terms | Dropping attribution |
+| Allowed | Not allowed |
+|---------|-------------|
+| Use, change and redistribute it, inside a company and commercially, at no cost | Providing it to third parties as a hosted or managed service |
+| Everything an operator or a team does with it on their own machines and repositories | Removing or obscuring the copyright and licence notices |
+
+Attribution is a condition of the licence rather than a courtesy: keep `NOTICE` and the notices in the files
+with any copy you distribute.
+
+It is source-available, not OSI-approved open source, so a corporate licence scanner will refuse it by default
+([`docs/decisions/ad-105.md`](docs/decisions/ad-105.md)).

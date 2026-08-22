@@ -16,6 +16,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 ## 2026-08-22
 
 - **AD-104** — A subagent proof names the type the spawn declared, never the name the spawning agent chose ([/decisions/ad-104.md](/decisions/ad-104.md))
+- **AD-105** — Anyone may use it, including a company; nobody may sell it as a service, and the notices travel with it ([/decisions/ad-105.md](/decisions/ad-105.md))
 
 ## 2026-08-21
 
