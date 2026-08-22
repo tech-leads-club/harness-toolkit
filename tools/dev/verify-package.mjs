@@ -156,6 +156,17 @@ export function runSteps(steps, options) {
 }
 
 /**
+ * The two the suite redirects and this probe must leave absent.
+ *
+ * hazard: pointing them at the throwaway made the launcher look for the runtime *there* — an empty directory,
+ * because `install` has not run yet at that step — and the probe died with "dist/tlc-cli.mjs is missing" on all
+ * three platforms. The suite redirects them because it runs this code in-process against fake paths; an installed
+ * command has to resolve its own runtime out of the package it was installed from, and any value here answers that
+ * question for it ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ */
+const UNSET_HERE = ["TLC_HOME", "TLC_INSTALL_DEST"];
+
+/**
  * The child's environment: every name that says *where* pointed at the throwaway, and every name that says *which
  * project* or *which runtime source* removed.
  *
@@ -170,16 +181,6 @@ export function runSteps(steps, options) {
  * `bin/` everywhere else. Naming one of them is how a check passes on the platform it was written on and fails on
  * the other.
  */
-/**
- * The two the suite redirects and this probe must leave absent.
- *
- * hazard: pointing them at the throwaway made the launcher look for the runtime *there* — an empty directory,
- * because `install` has not run yet at that step — and the probe died with "dist/tlc-cli.mjs is missing" on all
- * three platforms. The suite redirects them because it runs this code in-process against fake paths; an installed
- * command has to resolve its own runtime out of the package it was installed from, and any value here answers that
- * question for it ([/decisions/ad-103.md](/decisions/ad-103.md)).
- */
-const UNSET_HERE = ["TLC_HOME", "TLC_INSTALL_DEST"];
 export function probeEnv(base, prefix, home) {
   const env = { ...base };
   for (const name of [...PROJECT_SCOPED_ENV, ...RUNTIME_SCOPED_ENV, ...UNSET_HERE]) {
@@ -225,12 +226,6 @@ function inPrefix(tarball, version) {
 }
 
 /**
- * hazard: this module's main flow ran at module scope, so importing it to test the steps executed `npm pack` and
- * the whole probe. It passed here and failed the macOS leg of CI with a file-level error at line 1 — the module,
- * not a test. This repository already has the rule: no library module self-executes
- * ([/decisions/ad-098.md](/decisions/ad-098.md), [/decisions/ad-102.md](/decisions/ad-102.md)).
- */
-/**
  * `--from <name@version>` drives the *published* version instead of a local tarball.
  *
  * why after the publish as well as before: everything before it reads a tarball this repository produced. What an
@@ -238,6 +233,11 @@ function inPrefix(tarball, version) {
  * entry answered as the CLI. This is the only step that can see that, and it can only see it too late: there is no
  * rollback, so the value is a red run within minutes instead of a person on their own machine days later
  * ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ *
+ * hazard: the separator was found with `lastIndexOf("@")`, which on `@scope/pkg` finds the `@` that starts the
+ * scope — so a scoped name with no version read as version `scope/pkg` and walked straight past the guard written
+ * to stop it. That is this package's own shape. The search starts at index 1 now, where a separator can actually
+ * be ([/decisions/ad-103.md](/decisions/ad-103.md)).
  */
 export function registrySpec(argv) {
   const at = argv.indexOf("--from");
@@ -245,8 +245,9 @@ export function registrySpec(argv) {
   if (spec === null) {
     return null;
   }
-  const version = spec.slice(spec.lastIndexOf("@") + 1);
-  if (version === "" || version === spec) {
+  const separator = spec.indexOf("@", 1);
+  const version = separator < 0 ? "" : spec.slice(separator + 1);
+  if (version === "") {
     fail(`--from needs <name@version>, got ${spec}`);
   }
   return { spec, version };
@@ -259,17 +260,34 @@ export function registrySpec(argv) {
  *
  * invariant: only the install step is retried, and only for as long as the caller allows. Anything after the install
  * succeeded is a real failure and returns immediately.
+ *
+ * hazard: an unreadable value used to become 0 in silence, which makes the flag in the workflow decorative — the
+ * exact failure its own test docstring names. Absent is 0 and present-but-unreadable is fatal, the way `--from`
+ * already behaved ([/decisions/ad-103.md](/decisions/ad-103.md)).
  */
 export function attempts(argv) {
   const at = argv.indexOf("--retries");
-  const parsed = at < 0 ? 0 : Number.parseInt(argv[at + 1] ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  if (at < 0) {
+    return 0;
+  }
+  const given = argv[at + 1] ?? "";
+  const parsed = Number.parseInt(given, 10);
+  if (!/^\d+$/.test(given.trim()) || !Number.isFinite(parsed)) {
+    fail(`--retries needs a whole number, got ${JSON.stringify(given)}`);
+  }
+  return parsed;
 }
 
 function sleepSeconds(seconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, seconds * 1000);
 }
 
+/**
+ * hazard: this module's main flow ran at module scope, so importing it to test the steps executed `npm pack` and the
+ * whole probe. It passed here and failed the macOS leg of CI with a file-level error at line 1 — the module, not a
+ * test. This repository already has the rule: no library module self-executes
+ * ([/decisions/ad-098.md](/decisions/ad-098.md), [/decisions/ad-102.md](/decisions/ad-102.md)).
+ */
 if (import.meta.main) {
   const published = registrySpec(process.argv);
   if (published !== null) {
