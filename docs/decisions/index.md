@@ -111,6 +111,7 @@ Handoff section and a link back to this index.
 | [AD-101](/decisions/ad-101.md) | Machine data belongs to the machine, not to the install | active |
 | [AD-102](/decisions/ad-102.md) | A green gate is not a working product, so four checks that look where it cannot | active |
 | [AD-103](/decisions/ad-103.md) | The artefact is proven where operators install it, and an inert scope has to be telling the truth | active |
+| [AD-104](/decisions/ad-104.md) | A subagent proof names the type the spawn declared, never the name the spawning agent chose | active |
 
 ## Archived
 

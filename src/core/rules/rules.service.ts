@@ -16,10 +16,18 @@ import {
   type ObserveContext,
   observationFrom,
   observedFact,
+  resolveSpawnType,
+  spawnLinkFrom,
 } from "./rules.observe.ts";
 import { buildRuleSet } from "./rules.parse.ts";
 import { kindIsRequired } from "./rules.proof.ts";
-import { readObservations, readRuleSources, recordObservation } from "./rules.store.ts";
+import {
+  readObservations,
+  readRuleSources,
+  readSpawnLinks,
+  recordObservation,
+  recordSpawnLink,
+} from "./rules.store.ts";
 import { firingRules, type TriggerContext } from "./rules.trigger.ts";
 import type { RuleError, RuleSet } from "./rules.types.ts";
 
@@ -45,8 +53,14 @@ export function loadRules(root: string, config: RulesConfig): RuleSet {
  * and no git at all.
  */
 export function wantsObservation(root: string, config: RulesConfig, event: ObservableEvent): boolean {
+  const rules = loadRules(root, config).rules;
+  // why the spawn counts as wanted: the link it leaves is what makes the stop resolvable, so a rule asking for
+  // subagent proof has to make the spawn worth observing too ([/decisions/ad-104.md](/decisions/ad-104.md)).
+  if (spawnLinkFrom(event) !== null) {
+    return kindIsRequired(rules, "subagent");
+  }
   const fact = observedFact(event);
-  return fact !== null && kindIsRequired(loadRules(root, config).rules, fact.kind);
+  return fact !== null && kindIsRequired(rules, fact.kind);
 }
 
 /** invariant: with the capability off nothing is written, so a machine that never opted in carries no new file. */
@@ -59,7 +73,15 @@ export function observe(
   if (!config.enabled) {
     return;
   }
-  const observation = observationFrom(event, context);
+  const link = spawnLinkFrom(event);
+  if (link !== null) {
+    recordSpawnLink(root, { ...link, at: context.at });
+    return;
+  }
+  const observation = observationFrom(
+    resolveSpawnType(event, () => readSpawnLinks(root)),
+    context,
+  );
   if (observation !== null) {
     recordObservation(root, observation);
   }

@@ -28,6 +28,16 @@ export type ObservableEvent = {
    * field name it was asserting about ([/decisions/ad-100.md](/decisions/ad-100.md)).
    */
   spawnSubagentType?: string;
+  /**
+   * What the host calls this spawn, which is not what the spawn declared.
+   *
+   * hazard: the documented `agent_type` field of `SubagentStart`/`SubagentStop` is described as the agent's name,
+   * and when a spawn is given a `name` the host puts that name here — so a value the gated agent chose was being
+   * recorded as the type it must prove. That made a legitimate review fail to satisfy the rule *and* made the
+   * proof forgeable: a `general-purpose` subagent named `the-judge` would have satisfied it
+   * ([/decisions/ad-104.md](/decisions/ad-104.md)).
+   */
+  spawnAgentLabel?: string;
 };
 
 export type ObserveContext = { sha: string | null; sessionKey: string; at: string };
@@ -46,9 +56,12 @@ export type ObservedFact = { kind: Observation["kind"]; value: string };
 export function observedFact(event: ObservableEvent): ObservedFact | null {
   if (event.event === "subagent.stop") {
     // why the type and not the id: a rule says "the jury reviewed", not "agent 7f3a reviewed".
-    return event.spawnSubagentType === undefined
-      ? null
-      : { kind: "subagent", value: event.spawnSubagentType };
+    //
+    // why the label is a fallback and not the first choice: it is what the host calls the spawn, which the gated
+    // agent chooses when it names one. A host that sends the declared type wins; a host that sends only a label
+    // degrades to it, which is visible rather than silent ([/decisions/ad-104.md](/decisions/ad-104.md)).
+    const value = event.spawnSubagentType ?? event.spawnAgentLabel;
+    return value === undefined ? null : { kind: "subagent", value };
   }
 
   if (event.event === "tool.after" || event.event === "shell.after") {
@@ -73,4 +86,47 @@ export function observationFrom(event: ObservableEvent, context: ObserveContext)
  */
 export function gateObservation(gate: string, context: ObserveContext): Observation {
   return { kind: "gate", value: gate, sha: context.sha, sessionKey: context.sessionKey, at: context.at };
+}
+
+/**
+ * The elo a spawn leaves behind: the type it declared, under the label the host will echo back at the stop.
+ *
+ * why `tool.after` and not `tool.before`: after means the host accepted the spawn. A spawn refused by the
+ * allowlist rail must not leave a link that a later stop could resolve against
+ * ([/decisions/ad-104.md](/decisions/ad-104.md)).
+ *
+ * invariant: only a spawn that declared a type and carries a label is worth linking. Without a label there is
+ * nothing to resolve at the stop, and without a declared type there is nothing to resolve *to*.
+ */
+export function spawnLinkFrom(event: ObservableEvent): { label: string; type: string } | null {
+  if (event.event !== "tool.after" || !SPAWN_TOOLS.has(event.toolName ?? "")) {
+    return null;
+  }
+  const { spawnAgentLabel: label, spawnSubagentType: type } = event;
+  return label === undefined || type === undefined || label === type ? null : { label, type };
+}
+
+const SPAWN_TOOLS = new Set(["Task", "Agent"]);
+
+/**
+ * The stop, with the label resolved back to the type the spawn declared.
+ *
+ * invariant: the newest link wins, because a label can be reused across a session and the proof is about now.
+ * A stop that already carries a declared type is returned untouched — a host that answers correctly is never
+ * second-guessed ([/decisions/ad-104.md](/decisions/ad-104.md)).
+ */
+export function resolveSpawnType(
+  event: ObservableEvent,
+  links: () => readonly { label: string; type: string }[],
+): ObservableEvent {
+  if (event.event !== "subagent.stop" || event.spawnSubagentType !== undefined) {
+    return event;
+  }
+  const label = event.spawnAgentLabel;
+  if (label === undefined) {
+    return event;
+  }
+  const matches = links().filter((link) => link.label === label);
+  const newest = matches[matches.length - 1];
+  return newest === undefined ? event : { ...event, spawnSubagentType: newest.type };
 }

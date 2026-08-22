@@ -59,6 +59,36 @@ export function readRuleSources(root: string): RuleSource[] {
   return [...readDir(globalRulesDir(), "global"), ...readDir(projectRulesDir(root), "project")];
 }
 
+/**
+ * What the host will call a spawn, against the type the spawn actually declared.
+ *
+ * why a second file and not a second record shape in the proof store: that store answers "what was proven", and
+ * every reader of it treats a record as proof. A link is not proof — the subagent has not finished yet — and a
+ * reader that had to skip records would be one refactor away from counting one ([/decisions/ad-104.md](/decisions/ad-104.md)).
+ */
+export function spawnLinksPath(root: string): string {
+  return join(projectStateDir(root), "rule-spawn-links.jsonl");
+}
+
+export type SpawnLink = { label: string; type: string; at: string };
+
+export function recordSpawnLink(root: string, link: SpawnLink): void {
+  try {
+    appendRecord(spawnLinksPath(root), link);
+  } catch {
+    // why swallowed: the same reason the proof store swallows. A link that cannot be written costs a proof that
+    // reads as missing, which the gate already reports as missing.
+  }
+}
+
+export function readSpawnLinks(root: string): SpawnLink[] {
+  try {
+    return readTail<SpawnLink>(spawnLinksPath(root), OBSERVATION_TAIL);
+  } catch {
+    return [];
+  }
+}
+
 export function recordObservation(root: string, observation: Observation): void {
   try {
     appendRecord(observationsPath(root), observation);

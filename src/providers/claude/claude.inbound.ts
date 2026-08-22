@@ -216,6 +216,13 @@ export function claudeToEvent(raw: Record<string, unknown>): HarnessEvent | null
       if (spawnSubagentType) {
         event.spawnSubagentType = spawnSubagentType;
       }
+      // why the name too: an addressable spawn carries one, and it is the value the host echoes back as
+      // `agent_type` at the stop. Without it here, the stop cannot be resolved to the type the spawn declared
+      // ([/decisions/ad-104.md](/decisions/ad-104.md)).
+      const spawnAgentLabel = toolInput ? asString(toolInput.name) : undefined;
+      if (spawnAgentLabel) {
+        event.spawnAgentLabel = spawnAgentLabel;
+      }
       const spawnModel = toolInput ? asString(toolInput.model) : undefined;
       if (spawnModel) {
         event.spawnModel = spawnModel;
@@ -224,12 +231,24 @@ export function claudeToEvent(raw: Record<string, unknown>): HarnessEvent | null
     }
     case "subagent.start":
     case "subagent.stop": {
+      /**
+       * hazard: `agent_type` was read here as the type. The hooks reference describes it as the agent's *name*,
+       * and when a spawn is given a `name` the host puts that name in it — measured on a real payload:
+       * `subagent_type: "the-judge"` at the spawn, `agent_type: "judge-harness-rule"` inside the child. So the
+       * value a rule had to match was the one the gated agent chose, which broke a legitimate review and made the
+       * proof forgeable ([/decisions/ad-104.md](/decisions/ad-104.md)).
+       *
+       * invariant: only a field that means the declared type lands in `spawnSubagentType`. The host's label goes
+       * to `spawnAgentLabel`, and the correlation with the spawn resolves it.
+       */
       const spawnSubagentType =
-        asString(raw.agent_type) ??
-        asString(raw.subagent_type) ??
-        (toolInput ? asString(toolInput.subagent_type) : undefined);
+        asString(raw.subagent_type) ?? (toolInput ? asString(toolInput.subagent_type) : undefined);
       if (spawnSubagentType) {
         event.spawnSubagentType = spawnSubagentType;
+      }
+      const spawnAgentLabel = asString(raw.agent_type) ?? (toolInput ? asString(toolInput.name) : undefined);
+      if (spawnAgentLabel) {
+        event.spawnAgentLabel = spawnAgentLabel;
       }
       const spawnModel = (toolInput ? asString(toolInput.model) : undefined) ?? asString(raw.model);
       if (spawnModel) {

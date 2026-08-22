@@ -13,6 +13,10 @@ Generated from `docs/decisions/` — do not edit by hand. Run `node tools/render
 A reserved file of the [OKF v0.1](/decisions/ad-013.md) bundle: entries grouped under ISO 8601 headings,
 newest first. For what landed in which npm release, see `CHANGELOG.md` at the repository root.
 
+## 2026-08-22
+
+- **AD-104** — A subagent proof names the type the spawn declared, never the name the spawning agent chose ([/decisions/ad-104.md](/decisions/ad-104.md))
+
 ## 2026-08-21
 
 - **AD-100** — The operator declares the trigger and the proof; the harness enforces it ([/decisions/ad-100.md](/decisions/ad-100.md))

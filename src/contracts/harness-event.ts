@@ -64,6 +64,8 @@ export type HarnessEvent = {
   filePath?: string;
   subagentType?: string;
   spawnSubagentType?: string;
+  /** What the host calls a spawn — its name, which the spawning agent chooses. Never a type to match against. */
+  spawnAgentLabel?: string;
   status?: "completed" | "aborted" | "error";
   loopCount?: number;
   /** Provider's own permission posture, when it exposes one. Absent means unknown, not permissive. */

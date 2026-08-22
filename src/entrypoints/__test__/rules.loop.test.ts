@@ -379,3 +379,80 @@ describe("a rule at the end of the turn", () => {
     assert.equal((await atStop()).kind, "abstain");
   });
 });
+
+/**
+ * The proof must name the type the spawn *declared*, never the label the spawning agent chose.
+ *
+ * hazard: measured on a real payload from Claude Code 2.1.238 — the spawn carried
+ * `subagent_type: "the-judge"` **and** `name: "judge-harness-rule"`, and every event from inside the child came
+ * back with `agent_type: "judge-harness-rule"`. The stop mapping preferred `agent_type`, so the recorded proof was
+ * the name. Two consequences: a legitimate review never satisfied the rule, and the proof became forgeable — the
+ * name is chosen by the agent being gated ([/decisions/ad-104.md](/decisions/ad-104.md)).
+ */
+describe("a spawn's declared type is the proof, not the name it was given", () => {
+  const spawned = (type: string, name?: string): string =>
+    JSON.stringify({
+      hook_event_name: "PostToolUse",
+      cwd: root,
+      session_id: "sess-1",
+      tool_name: "Agent",
+      tool_input: name === undefined ? { subagent_type: type } : { subagent_type: type, name },
+    });
+
+  const claudeStop = (agentType: string): string =>
+    JSON.stringify({
+      hook_event_name: "SubagentStop",
+      cwd: root,
+      session_id: "sess-1",
+      agent_type: agentType,
+    });
+
+  test("AC1 a named spawn of the required type clears the rule", async () => {
+    withRule("subagent(the-judge) since HEAD");
+
+    assert.equal((await runHandler(toolBeforeHandler, stdinOf(openPr()))).decision.kind, "deny");
+
+    await runHandler(toolAfterHandler, stdinOf(spawned("the-judge", "judge-harness-rule")));
+    await runHandler(subagentStopHandler, stdinOf(claudeStop("judge-harness-rule")));
+
+    assert.equal(observations()[0]?.value, "the-judge", "the declared type, not the label");
+    assert.notEqual((await runHandler(toolBeforeHandler, stdinOf(openPr()))).decision.kind, "deny");
+  });
+
+  /** invariant: the forgery. A label equal to the required type proves nothing about what actually ran. */
+  test("AC2 a general-purpose spawn named after the required type does not clear it", async () => {
+    withRule("subagent(the-judge) since HEAD");
+
+    await runHandler(toolAfterHandler, stdinOf(spawned("general-purpose", "the-judge")));
+    await runHandler(subagentStopHandler, stdinOf(claudeStop("the-judge")));
+
+    assert.equal(observations()[0]?.value, "general-purpose", "the type it really was");
+    assert.equal(
+      (await runHandler(toolBeforeHandler, stdinOf(openPr()))).decision.kind,
+      "deny",
+      "naming a worker after the reviewer must not satisfy the reviewer",
+    );
+  });
+
+  test("AC3 an unnamed spawn still records the type it declared", async () => {
+    withRule("subagent(the-judge) since HEAD");
+
+    await runHandler(toolAfterHandler, stdinOf(spawned("the-judge")));
+    await runHandler(subagentStopHandler, stdinOf(claudeStop("the-judge")));
+
+    assert.equal(observations()[0]?.value, "the-judge");
+    assert.notEqual((await runHandler(toolBeforeHandler, stdinOf(openPr()))).decision.kind, "deny");
+  });
+
+  /**
+   * invariant: a stop the harness never saw spawned still records something. A host that fires only the stop is
+   * degraded, not silent — and `doctor` is where an operator sees which proof kinds never arrive.
+   */
+  test("AC4 a stop with no spawn seen records the host's label", async () => {
+    withRule("subagent(the-judge) since HEAD");
+
+    await runHandler(subagentStopHandler, stdinOf(claudeStop("the-judge")));
+
+    assert.equal(observations()[0]?.value, "the-judge");
+  });
+});
