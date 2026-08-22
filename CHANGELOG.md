@@ -6,7 +6,7 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
-## Unreleased
+## v0.5.0
 
 - **AD-105** — Anyone may use it, including a company; nobody may sell it as a service, and the notices travel with it
 
