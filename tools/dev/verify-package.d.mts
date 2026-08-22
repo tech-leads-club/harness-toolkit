@@ -24,5 +24,9 @@ export function manifestSpec(
   argv: string[],
   identity: { name: string; version: string },
 ): { spec: string; version: string } | null;
+export function envSpec(
+  argv: string[],
+  env?: Record<string, string | undefined>,
+): { spec: string; version: string } | null;
 export function registrySpec(argv: string[]): { spec: string; version: string } | null;
 export function attempts(argv: string[]): number;

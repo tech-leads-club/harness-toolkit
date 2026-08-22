@@ -409,5 +409,9 @@ jobs:
       - name: Drive the published version
         env:
           SPEC: "@tech-leads-club/harness-toolkit@${{ needs.decide.outputs.version }}"
-        run: node tools/dev/verify-package.mjs --from "$SPEC" --retries 6
+        # hazard: this was `--from "$SPEC"`. The default shell on Windows is PowerShell, where `$SPEC` is a
+        # PowerShell variable and an environment variable is `$env:SPEC` — so the argument arrived empty and this
+        # job failed after the publish. `--from-env` hands the process the variable's *name*, so no value passes
+        # through a shell at all ([/decisions/ad-103.md](/decisions/ad-103.md)).
+        run: node tools/dev/verify-package.mjs --from-env SPEC --retries 6
 

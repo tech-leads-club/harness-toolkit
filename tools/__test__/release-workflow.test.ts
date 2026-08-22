@@ -395,3 +395,53 @@ describe("the release publishes without a credential and without a human", () =>
     assert.equal(manifest.publishConfig?.access, "public");
   });
 });
+
+/**
+ * The class, not the instance: a `run:` block on a job that runs on more than one operating system must not
+ * substitute a variable, because `$NAME` is an environment variable in bash and a *shell* variable in PowerShell.
+ *
+ * hazard: the post-publish smoke step was `--from "$SPEC"`. On the Windows leg PowerShell expanded it to nothing,
+ * the argument arrived empty, and the job failed after the publish — the one place a surprise buys nothing. This is
+ * the fourth defect of this shape the Windows leg has caught, so it is worth a check rather than another fix
+ * ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ */
+describe("no cross-platform step substitutes a shell variable", () => {
+  /**
+   * Every `run:` line belonging to a job whose own block names more than one runner.
+   *
+   * why the block is bounded by the next job header: a fixed lookahead bled into the following job, so a
+   * single-runner job inherited its neighbour's matrix and the check failed on a correct line. A check that fires
+   * on correct code is the defect, not the code ([/decisions/ad-102.md](/decisions/ad-102.md)).
+   */
+  function crossPlatformRunLines(text: string): string[] {
+    const lines = text.split("\n");
+    const header = /^ {2}[a-z][\w-]*:$/;
+    const starts = lines.map((line, index) => (header.test(line) ? index : -1)).filter((index) => index >= 0);
+    const found: string[] = [];
+
+    for (const [order, start] of starts.entries()) {
+      const block = lines.slice(start, starts[order + 1] ?? lines.length);
+      const runners = new Set(block.join("\n").match(/(?:ubuntu|macos|windows)-latest/g) ?? []);
+      if (runners.size < 2) {
+        continue;
+      }
+      found.push(...block.filter((line) => /^\s+(?:- )?run: /.test(line)).map((line) => line.trim()));
+    }
+    return found;
+  }
+
+  for (const file of ["release.yml", "ci.yml"]) {
+    test(`${file} passes values without a shell substitution`, () => {
+      const text = readFileSync(join(repoRoot, ".github", "workflows", file), "utf8");
+      const lines = crossPlatformRunLines(text);
+
+      assert.ok(
+        lines.length > 0,
+        `no cross-platform run: line found in ${file} — the check would pass vacuously`,
+      );
+      for (const line of lines) {
+        assert.doesNotMatch(line, /\$[A-Za-z_{(]/, `${file}: ${line}`);
+      }
+    });
+  }
+});

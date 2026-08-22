@@ -226,6 +226,23 @@ function inPrefix(tarball, version) {
 }
 
 /**
+ * The spec a probe was pointed at, with the one guard that matters.
+ *
+ * hazard: the separator was found with `lastIndexOf("@")`, which on `@scope/pkg` finds the `@` that starts the
+ * scope — so a scoped name with no version read as version `scope/pkg` and walked straight past the guard written
+ * to stop it. That is this package's own shape. The search starts at index 1 now, where a separator can actually
+ * be ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ */
+function parseSpec(spec, flag) {
+  const separator = spec.indexOf("@", 1);
+  const version = separator < 0 ? "" : spec.slice(separator + 1);
+  if (version === "") {
+    fail(`${flag} needs <name@version>, got ${spec}`);
+  }
+  return { spec, version };
+}
+
+/**
  * `--from <name@version>` drives the *published* version instead of a local tarball.
  *
  * why after the publish as well as before: everything before it reads a tarball this repository produced. What an
@@ -233,12 +250,35 @@ function inPrefix(tarball, version) {
  * entry answered as the CLI. This is the only step that can see that, and it can only see it too late: there is no
  * rollback, so the value is a red run within minutes instead of a person on their own machine days later
  * ([/decisions/ad-103.md](/decisions/ad-103.md)).
- *
- * hazard: the separator was found with `lastIndexOf("@")`, which on `@scope/pkg` finds the `@` that starts the
- * scope — so a scoped name with no version read as version `scope/pkg` and walked straight past the guard written
- * to stop it. That is this package's own shape. The search starts at index 1 now, where a separator can actually
- * be ([/decisions/ad-103.md](/decisions/ad-103.md)).
  */
+export function registrySpec(argv) {
+  const at = argv.indexOf("--from");
+  const spec = at < 0 ? null : (argv[at + 1] ?? null);
+  return spec === null ? null : parseSpec(spec, "--from");
+}
+
+/**
+ * `--from-env <NAME>` reads the spec out of the environment, so the workflow passes no value through a shell.
+ *
+ * hazard: the release smoke step was `--from "$SPEC"`. On Windows the default shell is PowerShell, where `$SPEC`
+ * is a PowerShell variable and an environment variable is `$env:SPEC` — so the argument arrived empty and the job
+ * failed *after* the publish. The value never reaches a shell now: the process reads it itself. This is the fourth
+ * defect of this class the Windows leg has caught, and every one of them was a substitution that meant two
+ * different things ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ */
+export function envSpec(argv, env = process.env) {
+  const at = argv.indexOf("--from-env");
+  if (at < 0) {
+    return null;
+  }
+  const name = argv[at + 1] ?? "";
+  const value = env[name] ?? "";
+  if (name === "" || value === "") {
+    fail(`--from-env needs the name of a set variable, got ${JSON.stringify(name)}`);
+  }
+  return parseSpec(value, `--from-env ${name}`);
+}
+
 /**
  * `--from-manifest` is the same probe against the version this tree claims, which is the last published one until
  * the release job bumps it.
@@ -253,20 +293,6 @@ export function manifestSpec(argv, identity) {
     return null;
   }
   return { spec: `${identity.name}@${identity.version}`, version: identity.version };
-}
-
-export function registrySpec(argv) {
-  const at = argv.indexOf("--from");
-  const spec = at < 0 ? null : (argv[at + 1] ?? null);
-  if (spec === null) {
-    return null;
-  }
-  const separator = spec.indexOf("@", 1);
-  const version = separator < 0 ? "" : spec.slice(separator + 1);
-  if (version === "") {
-    fail(`--from needs <name@version>, got ${spec}`);
-  }
-  return { spec, version };
 }
 
 /**
@@ -305,7 +331,10 @@ function sleepSeconds(seconds) {
  * ([/decisions/ad-098.md](/decisions/ad-098.md), [/decisions/ad-102.md](/decisions/ad-102.md)).
  */
 if (import.meta.main) {
-  const published = registrySpec(process.argv) ?? manifestSpec(process.argv, packageIdentity());
+  const published =
+    registrySpec(process.argv) ??
+    envSpec(process.argv, process.env) ??
+    manifestSpec(process.argv, packageIdentity());
   if (published !== null) {
     const retries = attempts(process.argv);
     let probe = inPrefix(published.spec, published.version);

@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { normalizeSeparators } from "../../src/platform/sanitize.ts";
 import {
   attempts,
+  envSpec,
   manifestSpec,
   parsePackReport,
   probeEnv,
@@ -256,6 +257,22 @@ describe("the published-version probe", () => {
    * why this flag exists at all: the alternative was `--from "$(node -p …)"` in a `run:` block, which is a shell
    * substitution across three platforms and two shells — the class this script removed on purpose.
    */
+  /**
+   * hazard: the release smoke step read `--from "$SPEC"`, and on Windows the default shell is PowerShell, where
+   * `$SPEC` is a shell variable rather than an environment one — the argument arrived empty and the job failed
+   * after the publish. The name travels now, not the value ([/decisions/ad-103.md](/decisions/ad-103.md)).
+   */
+  test("--from-env reads the value the workflow never passes through a shell", () => {
+    const parsed = envSpec(["--from-env", "SPEC"], { SPEC: "@scope/pkg@1.2.3" }) as {
+      spec: string;
+      version: string;
+    };
+
+    assert.equal(parsed.spec, "@scope/pkg@1.2.3");
+    assert.equal(parsed.version, "1.2.3");
+    assert.equal(envSpec(["--from", "@scope/pkg@1.2.3"], {}), null);
+  });
+
   test("--from-manifest names the version this tree claims", () => {
     const identity = { name: "@scope/pkg", version: "1.2.3" };
 
@@ -308,6 +325,15 @@ describe("the published-version probe", () => {
     test("--from @scope/pkg@1.2.3 is accepted", () => {
       assert.equal(verdict(["--from", "@scope/pkg@1.2.3"], "registrySpec").status, 0);
     });
+
+    for (const args of [["--from-env", "SPEC"], ["--from-env"]]) {
+      test(`${args.join(" ")} with nothing set is refused`, () => {
+        const result = verdict(args, "envSpec");
+
+        assert.notEqual(result.status, 0, result.output);
+        assert.match(result.output, /--from-env needs the name of a set variable/);
+      });
+    }
 
     for (const given of ["nonsense", "6.9", "-2"]) {
       test(`--retries ${given} is refused`, () => {
