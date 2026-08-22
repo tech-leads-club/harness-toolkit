@@ -11,10 +11,11 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { launcherLines, NPM_MARKER, runtimeVersion, versionMoveLine } from "../../bin/tlc-cli.ts";
+import { coreFacade } from "../../src/core/index.ts";
 import { isLink } from "../../src/platform/links.ts";
 import {
   installDest,
@@ -517,4 +518,20 @@ test("the update line names both versions, or says it did not move", () => {
   assert.equal(versionMoveLine("0.3.6", "0.4.0"), "update: 0.3.6 → 0.4.0");
   assert.equal(versionMoveLine("0.4.0", "0.4.0"), "update: already at 0.4.0");
   assert.equal(versionMoveLine(null, null), "update: already at unknown");
+});
+
+/**
+ * The coupling, not the instance: anything the harness reads out of the runtime home that the operator wrote has
+ * to be declared operator-owned. `rules` was not, so it survived an update only because nothing removed it, while
+ * `uninstall` never mentioned it and `--purge` — which promises to remove the operator's data — left it behind
+ * ([/decisions/ad-100.md](/decisions/ad-100.md), [/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+test("AC the machine tier of operator rules is declared operator-owned", () => {
+  const directory = basename(coreFacade.rules.globalDir());
+
+  assert.ok(
+    OPERATOR_OWNED.includes(directory as never),
+    `${directory} is read from the runtime home and is not in OPERATOR_OWNED`,
+  );
+  assert.ok(!RUNTIME_PAYLOAD.includes(directory as never), `${directory} must not be installed over`);
 });

@@ -33,8 +33,16 @@ export const RUNTIME_PAYLOAD = [
   "package.json",
 ] as const;
 
-/** Never copied and never removed. The reason the split exists. */
-export const OPERATOR_OWNED = ["config.json", "state", "flags"] as const;
+/**
+ * Never copied and never removed. The reason the split exists.
+ *
+ * hazard: `rules` was missing while the machine tier of operator rules already read from
+ * `<runtime home>/rules`. It survived an update by omission — it is not in the payload, so nothing removed it —
+ * but `uninstall` never mentioned it and `--purge`, which promises to remove the operator's data, left it behind.
+ * A data directory added to the runtime home has to be declared here, not merely absent from the payload
+ * ([/decisions/ad-100.md](/decisions/ad-100.md), [/decisions/ad-101.md](/decisions/ad-101.md)).
+ */
+export const OPERATOR_OWNED = ["config.json", "state", "flags", "rules"] as const;
 
 /**
  * Inside a payload entry and still not shipped.
