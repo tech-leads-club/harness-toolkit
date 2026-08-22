@@ -4,7 +4,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { attempts, parsePackReport, probeEnv, probeSteps, registrySpec, runSteps } from "../dev/verify-package.mjs";
+import {
+  attempts,
+  parsePackReport,
+  probeEnv,
+  probeSteps,
+  registrySpec,
+  runSteps,
+} from "../dev/verify-package.mjs";
 import { REDIRECTED_ENV } from "../test-env.names.mjs";
 
 /**
