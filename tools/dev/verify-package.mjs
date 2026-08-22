@@ -170,21 +170,32 @@ export function runSteps(steps, options) {
  * `bin/` everywhere else. Naming one of them is how a check passes on the platform it was written on and fails on
  * the other.
  */
+/**
+ * The two the suite redirects and this probe must leave absent.
+ *
+ * hazard: pointing them at the throwaway made the launcher look for the runtime *there* — an empty directory,
+ * because `install` has not run yet at that step — and the probe died with "dist/tlc-cli.mjs is missing" on all
+ * three platforms. The suite redirects them because it runs this code in-process against fake paths; an installed
+ * command has to resolve its own runtime out of the package it was installed from, and any value here answers that
+ * question for it ([/decisions/ad-103.md](/decisions/ad-103.md)).
+ */
+const UNSET_HERE = ["TLC_HOME", "TLC_INSTALL_DEST"];
 export function probeEnv(base, prefix, home) {
   const env = { ...base };
-  for (const name of [...PROJECT_SCOPED_ENV, ...RUNTIME_SCOPED_ENV]) {
+  for (const name of [...PROJECT_SCOPED_ENV, ...RUNTIME_SCOPED_ENV, ...UNSET_HERE]) {
     delete env[name];
   }
   const destinations = {
     HOME: home,
     USERPROFILE: home,
-    TLC_HOME: join(home, ".tlc", "harness"),
-    TLC_INSTALL_DEST: join(home, ".tlc", "harness"),
     TLC_BIN_DIR: join(home, ".local", "bin"),
     CLAUDE_CONFIG_DIR: join(home, ".claude"),
     CURSOR_CONFIG_DIR: join(home, ".cursor"),
   };
   for (const name of REDIRECTED_ENV) {
+    if (UNSET_HERE.includes(name)) {
+      continue;
+    }
     // invariant: every declared destination gets a value here. A name added to the list and not to the map would
     // otherwise stay pointed at the operator's own path, which is the defect above.
     env[name] = destinations[name] ?? home;
