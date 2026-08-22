@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
@@ -66,19 +67,27 @@ describe("probeSteps", () => {
  */
 describe("runSteps", () => {
   /**
-   * invariant: "nothing after the failure runs" is proven by a step that would leave a file behind, not by an
-   * assertion about a variable this test controls.
+   * hazard: the negative half of this test — "the marker is absent, so nothing after the failure ran" — proves
+   * nothing on its own. If the marker command were broken, by quoting on one platform or by a typo, the assertion
+   * would pass for the wrong reason and the test would never fail. So the same step runs alone first and has to
+   * write; only then is its absence evidence ([/decisions/ad-103.md](/decisions/ad-103.md)).
    */
   test("a failure stops the run and names the step that failed", () => {
     const marker = join(mkdtempSync(join(tmpdir(), "tlc-steps-")), "reached");
+    const writes = {
+      label: "the marker step",
+      command: `node -e "require('fs').writeFileSync(process.argv[1],'x')" ${marker}`,
+    };
+
+    assert.equal((runSteps([writes], {}) as { ok: boolean }).ok, true, "the marker step must run at all");
+    assert.equal(existsSync(marker), true, "the marker step must write when it is reached");
+    rmSync(marker);
+
     const result = runSteps(
       [
         { label: "first", command: 'node -e "console.log(1)"' },
         { label: "the one that fails", command: 'node -e "process.exit(3)"' },
-        {
-          label: "unreachable",
-          command: `node -e "require('fs').writeFileSync(process.argv[1],'x')" ${marker}`,
-        },
+        { ...writes, label: "unreachable" },
       ],
       {},
     ) as { ok: boolean; step?: { label: string }; reason?: string };
@@ -242,10 +251,56 @@ describe("the published-version probe", () => {
     assert.equal(parsed.version, "1.2.3");
   });
 
-  test("retries are only what argv actually says", () => {
-    assert.equal(attempts(["--retries", "6"]), 6);
-    assert.equal(attempts(["--retries", "nonsense"]), 0);
+  test("no --retries means no retries, which is not the same as an unreadable one", () => {
     assert.equal(attempts(["--from", "a@1"]), 0);
+    assert.equal(attempts(["--retries", "6"]), 6);
+  });
+
+  /**
+   * hazard: the separator was found with `lastIndexOf("@")`, so `@scope/pkg` — this package's own shape — read as
+   * version `scope/pkg` and walked past the guard written to stop it. The probe would then install whatever
+   * `latest` happened to be and fail three steps later against a version nobody asked for.
+   *
+   * why a child process: these guards exit rather than throw, because they guard a release rather than a caller
+   * ([/decisions/ad-103.md](/decisions/ad-103.md)).
+   */
+  describe("an argument that cannot mean what it says is fatal, not silently ignored", () => {
+    function verdict(args: string[], call: string) {
+      const script = join(
+        dirname(fileURLToPath(import.meta.url)),
+        "..",
+        "dev",
+        "verify-package.mjs",
+      ).replaceAll("\\", "/");
+      const probe = spawnSync(
+        process.execPath,
+        ["-e", `import("file://${script}").then((m) => m.${call}(${JSON.stringify(args)}))`],
+        { encoding: "utf8" },
+      );
+      return { status: probe.status, output: `${probe.stdout ?? ""}${probe.stderr ?? ""}` };
+    }
+
+    for (const spec of ["@scope/pkg", "pkg", "@scope/pkg@"]) {
+      test(`--from ${spec} is refused`, () => {
+        const result = verdict(["--from", spec], "registrySpec");
+
+        assert.notEqual(result.status, 0, result.output);
+        assert.match(result.output, /needs <name@version>/);
+      });
+    }
+
+    test("--from @scope/pkg@1.2.3 is accepted", () => {
+      assert.equal(verdict(["--from", "@scope/pkg@1.2.3"], "registrySpec").status, 0);
+    });
+
+    for (const given of ["nonsense", "6.9", "-2"]) {
+      test(`--retries ${given} is refused`, () => {
+        const result = verdict(["--retries", given], "attempts");
+
+        assert.notEqual(result.status, 0, result.output);
+        assert.match(result.output, /needs a whole number/);
+      });
+    }
   });
 });
 
