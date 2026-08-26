@@ -178,7 +178,10 @@ with BLOCKED.
 Outcomes append to `.tlc/harness/state/ship-ledger.jsonl` (`claim` / `challenge` / `pass`), each row tagged
 with the resolved `provider`.
 
-Default excludes: `.tlc/`, `.cursor/`, `.claude/`, `**/node_modules/`, `**/.git/`.
+Default excludes: `.tlc/`, `**/node_modules/`, `**/.git/`. `src/core` stays provider-neutral by design
+([/decisions/ad-011.md](/decisions/ad-011.md)), so a provider's own directory (`.cursor/`, `.claude/`) is
+not a core default — add it to your project's `shipGate.runtimePathExcludes` if `runtimePathPrefixes` is
+customised broadly enough to reach one.
 
 ## emptyDiffAntiShip
 

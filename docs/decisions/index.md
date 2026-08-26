@@ -117,6 +117,7 @@ Handoff section and a link back to this index.
 | [AD-107](/decisions/ad-107.md) | A subagent's own budget running out is not evidence about the tree, and a stuck handoff now has an exit | active |
 | [AD-108](/decisions/ad-108.md) | Two fields in the unfinished-work formula had no writer, and the carried-gap merge dropped this turn's own result | active |
 | [AD-109](/decisions/ad-109.md) | A lesson's credit is graded by the session that earned it, not by whichever session runs the gate next | active |
+| [AD-110](/decisions/ad-110.md) | The documented ship-gate excludes promised two paths core is not allowed to name | active |
 
 ## Archived
 

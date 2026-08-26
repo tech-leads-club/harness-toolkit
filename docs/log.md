@@ -19,6 +19,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-107** — A subagent's own budget running out is not evidence about the tree, and a stuck handoff now has an exit ([/decisions/ad-107.md](/decisions/ad-107.md))
 - **AD-108** — Two fields in the unfinished-work formula had no writer, and the carried-gap merge dropped this turn's own result ([/decisions/ad-108.md](/decisions/ad-108.md))
 - **AD-109** — A lesson's credit is graded by the session that earned it, not by whichever session runs the gate next ([/decisions/ad-109.md](/decisions/ad-109.md))
+- **AD-110** — The documented ship-gate excludes promised two paths core is not allowed to name ([/decisions/ad-110.md](/decisions/ad-110.md))
 
 ## 2026-08-22
 
