@@ -228,6 +228,39 @@ test("subagent.stop with pending items on the handoff also yields continue", asy
   }
 });
 
+test("subagent.stop abstains when the only blocker is the session's own budget/grind cap", async () => {
+  const root = tempRoot();
+  try {
+    await coreFacade.handoff.patchHandoff(root, "cursor", {
+      slice: {
+        blockers: "Grind cap hit (3 stop loops). Fix manually or pause gates.",
+        last_failure_category: "budget",
+      },
+    });
+    const outcome = await runHandler(subagentStopHandler, stdinOf(cursorSubagentStop(root)));
+    assert.equal(outcome.decision.kind, "abstain");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("subagent.stop still blocks on a budget blocker if other unfinished work is also present", async () => {
+  const root = tempRoot();
+  try {
+    await coreFacade.handoff.patchHandoff(root, "cursor", {
+      slice: {
+        blockers: "Grind cap hit (3 stop loops). Fix manually or pause gates.",
+        last_failure_category: "budget",
+        pending: ["finish the migration"],
+      },
+    });
+    const outcome = await runHandler(subagentStopHandler, stdinOf(cursorSubagentStop(root)));
+    assert.equal(outcome.decision.kind, "continue");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("subagent.stop with no unfinished work abstains under Cursor", async () => {
   const root = tempRoot();
   try {

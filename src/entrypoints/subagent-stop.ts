@@ -15,8 +15,13 @@ export const subagentStopHandler: Handler = async (
   await observeForRules(event, ctx);
 
   const handoff = coreFacade.handoff.readHandoff(event.projectDir, event.provider);
+  // why: `blockers` is per-project, and every Task subagent shares the parent's session_id
+  // (anthropics/claude-code#7881), so this cannot tell its own subagent apart from another. A "budget"
+  // category means the session's turn budget ran out, not that the tree is broken — unlike a gate
+  // failure, it is not valid evidence here ([/decisions/ad-073.md](/decisions/ad-073.md)).
+  const isBudgetBlocker = handoff.last_failure_category === "budget";
   const unfinishedWork =
-    Boolean(handoff.blockers) ||
+    (Boolean(handoff.blockers) && !isBudgetBlocker) ||
     Boolean(handoff.previous_gaps?.length) ||
     Boolean(handoff.pending?.length) ||
     Boolean(handoff.in_progress?.length);
