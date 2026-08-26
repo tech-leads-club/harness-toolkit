@@ -1,6 +1,38 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatProgressiveContext, formatScopedEnvNote } from "../turn.failure-signals.ts";
+import { formatProgressiveContext, formatScopedEnvNote, mergeGaps } from "../turn.failure-signals.ts";
+
+function gap(id: string, summary = id) {
+  return { id, gate: "test", category: "verification" as const, summary };
+}
+
+test("mergeGaps keeps every fresh gap even when the carried history is already at the cap", () => {
+  const prior = Array.from({ length: 12 }, (_, i) => gap(`old-${i}`));
+  const current = [gap("fresh-1"), gap("fresh-2")];
+  const merged = mergeGaps(prior, current);
+  assert.ok(merged.some((g) => g.id === "fresh-1"));
+  assert.ok(merged.some((g) => g.id === "fresh-2"));
+});
+
+test("mergeGaps puts this turn's fresh gaps ahead of carried history", () => {
+  const merged = mergeGaps([gap("old")], [gap("fresh")]);
+  assert.deepEqual(
+    merged.map((g) => g.id),
+    ["fresh", "old"],
+  );
+});
+
+test("mergeGaps still de-duplicates by gate+summary, keeping the fresh copy", () => {
+  const merged = mergeGaps([gap("old", "same failure")], [gap("fresh", "same failure")]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0]?.id, "fresh");
+});
+
+test("mergeGaps still respects the cap", () => {
+  const prior = Array.from({ length: 12 }, (_, i) => gap(`old-${i}`));
+  const current = [gap("fresh")];
+  assert.equal(mergeGaps(prior, current).length, 12);
+});
 
 /**
  * why: four stop loops were spent editing code that was not broken, because the suite passed from a shell and

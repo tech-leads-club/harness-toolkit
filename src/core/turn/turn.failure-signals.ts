@@ -104,10 +104,12 @@ export function formatCarriedGaps(gaps: readonly GateGap[], limit = CARRIED_GAP_
   return lines.join("\n");
 }
 
+// why: `current` goes first — it is this turn's fresh result, `prior` is carried history. Iterating
+// prior-first let a saturated 12-item carry silently drop every fresh gap this turn found.
 export function mergeGaps(prior: GateGap[] | undefined, current: GateGap[], max = 12): GateGap[] {
   const seen = new Set<string>();
   const out: GateGap[] = [];
-  for (const gap of [...(prior ?? []), ...current]) {
+  for (const gap of [...current, ...(prior ?? [])]) {
     const key = `${gap.gate}|${gap.summary}`;
     if (seen.has(key)) {
       continue;
