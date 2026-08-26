@@ -66,14 +66,14 @@ function writePolicy(root: string, lint: string[]): void {
   );
 }
 
-function stopEvent(root: string): { readStdin: () => Promise<string> } {
+function stopEvent(root: string, sessionId = "sess-credit"): { readStdin: () => Promise<string> } {
   return {
     readStdin: () =>
       Promise.resolve(
         JSON.stringify({
           hook_event_name: "Stop",
           cwd: root,
-          session_id: "sess-credit",
+          session_id: sessionId,
           status: "completed",
         }),
       ),
@@ -207,6 +207,38 @@ test("a lesson injected for one gate is not credited by a different gate", async
   const ungraded = projectLesson(root, id);
   assert.equal(ungraded?.helpedCount, 0);
   assert.equal(ungraded?.neutralCount, 0);
+});
+
+// hazard: pending_lesson_credit lives on the same per-project handoff `blockers` does — without a
+// session check, a different session passing the same gate would credit a lesson it never saw.
+test("a lesson injected by one session is not credited by a different session", async () => {
+  process.env.TLC_HOME = newDir("tlc-credit-home-");
+  const root = repoWithChange();
+  writePolicy(root, FAIL);
+  const id = await seedInjectableLesson(root);
+  await runHandler(stopHandler, stopEvent(root, "sess-a"));
+
+  writePolicy(root, PASS);
+  await runHandler(stopHandler, stopEvent(root, "sess-b"));
+
+  const graded = projectLesson(root, id);
+  assert.equal(graded?.helpedCount, 0);
+  assert.equal(graded?.neutralCount, 0);
+  assert.equal(coreFacade.handoff.readHandoff(root, "claude").pending_lesson_credit?.ids.includes(id), true);
+});
+
+// invariant: the originating session still credits normally once it is the one that grades the gate.
+test("the same session that injected a lesson still credits it", async () => {
+  process.env.TLC_HOME = newDir("tlc-credit-home-");
+  const root = repoWithChange();
+  writePolicy(root, FAIL);
+  const id = await seedInjectableLesson(root);
+  await runHandler(stopHandler, stopEvent(root, "sess-a"));
+
+  writePolicy(root, PASS);
+  await runHandler(stopHandler, stopEvent(root, "sess-a"));
+
+  assert.equal(projectLesson(root, id)?.helpedCount, 1);
 });
 
 // invariant: a stale lesson must not reach the turn, and therefore must not be graded either.

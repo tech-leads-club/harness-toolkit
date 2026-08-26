@@ -153,16 +153,25 @@ export function stopLockWaitMs(env: NodeJS.ProcessEnv = process.env): number {
  *
  * hazard: the gate name is compared. Without it, lessons injected for `lint` would be credited by whichever gate
  * ran next, which is `test` in this handler and would read as help the lesson never gave.
+ *
+ * hazard: `pending_lesson_credit` lives on the same per-project handoff `blockers` does, so without a
+ * session check a lesson injected for session A's failing gate is credited by whichever session B next
+ * happens to run that gate — help it never gave, corrupting `lessons list`'s effectiveness numbers
+ * silently ([/decisions/ad-107.md](/decisions/ad-107.md) is the same family, different field).
  */
 async function creditPendingLessons(args: {
   root: string;
   provider: string;
   pending: PendingLessonCredit | undefined;
   gate: string;
+  sessionKey: string;
   passed: boolean;
 }): Promise<void> {
   const { pending } = args;
   if (!pending || pending.gate !== args.gate || pending.ids.length === 0) {
+    return;
+  }
+  if (pending.sessionKey !== undefined && pending.sessionKey !== args.sessionKey) {
     return;
   }
   await coreFacade.lesson.creditLessons(args.root, pending.ids, args.passed ? "helped" : "neutral");
@@ -231,6 +240,7 @@ async function runLockedGate(args: {
     provider: args.provider,
     pending: args.pendingCredit,
     gate: args.gate,
+    sessionKey: args.sessionKey,
     passed: artifact.passed,
   });
   return { kind: "ran", artifact, reused: cached !== null };
@@ -334,6 +344,7 @@ async function failGate(args: {
           gate: args.gate,
           ids: selected.usedIds,
           at: new Date().toISOString(),
+          sessionKey: args.sessionKey,
         },
       },
     });

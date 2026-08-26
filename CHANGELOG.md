@@ -11,6 +11,7 @@ doctor reports against your own configuration.
 - **AD-106** — A build step's own exit code cannot be the publish guarantee when it is also a recovery path
 - **AD-107** — A subagent's own budget running out is not evidence about the tree, and a stuck handoff now has an exit
 - **AD-108** — Two fields in the unfinished-work formula had no writer, and the carried-gap merge dropped this turn's own result
+- **AD-109** — A lesson's credit is graded by the session that earned it, not by whichever session runs the gate next
 
 ## v0.6.0
 

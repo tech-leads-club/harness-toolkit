@@ -89,4 +89,9 @@ export type PendingLessonCredit = {
   gate: string;
   ids: string[];
   at: string;
+  // why: the handoff is per-project, not per-session, so without this a lesson injected for session A's
+  // failing gate gets credited by whichever session B next happens to pass the same gate — helped/neutral
+  // it never earned. Optional so an on-disk record from before this field existed still credits once,
+  // the same legacy fallback AD-038 used for pre-existing lesson records.
+  sessionKey?: string;
 };
