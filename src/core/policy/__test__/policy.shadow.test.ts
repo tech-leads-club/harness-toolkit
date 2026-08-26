@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { shadowedKeys } from "../policy.shadow.ts";
+import { pruneShadowed, shadowedKeys, typeMismatches, unknownKeys } from "../policy.shadow.ts";
 
 /**
  * The layers are `DEFAULTS < user < project`, so a project key naming the value the lower tiers already resolve to
@@ -66,6 +66,68 @@ describe("shadowedKeys", () => {
     assert.deepEqual(
       shadowedKeys({ comments: block }, { comments: { ...block } }).map((key) => key.path),
       ["comments.enabled", "comments.mode", "comments.onViolation"],
+    );
+  });
+});
+
+// why the format bug's exact shape: this is the live defect found in this repo's own config — a
+// top-level block nothing reads, invisible to shadowedKeys because "absent from resolved" and "a real
+// override" both fell into the same "kept" bucket before this.
+describe("unknownKeys", () => {
+  test("a top-level key resolved has no counterpart for is reported with its value", () => {
+    assert.deepEqual(unknownKeys({ format: { enabled: true, command: ["biome"] } }, { mode: "solo" }), [
+      { path: "format", value: { enabled: true, command: ["biome"] } },
+    ]);
+  });
+
+  test("a real key, even one with a non-default value, is not reported", () => {
+    assert.deepEqual(unknownKeys({ mode: "focus" }, { mode: "solo" }), []);
+  });
+
+  test("nesting is reported by dotted path, matching shadowedKeys", () => {
+    assert.deepEqual(unknownKeys({ intelligence: { madeUp: true } }, { intelligence: {} }), [
+      { path: "intelligence.madeUp", value: true },
+    ]);
+  });
+
+  test("an unknown key does not stop pruneShadowed from keeping it", () => {
+    assert.deepEqual(pruneShadowed({ format: { enabled: true } }, { mode: "solo" }), {
+      format: { enabled: true },
+    });
+  });
+});
+
+describe("typeMismatches", () => {
+  test("a scalar of the wrong type is reported with both labels", () => {
+    assert.deepEqual(typeMismatches({ mode: 1 }, { mode: "solo" }), [
+      { path: "mode", expected: "string", actual: "number" },
+    ]);
+  });
+
+  test("an object where a scalar is expected is reported too", () => {
+    assert.deepEqual(typeMismatches({ grind: { enabled: true } }, { grind: true }), [
+      { path: "grind", expected: "boolean", actual: "object" },
+    ]);
+  });
+
+  test("a field whose default is null is exempt — a T | null union cannot be told apart by typeof", () => {
+    assert.deepEqual(
+      typeMismatches({ shipGate: { evidenceDir: "./evidence" } }, { shipGate: { evidenceDir: null } }),
+      [],
+    );
+  });
+
+  test("a matching type, even a restated one, is not reported", () => {
+    assert.deepEqual(typeMismatches({ mode: "solo" }, { mode: "solo" }), []);
+  });
+
+  test("nesting is reported by dotted path", () => {
+    assert.deepEqual(
+      typeMismatches(
+        { intelligence: { lessons: { maxCharsSession: "900" } } },
+        { intelligence: { lessons: { maxCharsSession: 900 } } },
+      ),
+      [{ path: "intelligence.lessons.maxCharsSession", expected: "number", actual: "string" }],
     );
   });
 });
