@@ -151,13 +151,10 @@ export function stopLockWaitMs(env: NodeJS.ProcessEnv = process.env): number {
  * invariant: consumed exactly once. The pending credit is cleared whether or not any lesson matched, so a single
  * injection cannot be graded twice by two later runs of the same gate.
  *
- * hazard: the gate name is compared. Without it, lessons injected for `lint` would be credited by whichever gate
- * ran next, which is `test` in this handler and would read as help the lesson never gave.
- *
- * hazard: `pending_lesson_credit` lives on the same per-project handoff `blockers` does, so without a
- * session check a lesson injected for session A's failing gate is credited by whichever session B next
- * happens to run that gate — help it never gave, corrupting `lessons list`'s effectiveness numbers
- * silently ([/decisions/ad-107.md](/decisions/ad-107.md) is the same family, different field).
+ * hazard: the gate name is compared, and the session that earned the credit is compared — without either,
+ * lessons injected for `lint` would be credited by whichever gate ran next, or by whichever session next
+ * happened to run this gate on the same per-project handoff `blockers` lives on, crediting help a session
+ * that never saw the lesson did not give ([/decisions/ad-107.md](/decisions/ad-107.md) is the same family).
  */
 async function creditPendingLessons(args: {
   root: string;
