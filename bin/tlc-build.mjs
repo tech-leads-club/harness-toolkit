@@ -116,16 +116,13 @@ for (const entry of readdirSync(dist, { withFileTypes: true })) {
 
 console.log(`tlc-build: ok (${bundles} bundles)`);
 
-// invariant: never committed — see .gitignore. Nothing to commit means nothing to drift, so this
-// needs no freshness gate the way `dist/` no longer does ([/decisions/ad-097.md](/decisions/ad-097.md)).
-//
-// why dynamic, and why a missing module degrades instead of failing: typescript-json-schema is a
-// devDependency, absent from a plain install. The dist rebuild above is this script's real recovery
-// contract (bin/tlc-exec.mjs's "dist missing, run tlc-build.mjs" message) — schema.json is editor-only,
-// so its generator being unavailable there must not block the rebuild a broken install actually needs.
+// why: dynamic, and a missing module degrades rather than fails — typescript-json-schema is a
+// devDependency, absent from a plain install, and the dist rebuild above is this script's real
+// recovery contract (bin/tlc-exec.mjs's "dist missing, run tlc-build.mjs" message). Never committed
+// (.gitignore) either way, so nothing here needs the freshness gate `dist/` no longer has.
 let generateConfigSchema;
 try {
-  ({ generateConfigSchema } = await import("../tools/dev/generate-schema.ts"));
+  ({ generateConfigSchema } = await import("./generate-schema.ts"));
 } catch (error) {
   if (error?.code !== "ERR_MODULE_NOT_FOUND") {
     throw error;

@@ -235,6 +235,7 @@ describe("the packed artefact is verified before the irreversible step", () => {
     "bin/tlc-exec.mjs",
     "dist/tool-before.mjs",
     "skills/harness-init/SKILL.md",
+    "schema.json",
   ];
 
   test("a payload with everything the runtime needs passes", () => {
@@ -246,6 +247,16 @@ describe("the packed artefact is verified before the irreversible step", () => {
 
     assert.notEqual(verdict.status, 0);
     assert.match(verdict.output, /bin\/tlc/);
+  });
+
+  // why: a broken typescript-json-schema degrades bin/tlc-build.mjs to a warning rather than a build
+  // failure, so a prepack that silently produced no schema.json would otherwise reach npm publish —
+  // this is the gate that catches it before the registry does.
+  test("a payload missing schema.json fails", () => {
+    const verdict = payloadVerdict(complete.filter((path) => path !== "schema.json"));
+
+    assert.notEqual(verdict.status, 0);
+    assert.match(verdict.output, /schema\.json/);
   });
 
   test("a payload that ships this repository's own checks fails", () => {

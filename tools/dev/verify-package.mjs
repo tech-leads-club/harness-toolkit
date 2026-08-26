@@ -53,10 +53,14 @@ export function assertPayload(entries) {
     "bin/tlc-exec.mjs",
     "dist/tool-before.mjs",
     "skills/harness-init/SKILL.md",
+    // why here, not just in bin/tlc-build.mjs's own exit code: a missing typescript-json-schema
+    // degrades that script to a warning (so a broken install can still rebuild dist/), which means
+    // the same silent skip would otherwise reach `npm publish` if it happened during `prepack`.
+    "schema.json",
   ];
   const missing = required.filter((path) => !entries.includes(path));
   if (missing.length > 0) {
-    fail(`the tarball is missing what the runtime needs: ${missing.join(", ")}`);
+    fail(`the tarball is missing what it needs: ${missing.join(", ")}`);
   }
   // hazard: `tools/dev` holds the checks that validate *this* repository, and with Bun present the launcher
   // resolves an entry straight from source — so shipping them would put runnable repo-only commands on a user's
