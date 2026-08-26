@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
+import { NPM_PACKAGE, runtimeVersion } from "../bin/tlc-cli.ts";
 import { applyCursorWiring, renderCursorHooksDocument } from "../bin/write-user-hooks.mjs";
 import type { WiringEntry } from "../src/contracts/index.ts";
 import { coreFacade } from "../src/core/index.ts";
@@ -234,6 +235,24 @@ export function configLine(outcome: ApplyOutcome): string {
     : `wrote ${outcome.configPath}`;
 }
 
+/**
+ * why major.minor and not bare major: this package is pre-1.0, and under semver a 0.x minor bump may
+ * also be breaking — pinning only the major would silently serve a schema from a different minor.
+ *
+ * why the fallback drops the version entirely rather than hardcoding one: unpkg resolves a bare
+ * package path to its latest published version, so an unreadable `package.json` (a broken install
+ * `doctor` already reports separately) degrades to "whatever is current" instead of a version string
+ * that goes stale the next time this package ships.
+ */
+function schemaUrl(): string {
+  const version = runtimeVersion(runtimeHome());
+  if (version === null) {
+    return `https://unpkg.com/${NPM_PACKAGE}/schema.json`;
+  }
+  const [major, minor] = version.split(".");
+  return `https://unpkg.com/${NPM_PACKAGE}@${major}.${minor}/schema.json`;
+}
+
 export function applyPlan(
   root: string,
   flags: InitFlags,
@@ -254,7 +273,10 @@ export function applyPlan(
   const kept = existsSync(configPath) && !flags.stdinJson;
   if (!kept) {
     mkdirSync(dirname(configPath), { recursive: true });
-    writeFileSync(configPath, `${JSON.stringify(policy, null, 2)}\n`);
+    writeFileSync(
+      configPath,
+      `${JSON.stringify({ $schema: schemaUrl(), ...(policy as Record<string, unknown>) }, null, 2)}\n`,
+    );
   }
 
   const launcher = launcherPath();

@@ -427,6 +427,17 @@ test("the shipped example config does not switch operator rules on", () => {
   assert.notEqual(example.rules?.enabled, true);
 });
 
+test("the shipped example config's first key is $schema, pointing at unpkg", () => {
+  const text = readFileSync("config.example.json", "utf8");
+  const example = JSON.parse(text) as Record<string, unknown>;
+
+  assert.equal(Object.keys(example)[0], "$schema");
+  assert.match(
+    example.$schema as string,
+    /^https:\/\/unpkg\.com\/@tech-leads-club\/harness-toolkit@\d+\.\d+\/schema\.json$/,
+  );
+});
+
 test("$schema in the project config never reaches the merged Policy", () => {
   const root = tempRoot();
   writeProjectConfig(root, { $schema: "https://unpkg.com/example/schema.json", mode: "solo" });

@@ -350,6 +350,20 @@ describe("applyPlan", () => {
     assert.ok(gitignore.includes(GITIGNORE_STATE));
   });
 
+  // why the first key: JSON.stringify preserves insertion order, and an editor keys $schema-based
+  // autocomplete off the property being present at all, not its position — first is what a human
+  // reads first, though.
+  test("the written config's first key is $schema, pointing at unpkg", () => {
+    const root = newRoot();
+    const outcome = applyPlan(root, parseFlags(["--minimal"]), { cursor: false, claude: false }, null);
+    const written = JSON.parse(readFileSync(outcome.configPath, "utf8")) as Record<string, unknown>;
+    assert.equal(Object.keys(written)[0], "$schema");
+    assert.match(
+      written.$schema as string,
+      /^https:\/\/unpkg\.com\/@tech-leads-club\/harness-toolkit(@\d+\.\d+)?\/schema\.json$/,
+    );
+  });
+
   test("skips both providers when neither is present", () => {
     const root = newRoot();
     const outcome = applyPlan(root, parseFlags(["--minimal"]), { cursor: false, claude: false }, null);
