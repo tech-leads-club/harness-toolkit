@@ -118,10 +118,6 @@ for (const entry of readdirSync(dist, { withFileTypes: true })) {
 console.log(`tlc-build: ok (${bundles} bundles)`);
 
 /**
- * why here, not a separate script: this file is already the one place that builds every generated
- * artefact this package ships — a second entry point for a second generated file would be the
- * duplication AD-097 removed one of.
- *
  * invariant: never committed — see .gitignore. Nothing to commit means nothing to drift, so this
  * needs no freshness gate the way `dist/` no longer does ([/decisions/ad-097.md](/decisions/ad-097.md)).
  */

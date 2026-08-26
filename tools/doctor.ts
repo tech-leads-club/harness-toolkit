@@ -579,14 +579,9 @@ export function checkShadowedPolicy(root: string): Check[] {
 }
 
 /**
- * why two questions the same walk answers, split from `checkShadowedPolicy`: a restated value is a legitimate
- * choice an operator may want; an unknown key or a type mismatch is not a choice at all — it is a config that
- * does not do what its author believes it does. `format` in this repo's own history is the exact shape: a
- * top-level block nothing has ever read.
- *
- * invariant: a malformed config is reported distinctly from an absent one. `readProjectPolicyRaw` collapsed
- * both to `null`, which is the silent half of the bug this closes — a trailing comma degrades the whole
- * project tier to defaults with nothing telling the operator why.
+ * invariant: a malformed config is reported distinctly from an absent one. `readProjectPolicyRaw` used to
+ * collapse both to `null` — the silent half of the bug this closes, since a trailing comma degrades the
+ * whole project tier to defaults with nothing telling the operator why.
  */
 export function checkConfigKeys(root: string): Check[] {
   const status = coreFacade.capability.readProjectPolicyStatus(root);

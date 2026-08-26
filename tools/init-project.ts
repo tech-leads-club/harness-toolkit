@@ -236,13 +236,9 @@ export function configLine(outcome: ApplyOutcome): string {
 }
 
 /**
- * why major.minor and not bare major: this package is pre-1.0, and under semver a 0.x minor bump may
- * also be breaking — pinning only the major would silently serve a schema from a different minor.
- *
- * why the fallback drops the version entirely rather than hardcoding one: unpkg resolves a bare
- * package path to its latest published version, so an unreadable `package.json` (a broken install
- * `doctor` already reports separately) degrades to "whatever is current" instead of a version string
- * that goes stale the next time this package ships.
+ * why: major.minor, not bare major — this package is pre-1.0, where a 0.x minor bump can also break,
+ * so pinning only the major would silently serve a schema from the wrong minor. An unreadable
+ * `package.json` falls back to unpkg's latest resolution rather than a version string that goes stale.
  */
 function schemaUrl(): string {
   const version = runtimeVersion(runtimeHome());

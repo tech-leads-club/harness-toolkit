@@ -70,9 +70,8 @@ describe("shadowedKeys", () => {
   });
 });
 
-// why the format bug's exact shape: this is the live defect found in this repo's own config — a
-// top-level block nothing reads, invisible to shadowedKeys because "absent from resolved" and "a real
-// override" both fell into the same "kept" bucket before this.
+// why: the format bug's exact shape — a top-level block nothing reads, invisible to shadowedKeys
+// because "absent from resolved" and "a real override" both fell into the same "kept" bucket.
 describe("unknownKeys", () => {
   test("a top-level key resolved has no counterpart for is reported with its value", () => {
     assert.deepEqual(unknownKeys({ format: { enabled: true, command: ["biome"] } }, { mode: "solo" }), [

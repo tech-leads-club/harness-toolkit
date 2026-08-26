@@ -33,9 +33,8 @@ export type ConfigReadStatus =
   | { status: "malformed"; error: string };
 
 /**
- * why a second reader for the same file `readJson` already covers: `readJson` collapses "absent" and
- * "malformed" to the same `null`, which is the exact silent-corruption gap `doctor` needs to close —
- * a config that fails to parse degrades to defaults with nothing telling the operator why.
+ * why: `readJson` already reads this file but collapses "absent" and "malformed" to the same `null`
+ * — the exact silent-corruption gap `doctor` needs to close, so this is a second, tagged reader.
  */
 export function readProjectPolicyStatus(projectDir: string): ConfigReadStatus {
   const path = projectConfigPath(projectDir);

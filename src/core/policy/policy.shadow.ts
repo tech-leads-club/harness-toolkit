@@ -86,12 +86,9 @@ function walk(
     }
     const path = prefix === "" ? key : `${prefix}.${key}`;
     const below = resolved[key];
-    // why `projectName` is exempt from `unknown` specifically: it is a real, optional `Policy` field with no
-    // `DEFAULTS` value, so it is legitimately absent from `resolved`'s own keys — a gap in "known key = a key
-    // `DEFAULTS` happens to set" that the type itself already answers, but this walk cannot see the type.
-    //
-    // why not merged into the branches below: a key absent from `resolved` still needs its value judged for
-    // `shadowed`/`kept` exactly as before — this only ever adds to `unknown`, never changes the other three.
+    // why: `projectName` is exempt — a real, optional `Policy` field `DEFAULTS` never sets, so it is
+    // legitimately absent from `resolved`'s own keys. Kept separate from the branches below: a key
+    // absent from `resolved` still needs `shadowed`/`kept` judged as before; this only adds to `unknown`.
     if (!(key in resolved) && !(prefix === "" && key === "projectName")) {
       unknown.push({ path, value });
     }
@@ -107,8 +104,8 @@ function walk(
       }
       continue;
     }
-    // why `below === null` is exempt: see `typeLabel`'s doc — a `T | null` default cannot be told apart
-    // from a real type mismatch by `typeof` alone, and a false positive here is worse than a miss.
+    // why: `below === null` is exempt — see `typeLabel`'s doc, a `T | null` default cannot be told
+    // apart from a real mismatch by `typeof` alone, and a false positive here is worse than a miss.
     if (below !== null && below !== undefined && typeLabel(value) !== typeLabel(below)) {
       mismatched.push({ path, expected: typeLabel(below), actual: typeLabel(value) });
     }

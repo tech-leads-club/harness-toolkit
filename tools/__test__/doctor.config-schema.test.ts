@@ -51,8 +51,8 @@ test("no project config file present reports nothing", () => {
   assert.deepEqual(checkConfigKeys(projectRoot()), []);
 });
 
-// why this exact shape: the live defect this feature was found from — this repo's own config carried a
-// top-level format block nothing reads.
+// why: this exact shape is the live defect this feature was found from — this repo's own config
+// carried a top-level format block nothing reads.
 test("a config with an unknown key names it", () => {
   const root = projectRoot();
   writeRawConfig(root, JSON.stringify({ version: 1, format: { enabled: true, command: ["biome"] } }));
@@ -75,9 +75,8 @@ test("a config with a type mismatch names the expected and actual type", () => {
   assert.match(mismatch?.detail ?? "", /mode \(expected string, got number\)/);
 });
 
-// why distinct from absence: a trailing comma silently drops the whole project tier to defaults today
-// (policy.loader.ts's readJsonFile keeps that forgiving behaviour on the hot path) — doctor is the one place
-// that names the difference between "no file" and "a file that failed to parse."
+// why: distinct from absence because a trailing comma silently drops the whole project tier to
+// defaults today (readJsonFile keeps that forgiving on the hot path) — doctor names the difference.
 test("a config that fails to parse is reported distinctly from an absent one", () => {
   const root = projectRoot();
   writeRawConfig(root, "{ version: 1, }");

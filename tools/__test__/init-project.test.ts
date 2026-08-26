@@ -350,9 +350,8 @@ describe("applyPlan", () => {
     assert.ok(gitignore.includes(GITIGNORE_STATE));
   });
 
-  // why the first key: JSON.stringify preserves insertion order, and an editor keys $schema-based
-  // autocomplete off the property being present at all, not its position — first is what a human
-  // reads first, though.
+  // why: an editor keys $schema-based autocomplete off the property being present, not its position —
+  // first is what a human reads first, though, and JSON.stringify preserves insertion order for it.
   test("the written config's first key is $schema, pointing at unpkg", () => {
     const root = newRoot();
     const outcome = applyPlan(root, parseFlags(["--minimal"]), { cursor: false, claude: false }, null);
