@@ -11,7 +11,11 @@ function readJsonFile<T>(path: string): T | null {
     return null;
   }
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as T;
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    // why: a JSON Schema meta-key, not a Policy field — deepMerge's `...patch` spread would otherwise
+    // carry it straight into the merged runtime Policy object.
+    delete parsed.$schema;
+    return parsed as T;
   } catch {
     return null;
   }

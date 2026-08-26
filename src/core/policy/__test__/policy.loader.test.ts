@@ -426,3 +426,28 @@ test("the shipped example config does not switch operator rules on", () => {
 
   assert.notEqual(example.rules?.enabled, true);
 });
+
+test("$schema in the project config never reaches the merged Policy", () => {
+  const root = tempRoot();
+  writeProjectConfig(root, { $schema: "https://unpkg.com/example/schema.json", mode: "solo" });
+
+  const policy = withTlcHome(root, () => loadPolicy(root));
+
+  assert.equal(Object.hasOwn(policy, "$schema"), false);
+  assert.equal(policy.mode, "solo", "a real key alongside $schema must still merge");
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("$schema in the user-tier config never reaches resolvedWithoutProjectTier", async () => {
+  const { machineConfigPath } = await import("../../../platform/paths.ts");
+  const { resolvedWithoutProjectTier } = await import("../policy.loader.ts");
+  const home = tempRoot();
+  const path = machineConfigPath({ TLC_HOME: home } as NodeJS.ProcessEnv);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify({ $schema: "https://unpkg.com/example/schema.json" }));
+
+  const resolved = withTlcHome(home, () => resolvedWithoutProjectTier());
+
+  assert.equal(Object.hasOwn(resolved, "$schema"), false);
+  rmSync(home, { recursive: true, force: true });
+});
