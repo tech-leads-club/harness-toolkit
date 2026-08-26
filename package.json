@@ -54,6 +54,7 @@
     "@biomejs/biome": "^2.5.9",
     "@types/node": "^24.13.3",
     "knip": "^6.32.2",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "typescript-json-schema": "^0.68.0"
   }
 }
