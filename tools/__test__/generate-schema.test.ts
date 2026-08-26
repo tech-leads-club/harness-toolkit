@@ -65,7 +65,9 @@ test("no build-machine absolute path survives into the generated schema", () => 
 // an equivalent but differently-spelled root (a trailing "." segment here) used to defeat the redaction
 // entirely — the literal string it split on was never the string that got printed.
 test("a root spelled with a trailing . segment is still redacted", () => {
-  const unresolvedRoot = join(repoRoot, ".");
+  // why: path.join already normalises away a "." segment — join(repoRoot, ".") === repoRoot, so it
+  // cannot exercise the case this test names. A template string is what keeps the segment intact.
+  const unresolvedRoot = `${repoRoot}/.`;
   const schema = generateConfigSchema(unresolvedRoot);
   const serialized = JSON.stringify(schema);
   assert.equal(serialized.includes(repoRoot), false);
