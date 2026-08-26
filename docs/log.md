@@ -13,6 +13,10 @@ Generated from `docs/decisions/` — do not edit by hand. Run `node tools/render
 A reserved file of the [OKF v0.1](/decisions/ad-013.md) bundle: entries grouped under ISO 8601 headings,
 newest first. For what landed in which npm release, see `CHANGELOG.md` at the repository root.
 
+## 2026-08-26
+
+- **AD-106** — A build step's own exit code cannot be the publish guarantee when it is also a recovery path ([/decisions/ad-106.md](/decisions/ad-106.md))
+
 ## 2026-08-22
 
 - **AD-104** — A subagent proof names the type the spawn declared, never the name the spawning agent chose ([/decisions/ad-104.md](/decisions/ad-104.md))
