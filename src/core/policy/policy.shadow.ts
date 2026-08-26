@@ -86,9 +86,13 @@ function walk(
     }
     const path = prefix === "" ? key : `${prefix}.${key}`;
     const below = resolved[key];
+    // why `projectName` is exempt from `unknown` specifically: it is a real, optional `Policy` field with no
+    // `DEFAULTS` value, so it is legitimately absent from `resolved`'s own keys — a gap in "known key = a key
+    // `DEFAULTS` happens to set" that the type itself already answers, but this walk cannot see the type.
+    //
     // why not merged into the branches below: a key absent from `resolved` still needs its value judged for
     // `shadowed`/`kept` exactly as before — this only ever adds to `unknown`, never changes the other three.
-    if (!(key in resolved)) {
+    if (!(key in resolved) && !(prefix === "" && key === "projectName")) {
       unknown.push({ path, value });
     }
     if (isPlainObject(value) && isPlainObject(below)) {

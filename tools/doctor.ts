@@ -578,6 +578,55 @@ export function checkShadowedPolicy(root: string): Check[] {
   ];
 }
 
+/**
+ * why two questions the same walk answers, split from `checkShadowedPolicy`: a restated value is a legitimate
+ * choice an operator may want; an unknown key or a type mismatch is not a choice at all — it is a config that
+ * does not do what its author believes it does. `format` in this repo's own history is the exact shape: a
+ * top-level block nothing has ever read.
+ *
+ * invariant: a malformed config is reported distinctly from an absent one. `readProjectPolicyRaw` collapsed
+ * both to `null`, which is the silent half of the bug this closes — a trailing comma degrades the whole
+ * project tier to defaults with nothing telling the operator why.
+ */
+export function checkConfigKeys(root: string): Check[] {
+  const status = coreFacade.capability.readProjectPolicyStatus(root);
+  if (status.status === "absent") {
+    return [];
+  }
+  if (status.status === "malformed") {
+    return [
+      {
+        level: "warn",
+        name: "project policy parses",
+        detail: `${projectConfigPath(root)} failed to parse: ${status.error}. Until fixed, this tier silently falls back to defaults.`,
+      },
+    ];
+  }
+  const resolved = coreFacade.policy.resolvedWithoutProjectTier();
+  const unknown = coreFacade.policy.unknownKeys(status.value, resolved);
+  const mismatched = coreFacade.policy.typeMismatches(status.value, resolved);
+  const checks: Check[] = [];
+  if (unknown.length > 0) {
+    const shown = unknown.slice(0, 6).map((key) => key.path);
+    const rest = unknown.length - shown.length;
+    checks.push({
+      level: "warn",
+      name: "project policy has an unknown key",
+      detail: `${plural(unknown.length, "key")} in this project's config ${unknown.length === 1 ? "matches" : "match"} nothing the harness reads: ${shown.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}. Delete ${unknown.length === 1 ? "it" : "them"}, or check for a typo.`,
+    });
+  }
+  if (mismatched.length > 0) {
+    const shown = mismatched.slice(0, 6).map((m) => `${m.path} (expected ${m.expected}, got ${m.actual})`);
+    const rest = mismatched.length - shown.length;
+    checks.push({
+      level: "warn",
+      name: "project policy has a type mismatch",
+      detail: `${plural(mismatched.length, "key")} in this project's config ${mismatched.length === 1 ? "does" : "do"} not match the type the harness expects: ${shown.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}.`,
+    });
+  }
+  return checks;
+}
+
 export function checkLessonBudget(root: string): Check[] {
   const policy = coreFacade.policy.loadPolicy(root);
   const config = policy.intelligence.lessons;
@@ -751,6 +800,7 @@ export function checkProjectPolicy(root: string): Check[] {
     ...checkLessonHealth(root),
     ...checkLessonBudget(root),
     ...checkShadowedPolicy(root),
+    ...checkConfigKeys(root),
     ...checkSubagentAllowlist(root),
     ...checkPolicyDivergence(root),
     ...checkGateScope(root),

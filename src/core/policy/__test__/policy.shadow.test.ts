@@ -90,6 +90,19 @@ describe("unknownKeys", () => {
     ]);
   });
 
+  // why: DEFAULTS never sets projectName (an optional Policy field with no sensible default), so it is
+  // absent from resolved's own keys even though it is a real field — found by running doctor against this
+  // repo's own live config, which reported it as unknown alongside the genuinely unknown format key.
+  test("projectName — an optional Policy field DEFAULTS never sets — is not reported as unknown", () => {
+    assert.deepEqual(unknownKeys({ projectName: "tlc-agent-harness" }, { mode: "solo" }), []);
+  });
+
+  test("a nested key named projectName is still a real question — the exemption is root-only", () => {
+    assert.deepEqual(unknownKeys({ docs: { projectName: "x" } }, { docs: {} }), [
+      { path: "docs.projectName", value: "x" },
+    ]);
+  });
+
   test("an unknown key does not stop pruneShadowed from keeping it", () => {
     assert.deepEqual(pruneShadowed({ format: { enabled: true } }, { mode: "solo" }), {
       format: { enabled: true },

@@ -16,6 +16,7 @@ import {
 import {
   loadCatalog,
   readProjectPolicyRaw,
+  readProjectPolicyStatus,
   readRuntimeSeen,
   writeRuntimeSeen,
 } from "./capability/capability.store.ts";
@@ -133,7 +134,7 @@ import {
 import { operatorBootstrapLines } from "./policy/policy.operator.ts";
 import { isOperatorMode, OPERATOR_MODES } from "./policy/policy.posture.ts";
 import { activeRails } from "./policy/policy.rails.ts";
-import { pruneShadowed, shadowedKeys } from "./policy/policy.shadow.ts";
+import { pruneShadowed, shadowedKeys, typeMismatches, unknownKeys } from "./policy/policy.shadow.ts";
 import { forProvider } from "./policy/policy.types.ts";
 import { checkCollision, heartbeat, register, release, sweepStale } from "./presence/presence.service.ts";
 import { freshness, freshnessMessage, mayReplace, shouldRefetch } from "./pricing/pricing.freshness.ts";
@@ -264,6 +265,7 @@ export const coreFacade = {
     ENABLE_HINT,
     loadCatalog,
     readProjectPolicyRaw,
+    readProjectPolicyStatus,
     readRuntimeSeen,
     writeRuntimeSeen,
     isAvailableNotEnabled,
@@ -416,6 +418,8 @@ export const coreFacade = {
     resolvedWithoutProjectTier,
     shadowedKeys,
     pruneShadowed,
+    unknownKeys,
+    typeMismatches,
     resolveProjectPosture,
     resolveProjectSyncMode,
     OPERATOR_MODES,
