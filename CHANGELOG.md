@@ -14,6 +14,7 @@ doctor reports against your own configuration.
 - **AD-109** — A lesson's credit is graded by the session that earned it, not by whichever session runs the gate next
 - **AD-110** — The documented ship-gate excludes promised two paths core is not allowed to name
 - **AD-111** — The comment gate advises at edit-time, cheap enough to afford per edit; duplication stays stop-only
+- **AD-112** — A codegen tool's own banner is not agent narration
 
 ## v0.6.0
 

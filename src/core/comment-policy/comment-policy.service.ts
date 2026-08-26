@@ -44,6 +44,14 @@ export function matchesSyntax(text: string, syntax: CommentSyntax): boolean {
 
 const TOOL_DIRECTIVE =
   /^\s*(?:\/\/|\/\*|\*|#)\s*(?:biome-ignore|eslint|@ts-|prettier-ignore|noqa|type:|shellcheck|!)/;
+/**
+ * why: a codegen tool's own banner ("Code generated ... DO NOT EDIT", Phabricator's `@generated`) is not
+ * agent narration — no operator wrote it and no agent chose the words, the generator stamps it on every
+ * regeneration. Flagging it asked an agent to delete text that would just reappear on the next
+ * `terramate generate`/`go generate`/etc., and deleting it by hand is what those tools' own drift checks
+ * exist to catch.
+ */
+const GENERATED_FILE_MARKER = /@generated\b|\bgenerat\w*\b.{0,40}\bdo[\s-]?not[\s-]?edit\b/i;
 const DECLARED_REASON = /^\s*(?:\/\/|\/\*|\*|#)\s*(?:why|hazard|invariant):\s*\S/i;
 const CLOSER_OR_CONTINUATION = /^\s*(?:\*\/|\*|\/\/)/;
 
@@ -58,7 +66,7 @@ export function isCommentLine(text: string, file = ""): boolean {
   if (syntax === null) {
     return false;
   }
-  return matchesSyntax(text, syntax) && !TOOL_DIRECTIVE.test(text);
+  return matchesSyntax(text, syntax) && !TOOL_DIRECTIVE.test(text) && !GENERATED_FILE_MARKER.test(text);
 }
 
 /**
@@ -309,7 +317,8 @@ export function commentViolationMessage(hits: CommentFinding[], mode: CommentMod
     "comments are never counted.",
     "Each entry is one comment, reported at its first line.",
     ...need,
-    "Tool directives (biome-ignore, @ts-, noqa, shellcheck, shebang) are exempt.",
+    "Tool directives (biome-ignore, @ts-, noqa, shellcheck, shebang) and generated-file banners",
+    '(@generated, "generated ... do not edit") are exempt.',
     "",
     ...hits.slice(0, 20).map((h) => `${h.file}:${h.line}  ${h.text}`),
   ].join("\n");

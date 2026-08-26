@@ -215,7 +215,9 @@ reference and check every claim? It refuses change narration, citations only the
 vantage, comments arguing their own correctness, and control-flow narration, and asks for a restatement rather
 than a deletion ([/decisions/ad-070.md](/decisions/ad-070.md)); `strict` accepts none and
 asks the operator to write it. Tool directives (`biome-ignore`, `@ts-`, `noqa`, `shellcheck`, shebang) are
-exempt in both modes.
+exempt in both modes, and so is a generator's own banner (`@generated`, `"generated ... do not edit"`) —
+no agent chose those words and deleting one only reappears on the next regeneration
+([/decisions/ad-112.md](/decisions/ad-112.md)).
 
 When `onViolation: "followup"` (the default), an Edit/Write also gets an early, non-blocking `HEADS UP` the
 moment it adds an undeclared comment — scoped to that one file, same diff base as the stop-time check,
