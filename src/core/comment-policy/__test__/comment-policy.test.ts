@@ -398,13 +398,8 @@ test("a bare * is not a comment in languages where it is also code", () => {
   );
 });
 
-// invariant: the rail's scan target is the syntax catalog's coverage, not the nine-extension regex `filterCodeTargets`
-// shares with grind and duplication — a project whose changed files are Terraform, SQL, or any of the catalog's
-// other 30+ languages must still be scanned. A stale copy of that narrower list here would silently regress it.
-//
-// why no `codePaths` here: that scoping happens in the caller (stop.ts), not inside this function — taking it
-// here would need `policy.loader.ts`, which imports `policy.defaults.ts`, which imports back into this module
-// through `duplication.service.ts`'s `matchesSyntax` import, an import cycle. See the function's own invariant.
+// invariant: keeps every catalog language (not just `filterCodeTargets`'s nine) and takes no `codePaths` —
+// see the function's own invariant for why.
 test("filterCommentTargets keeps every language the syntax catalog covers, not just the grind nine", () => {
   const files = ["a.ts", "b.tf", "c.sql", "d.yaml", "e.rb", "f.java", "g.sh", "h.unknownext"];
   assert.deepEqual(filterCommentTargets(files), [

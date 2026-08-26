@@ -62,14 +62,9 @@ export function isCommentLine(text: string, file = ""): boolean {
 }
 
 /**
- * hazard: the rail's own scan target used to be `filterCodeTargets`, a nine-extension regex shared with grind
- * and duplication. The syntax catalog already knows 40+ languages — Terraform, SQL, YAML, Ruby, Java among
- * them — so a project whose changed files never carried one of the nine extensions had `mode: "strict"` in its
- * config and zero comments ever scanned. This filters by the same source the scanner itself trusts.
- *
- * invariant: takes no `codePaths` — that would need `policy.loader.ts`, which imports `policy.defaults.ts`,
- * which imports `duplication.service.ts`, which imports this module for `matchesSyntax`. A caller scopes by
- * `codePaths` itself first; this filters what is left by syntax alone.
+ * invariant: no `codePaths` param. Taking one needs `policy.loader.ts` → `policy.defaults.ts` →
+ * `duplication.service.ts`, which imports this module back for `matchesSyntax` — an import cycle. The
+ * caller scopes by `codePaths` first; this filters what's left by syntax alone.
  */
 export function filterCommentTargets(relativePaths: string[]): string[] {
   return relativePaths.filter((path) => syntaxFor(path) !== null);
