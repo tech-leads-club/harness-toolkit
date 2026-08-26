@@ -25,6 +25,38 @@ export function readHandoff(root: string, provider: string): ResolvedHandoff {
   return { ...file.shared, ...slice };
 }
 
+const CLEARED_SLICE: Partial<HandoffProviderSlice> = {
+  blockers: undefined,
+  previous_gaps: undefined,
+  pending: undefined,
+  in_progress: undefined,
+  last_failure_category: undefined,
+  next_action: undefined,
+};
+
+function hasStuckSignal(slice: HandoffProviderSlice): boolean {
+  return (Object.keys(CLEARED_SLICE) as (keyof HandoffProviderSlice)[]).some(
+    (field) => slice[field] !== undefined,
+  );
+}
+
+/**
+ * why: an operator's escape hatch. These are the exact fields `subagent-stop.ts` reads as "unfinished
+ * work" — clearing anything wider would erase state no gate is stuck on.
+ */
+export async function clearStuckSignals(root: string): Promise<string[]> {
+  const file = readHandoffFile(root);
+  const cleared: string[] = [];
+  for (const [provider, slice] of Object.entries(file.by_provider)) {
+    if (!hasStuckSignal(slice)) {
+      continue;
+    }
+    await patchHandoff(root, provider, { slice: CLEARED_SLICE });
+    cleared.push(provider);
+  }
+  return cleared;
+}
+
 export function readForeignSlices(root: string, provider: string): ForeignSlice[] {
   const file = readHandoffFile(root);
   const foreign: ForeignSlice[] = [];

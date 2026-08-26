@@ -37,6 +37,7 @@ import {
   pricesHelpText,
   readMode,
   resetFailureMessage,
+  resetStuckState,
   resolveExecutable,
   resolveProjectRoot,
   route,
@@ -54,7 +55,7 @@ import {
   wireRuntime,
 } from "../../bin/tlc-cli.ts";
 import { coreFacade } from "../../src/core/index.ts";
-import { flagsDir, projectConfigPath, projectStateDir } from "../../src/platform/paths.ts";
+import { flagsDir, loopsDir, projectConfigPath, projectStateDir } from "../../src/platform/paths.ts";
 
 function fixtureRoot(): string {
   return mkdtempSync(join(tmpdir(), "tlc-cli-"));
@@ -159,6 +160,34 @@ describe("setPaused", () => {
     setPaused(root, true);
     setPaused(root, false);
     assert.equal(existsSync(skipFlagPath(root)), false);
+  });
+});
+
+describe("resetStuckState", () => {
+  test("clears a project's blockers and reports it", async () => {
+    const root = newRoot();
+    await coreFacade.handoff.patchHandoff(root, "claude", {
+      slice: { blockers: "Grind cap hit (3 stop loops).", last_failure_category: "budget" },
+    });
+    const summary = await resetStuckState(root);
+    assert.match(summary, /cleared blockers for: claude/);
+    const resolved = coreFacade.handoff.readHandoff(root, "claude");
+    assert.equal(resolved.blockers, undefined);
+  });
+
+  test("removes grind-loop counter files", async () => {
+    const root = newRoot();
+    mkdirSync(loopsDir(root), { recursive: true });
+    writeFileSync(join(loopsDir(root), "claude-session-1.json"), "{}");
+    const summary = await resetStuckState(root);
+    assert.match(summary, /reset 1 grind-loop counter/);
+    assert.equal(existsSync(loopsDir(root)), false);
+  });
+
+  test("reports nothing stuck when there is no blocker and no loop state", async () => {
+    const root = newRoot();
+    const summary = await resetStuckState(root);
+    assert.equal(summary, "nothing stuck — no blockers and no grind-loop state to clear");
   });
 });
 
@@ -379,6 +408,10 @@ describe("route — dispatch table", () => {
   test("routes pause and resume", () => {
     assert.deepEqual(route(["pause"]), { kind: "pause" });
     assert.deepEqual(route(["resume"]), { kind: "resume" });
+  });
+
+  test("routes reset", () => {
+    assert.deepEqual(route(["reset"]), { kind: "reset" });
   });
 
   test("mode requires an argument", () => {

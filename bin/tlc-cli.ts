@@ -20,6 +20,7 @@ import {
   flagsDir,
   isOnPath,
   launcherBinDir,
+  loopsDir,
   machineHome,
   projectConfigPath,
   projectStateDir,
@@ -191,6 +192,32 @@ export function setPaused(root: string, on: boolean): string {
   }
   coreFacade.policy.refreshPolicyBaselines(root);
   return "gates ACTIVE again";
+}
+
+/**
+ * why: the operator's escape hatch for a stuck gate — `blockers`/`previous_gaps`/`pending`/`in_progress`
+ * are project-wide, so a grind-cap or stagnation signal from one session can block every later subagent
+ * until either a clean stop clears it or this runs. Denied from inside a session by `policy-surface-write`.
+ */
+export async function resetStuckState(root: string): Promise<string> {
+  const cleared = await coreFacade.handoff.clearStuckSignals(root);
+  const dir = loopsDir(root);
+  let loopFiles = 0;
+  if (existsSync(dir)) {
+    loopFiles = readdirSync(dir).length;
+    rmSync(dir, { recursive: true, force: true });
+  }
+  if (cleared.length === 0 && loopFiles === 0) {
+    return "nothing stuck — no blockers and no grind-loop state to clear";
+  }
+  const parts: string[] = [];
+  if (cleared.length > 0) {
+    parts.push(`cleared blockers for: ${cleared.join(", ")}`);
+  }
+  if (loopFiles > 0) {
+    parts.push(`reset ${loopFiles} grind-loop counter(s)`);
+  }
+  return parts.join("; ");
 }
 
 // hazard: this used to map `focus` onto a second spelling before writing, so the word the operator typed and the
@@ -863,6 +890,7 @@ TOPICS
 
 CONTROL
   tlc harness grind [on|off]   tlc harness pause | resume   tlc harness mode solo|paired|focus
+  tlc harness reset                clear a stuck blocker/grind-loop signal from the handoff
   tlc harness gate test-command <cmd> [args...]   tlc harness gate lint-command <cmd> [args...]
   tlc harness attest              tamper-evident record of what each session ran under
   tlc harness policy              show a policy that changed out of band; accept <path> to clear it
@@ -1128,6 +1156,7 @@ export type Action =
   | { kind: "grind"; on: boolean }
   | { kind: "pause" }
   | { kind: "resume" }
+  | { kind: "reset" }
   | { kind: "mode"; value: string }
   | { kind: "gate"; field: GateField; argv: string[] }
   | { kind: "attest" }
@@ -1193,6 +1222,8 @@ export function route(args: string[]): Action {
     case "resume":
     case "r":
       return { kind: "resume" };
+    case "reset":
+      return { kind: "reset" };
     case "mode":
     case "m": {
       const modeArg = args[1];
@@ -1612,13 +1643,13 @@ function runInstall(toolArgs: string[], root: string): never {
   process.exit(r.status ?? 1);
 }
 
-function main(argv: string[]): void {
+async function main(argv: string[]): Promise<void> {
   const root = resolveProjectRoot();
   const group = (argv[0] ?? "").toLowerCase();
   if (group !== "harness") {
     console.error(`unknown: ${argv[0] ?? ""}`);
     console.error(
-      "usage: tlc harness <status|doctor|help|grind|pause|resume|mode|obs|prices|lessons|init|update|test|build>",
+      "usage: tlc harness <status|doctor|help|grind|pause|resume|reset|mode|obs|prices|lessons|init|update|test|build>",
     );
     process.exit(1);
   }
@@ -1744,6 +1775,9 @@ function main(argv: string[]): void {
     case "resume":
       console.log(setPaused(root, false));
       break;
+    case "reset":
+      console.log(await resetStuckState(root));
+      break;
     case "mode":
       try {
         console.log(setMode(root, action.value));
@@ -1794,5 +1828,8 @@ function main(argv: string[]): void {
 }
 
 if (import.meta.main) {
-  main(process.argv.slice(2));
+  main(process.argv.slice(2)).catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
 }

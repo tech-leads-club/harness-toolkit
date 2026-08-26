@@ -151,6 +151,7 @@ test("a non-reader naming any harness policy path is denied, even one outside th
 test("the mutating harness CLI is denied from inside the session", () => {
   assertDenied("tlc harness pause");
   assertDenied("tlc harness resume");
+  assertDenied("tlc harness reset");
   assertDenied("tlc harness grind off");
   assertDenied("tlc harness mode solo");
   assertDenied("tlc harness init --minimal");

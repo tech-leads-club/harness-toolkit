@@ -99,7 +99,7 @@ const HARNESS_BINS = new Set(["tlc", "tlc.cmd"]);
 // why: `policy` is here for the sharpest reason of any of them — `tlc harness policy accept` exists to clear a
 // tampering signal, so an agent that could reach it would make the whole integrity rail decorative. It is refused
 // by a floor rule with no config switch, exactly like the rest ([/decisions/ad-030.md](/decisions/ad-030.md)).
-const MUTATING_SUBCOMMANDS = new Set(["pause", "resume", "grind", "mode", "init", "gate", "policy"]);
+const MUTATING_SUBCOMMANDS = new Set(["pause", "resume", "reset", "grind", "mode", "init", "gate", "policy"]);
 
 function deny(detail: string, note: string, remedy?: string): PolicySurfaceVerdict {
   return { kind: "deny", detail, note, ...(remedy ? { remedy } : {}) };

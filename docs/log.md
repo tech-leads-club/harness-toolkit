@@ -16,6 +16,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 ## 2026-08-26
 
 - **AD-106** — A build step's own exit code cannot be the publish guarantee when it is also a recovery path ([/decisions/ad-106.md](/decisions/ad-106.md))
+- **AD-107** — A subagent's own budget running out is not evidence about the tree, and a stuck handoff now has an exit ([/decisions/ad-107.md](/decisions/ad-107.md))
 
 ## 2026-08-22
 

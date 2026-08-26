@@ -9,6 +9,7 @@ doctor reports against your own configuration.
 ## Unreleased
 
 - **AD-106** — A build step's own exit code cannot be the publish guarantee when it is also a recovery path
+- **AD-107** — A subagent's own budget running out is not evidence about the tree, and a stuck handoff now has an exit
 
 ## v0.6.0
 

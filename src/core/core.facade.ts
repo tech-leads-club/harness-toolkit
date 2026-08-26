@@ -49,6 +49,7 @@ import { cachedVerdict, computeInputsHash, isCacheHit } from "./gate/gate.inputs
 import { describeHolder, GATE_LOCK_WAIT_MS, GateLockTimeoutError, withGateLock } from "./gate/gate.lock.ts";
 import { gapsFromArtifact } from "./gate/gate.service.ts";
 import {
+  clearStuckSignals,
   handoffInjectable,
   patchHandoff,
   readForeignSlices,
@@ -308,6 +309,7 @@ export const coreFacade = {
     readHandoff,
     readHandoffFile,
     readForeignSlices,
+    clearStuckSignals,
   },
   shim: {
     coversHandler,
