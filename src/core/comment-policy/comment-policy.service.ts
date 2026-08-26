@@ -53,6 +53,16 @@ export const COMMENT_MARKERS = ["why:", "hazard:", "invariant:"] as const;
  * why: `file` decides everything now, so an empty one resolves to no syntax rather than to a permissive union of
  * every delimiter the harness has heard of. The facade keeps this signature; the scanner always has a real path.
  */
+/**
+ * hazard: the rail's own scan target used to be `filterCodeTargets`, a nine-extension regex shared with grind
+ * and duplication. The syntax catalog already knows 40+ languages — Terraform, SQL, YAML, Ruby, Java among
+ * them — so a project whose changed files never carried one of the nine extensions had `mode: "strict"` in its
+ * config and zero comments ever scanned. This filters by the same source the scanner itself trusts.
+ */
+export function filterCommentTargets(relativePaths: string[]): string[] {
+  return relativePaths.filter((path) => syntaxFor(path) !== null);
+}
+
 export function isCommentLine(text: string, file = ""): boolean {
   const syntax = file === "" ? null : syntaxFor(file);
   if (syntax === null) {

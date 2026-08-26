@@ -470,6 +470,13 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   const changedFiles = await listChangedRepoFiles(root, turnBase);
   const codeTargets = filterCodeTargets(changedFiles, policy.codePaths);
   const testTargets = filterTestTargets(changedFiles);
+  // why: the comment rail scopes by the syntax catalog (40+ languages), not by `codeTargets`'s nine-extension
+  // regex shared with grind and duplication — a Terraform- or SQL-heavy project changed no file `codeTargets`
+  // would ever keep, and the rail never ran regardless of `comments.mode`.
+  const commentScope = changedFiles.filter((file) =>
+    coreFacade.policy.isUnderCodePaths(file, policy.codePaths),
+  );
+  const commentTargets = coreFacade.commentPolicy.filterCommentTargets(commentScope);
   // why: read from the snapshot taken before this handler patches anything, so a credit written by the previous
   // stop is still visible when the gate it belongs to runs below.
   const pendingCredit = handoff.pending_lesson_credit;
@@ -619,12 +626,12 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   // rate cannot — was the rule ever needed — by running the checker while the prose is absent. A measurement that
   // can change what it measures is not a measurement ([/decisions/ad-027.md](/decisions/ad-027.md)).
   if (
-    codeTargets.length > 0 &&
+    commentTargets.length > 0 &&
     coreFacade.observe.shouldObserve(policy.observe, "comments", policy.comments.enabled)
   ) {
     const hits = await coreFacade.commentPolicy.scanAddedComments(
       root,
-      codeTargets,
+      commentTargets,
       policy.comments.mode,
       turnBase,
     );
@@ -641,15 +648,17 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
         rule: "comments",
         // why: a language the catalog does not carry produces no findings, which reads identically to "the
         // property held". Naming the extensions is the difference between a clean reading and a blind spot.
-        unknown_extensions: coreFacade.commentPolicy.unknownExtensions(codeTargets).join(",") || "none",
+        // Scoped to `commentScope`, not `commentTargets` — the target set is already syntax-known by
+        // construction, so it could never report the gap it exists to name.
+        unknown_extensions: coreFacade.commentPolicy.unknownExtensions(commentScope).join(",") || "none",
       },
     });
   }
 
-  if (policy.comments.enabled && policy.comments.onViolation === "followup" && codeTargets.length > 0) {
+  if (policy.comments.enabled && policy.comments.onViolation === "followup" && commentTargets.length > 0) {
     const hits = await coreFacade.commentPolicy.scanAddedComments(
       root,
-      codeTargets,
+      commentTargets,
       policy.comments.mode,
       turnBase,
     );
