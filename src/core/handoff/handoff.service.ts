@@ -28,8 +28,6 @@ export function readHandoff(root: string, provider: string): ResolvedHandoff {
 const CLEARED_SLICE: Partial<HandoffProviderSlice> = {
   blockers: undefined,
   previous_gaps: undefined,
-  pending: undefined,
-  in_progress: undefined,
   last_failure_category: undefined,
   next_action: undefined,
 };

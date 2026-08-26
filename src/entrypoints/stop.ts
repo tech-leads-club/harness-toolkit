@@ -504,11 +504,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   }
 
   const intel = policy.intelligence;
-  const unfinishedWork =
-    Boolean(handoff.blockers) ||
-    Boolean(handoff.previous_gaps?.length) ||
-    Boolean(handoff.pending?.length) ||
-    Boolean(handoff.in_progress?.length);
+  const unfinishedWork = Boolean(handoff.blockers) || Boolean(handoff.previous_gaps?.length);
   if (
     intel.idleTurnGate &&
     coreFacade.turn.endedWithoutActing({

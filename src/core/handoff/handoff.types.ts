@@ -18,8 +18,6 @@ export type HandoffProviderSlice = {
   session_key?: string;
   session_narrative?: string;
   completed?: string[];
-  in_progress?: string[];
-  pending?: string[];
   last_ship_claim_at?: string;
   last_ship_claim_snippet?: string;
   last_ship_claim_kind?: "structured";

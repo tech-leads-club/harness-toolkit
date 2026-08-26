@@ -73,7 +73,7 @@ test("readForeignSlices omits a foreign provider that set neither next_action no
   }
 });
 
-test("clearStuckSignals clears blockers/gaps/pending/in_progress/category/next_action for every provider that has one", async () => {
+test("clearStuckSignals clears blockers/gaps/category/next_action for every provider that has one", async () => {
   const root = tempRoot();
   try {
     await patchHandoff(root, "provider-a", {
@@ -81,8 +81,6 @@ test("clearStuckSignals clears blockers/gaps/pending/in_progress/category/next_a
         blockers: "Grind cap hit (3 stop loops).",
         last_failure_category: "budget",
         next_action: "Inspect failures, fix root cause, then continue.",
-        pending: ["finish the migration"],
-        in_progress: ["reviewing PR"],
         previous_gaps: [{ id: "g1", gate: "test", category: "verification", summary: "x" }],
       },
     });
@@ -95,8 +93,6 @@ test("clearStuckSignals clears blockers/gaps/pending/in_progress/category/next_a
     assert.equal(resolvedA.blockers, undefined);
     assert.equal(resolvedA.last_failure_category, undefined);
     assert.equal(resolvedA.next_action, undefined);
-    assert.equal(resolvedA.pending, undefined);
-    assert.equal(resolvedA.in_progress, undefined);
     assert.equal(resolvedA.previous_gaps, undefined);
   } finally {
     rmSync(root, { recursive: true, force: true });

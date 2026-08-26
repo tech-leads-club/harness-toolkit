@@ -5,7 +5,7 @@ import { main } from "./run.ts";
 import { observeForRules } from "./support.ts";
 
 // why: no legacy predecessor covers subagent.stop verification — this reuses the same unfinished-work
-// signal (blockers/pending/in_progress/previous_gaps) already carried on the handoff slice.
+// signal (blockers/previous_gaps) already carried on the handoff slice.
 export const subagentStopHandler: Handler = async (
   event: HarnessEvent,
   ctx: HandlerContext,
@@ -21,10 +21,7 @@ export const subagentStopHandler: Handler = async (
   // failure, it is not valid evidence here ([/decisions/ad-073.md](/decisions/ad-073.md)).
   const isBudgetBlocker = handoff.last_failure_category === "budget";
   const unfinishedWork =
-    (Boolean(handoff.blockers) && !isBudgetBlocker) ||
-    Boolean(handoff.previous_gaps?.length) ||
-    Boolean(handoff.pending?.length) ||
-    Boolean(handoff.in_progress?.length);
+    (Boolean(handoff.blockers) && !isBudgetBlocker) || Boolean(handoff.previous_gaps?.length);
 
   if (!unfinishedWork) {
     return { kind: "abstain" };

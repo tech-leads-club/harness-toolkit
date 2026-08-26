@@ -195,9 +195,9 @@ export function setPaused(root: string, on: boolean): string {
 }
 
 /**
- * why: the operator's escape hatch for a stuck gate — `blockers`/`previous_gaps`/`pending`/`in_progress`
- * are project-wide, so a grind-cap or stagnation signal from one session can block every later subagent
- * until either a clean stop clears it or this runs. Denied from inside a session by `policy-surface-write`.
+ * why: the operator's escape hatch for a stuck gate — `blockers` and `previous_gaps` are project-wide,
+ * so a grind-cap or stagnation signal from one session can block every later subagent until either a
+ * clean stop clears it or this runs. Denied from inside a session by `policy-surface-write`.
  */
 export async function resetStuckState(root: string): Promise<string> {
   const cleared = await coreFacade.handoff.clearStuckSignals(root);
@@ -290,14 +290,9 @@ export function handoffScreen(report: HandoffReport): Screen {
         rows.push({ label, value: String(value), level });
       }
     }
-    for (const [label, list] of [
-      ["in progress", slice.in_progress],
-      ["pending", slice.pending],
-      ["gaps", slice.previous_gaps?.map((gap) => gap.summary)],
-    ] as const) {
-      if (list && list.length > 0) {
-        rows.push({ label, value: list.slice(0, 6).join(" | ") });
-      }
+    const gaps = slice.previous_gaps?.map((gap) => gap.summary);
+    if (gaps && gaps.length > 0) {
+      rows.push({ label: "gaps", value: gaps.slice(0, 6).join(" | ") });
     }
     sections.push({ title: `${name} (updated ${slice.updated_at})`, rows });
   }

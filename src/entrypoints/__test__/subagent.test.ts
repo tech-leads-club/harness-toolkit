@@ -217,10 +217,12 @@ test('subagent.stop with unfinished work yields {"decision":"block"} under Claud
   }
 });
 
-test("subagent.stop with pending items on the handoff also yields continue", async () => {
+test("subagent.stop with open gaps on the handoff also yields continue", async () => {
   const root = tempRoot();
   try {
-    await coreFacade.handoff.patchHandoff(root, "cursor", { slice: { pending: ["finish the migration"] } });
+    await coreFacade.handoff.patchHandoff(root, "cursor", {
+      slice: { previous_gaps: [{ id: "g1", gate: "test", category: "verification", summary: "still red" }] },
+    });
     const outcome = await runHandler(subagentStopHandler, stdinOf(cursorSubagentStop(root)));
     assert.equal(outcome.decision.kind, "continue");
   } finally {
@@ -251,7 +253,7 @@ test("subagent.stop still blocks on a budget blocker if other unfinished work is
       slice: {
         blockers: "Grind cap hit (3 stop loops). Fix manually or pause gates.",
         last_failure_category: "budget",
-        pending: ["finish the migration"],
+        previous_gaps: [{ id: "g1", gate: "test", category: "verification", summary: "still red" }],
       },
     });
     const outcome = await runHandler(subagentStopHandler, stdinOf(cursorSubagentStop(root)));

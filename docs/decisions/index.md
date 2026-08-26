@@ -115,6 +115,7 @@ Handoff section and a link back to this index.
 | [AD-105](/decisions/ad-105.md) | Anyone may use it, including a company; nobody may sell it as a service, and the notices travel with it | active |
 | [AD-106](/decisions/ad-106.md) | A build step's own exit code cannot be the publish guarantee when it is also a recovery path | active |
 | [AD-107](/decisions/ad-107.md) | A subagent's own budget running out is not evidence about the tree, and a stuck handoff now has an exit | active |
+| [AD-108](/decisions/ad-108.md) | Two fields in the unfinished-work formula had no writer, and the carried-gap merge dropped this turn's own result | active |
 
 ## Archived
 
