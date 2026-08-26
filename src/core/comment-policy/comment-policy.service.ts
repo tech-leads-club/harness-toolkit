@@ -44,18 +44,37 @@ export function matchesSyntax(text: string, syntax: CommentSyntax): boolean {
 
 const TOOL_DIRECTIVE =
   /^\s*(?:\/\/|\/\*|\*|#)\s*(?:biome-ignore|eslint|@ts-|prettier-ignore|noqa|type:|shellcheck|!)/;
+const GENERATED_PRAGMA = /^@generated\b/i;
+const GENERATED_NEAR_START = /^.{0,20}?\bgenerat\w*\b/i;
+const GENERATED_DO_NOT_EDIT = /\bgenerat\w*\b.{0,20}\bdo[\s-]?not[\s-]?edit\b/i;
+const COMMENT_PREFIX = /^\s*(?:\/\/|\/\*|\*|#)\s*/;
+const DECLARED_REASON = /^\s*(?:\/\/|\/\*|\*|#)\s*(?:why|hazard|invariant):\s*\S/i;
+const CLOSER_OR_CONTINUATION = /^\s*(?:\*\/|\*|\/\/)/;
+
+export const COMMENT_MARKERS = ["why:", "hazard:", "invariant:"] as const;
+
 /**
  * why: a codegen tool's own banner ("Code generated ... DO NOT EDIT", Phabricator's `@generated`) is not
  * agent narration — no operator wrote it and no agent chose the words, the generator stamps it on every
  * regeneration. Flagging it asked an agent to delete text that would just reappear on the next
  * `terramate generate`/`go generate`/etc., and deleting it by hand is what those tools' own drift checks
  * exist to catch.
+ *
+ * hazard: a declared reason always wins, checked first. A real `why:`/`hazard:` line that happens to
+ * mention "generates" and "do not edit" near each other must never vanish from the scan uncounted — only
+ * an *undeclared* line gets the benefit of this exemption, and only near the start of a short line, so a
+ * banner ("GENERATED ... DO NOT EDIT") passes while a longer sentence merely mentioning both words does not.
  */
-const GENERATED_FILE_MARKER = /@generated\b|\bgenerat\w*\b.{0,40}\bdo[\s-]?not[\s-]?edit\b/i;
-const DECLARED_REASON = /^\s*(?:\/\/|\/\*|\*|#)\s*(?:why|hazard|invariant):\s*\S/i;
-const CLOSER_OR_CONTINUATION = /^\s*(?:\*\/|\*|\/\/)/;
-
-export const COMMENT_MARKERS = ["why:", "hazard:", "invariant:"] as const;
+function isGeneratedFileBanner(text: string): boolean {
+  if (DECLARED_REASON.test(text)) {
+    return false;
+  }
+  const body = text.replace(COMMENT_PREFIX, "");
+  if (GENERATED_PRAGMA.test(body)) {
+    return true;
+  }
+  return body.length <= 90 && GENERATED_NEAR_START.test(body) && GENERATED_DO_NOT_EDIT.test(body);
+}
 
 /**
  * why: `file` decides everything now, so an empty one resolves to no syntax rather than to a permissive union of
@@ -66,7 +85,7 @@ export function isCommentLine(text: string, file = ""): boolean {
   if (syntax === null) {
     return false;
   }
-  return matchesSyntax(text, syntax) && !TOOL_DIRECTIVE.test(text) && !GENERATED_FILE_MARKER.test(text);
+  return matchesSyntax(text, syntax) && !TOOL_DIRECTIVE.test(text) && !isGeneratedFileBanner(text);
 }
 
 /**

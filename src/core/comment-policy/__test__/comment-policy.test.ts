@@ -71,6 +71,28 @@ test("a generated-file banner is not counted — no agent chose those words", ()
   }
 });
 
+// invariant: a declared reason always wins. Otherwise a real hazard:/why: line that happens to mention
+// "generates" and "do not edit" near each other would vanish from the scan uncounted instead of being
+// judged as declared prose — found by an independent verifier attacking the banner exemption.
+test("a declared reason is never swallowed by the generated-file exemption", () => {
+  for (const text of [
+    "// hazard: generated ids leak in logs, do not edit the redaction filter",
+    "// why: this generates a temp file, do not edit while the job is running",
+  ]) {
+    assert.equal(isCommentLine(text, "a.ts"), true, text);
+  }
+});
+
+test("a long undeclared sentence merely mentioning both words still counts", () => {
+  assert.equal(
+    isCommentLine(
+      "// this function generates the cache key, do not edit it without also updating invalidateCache",
+      "a.ts",
+    ),
+    true,
+  );
+});
+
 test("plain narration that merely mentions 'generate' still counts", () => {
   assert.equal(isCommentLine("// this generates the summary from raw events", "a.ts"), true);
 });
