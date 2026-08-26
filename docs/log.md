@@ -22,6 +22,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-110** — The documented ship-gate excludes promised two paths core is not allowed to name ([/decisions/ad-110.md](/decisions/ad-110.md))
 - **AD-111** — The comment gate advises at edit-time, cheap enough to afford per edit; duplication stays stop-only ([/decisions/ad-111.md](/decisions/ad-111.md))
 - **AD-112** — A codegen tool's own banner is not agent narration ([/decisions/ad-112.md](/decisions/ad-112.md))
+- **AD-113** — tlc harness policy accept resolves a relative path against root ([/decisions/ad-113.md](/decisions/ad-113.md))
 
 ## 2026-08-22
 

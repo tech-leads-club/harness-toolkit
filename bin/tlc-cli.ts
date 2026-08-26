@@ -9,7 +9,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { coreFacade } from "../src/core/index.ts";
 import { emitJson, JSON_FLAG, takeJsonFlag, unknownFlags } from "../src/platform/cli-output.ts";
 import { linkDir, linkFile, seedConfig } from "../src/platform/links.ts";
@@ -419,7 +419,8 @@ export function acceptPolicy(root: string, paths: string[], interactive: boolean
    * says so loudly when this project has no blocked session at all.
    */
   const blocked = coreFacade.policy.allDivergedPaths(root);
-  const notHere = requested.filter((path) => !blocked.includes(path));
+  const resolvedRequested = requested.map((path) => (isAbsolute(path) ? path : resolve(root, path)));
+  const notHere = resolvedRequested.filter((path) => !blocked.includes(path));
   const outcome = coreFacade.policy.acceptPolicySources(root, requested);
   if (outcome.kind === "not-a-source") {
     /**

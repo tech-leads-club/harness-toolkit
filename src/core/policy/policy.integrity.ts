@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import type { Decision } from "../../contracts/decision.ts";
 import {
   flagsDir,
@@ -156,16 +156,22 @@ export type AcceptOutcome =
  * makes no judgement — the four locks that keep it out of an agent's reach live at the CLI and in the floor, where
  * they can be tested independently ([/decisions/ad-030.md](/decisions/ad-030.md)).
  */
+// why: `known` is keyed by absolute paths; a relative path typed by the operator never matched.
+function resolveAgainstRoot(root: string, path: string): string {
+  return isAbsolute(path) ? path : resolve(root, path);
+}
+
 export function acceptPolicySources(root: string, paths: string[]): AcceptOutcome {
   const current = policySourceFingerprint(root);
   const known = new Map(current.map((source) => [source.path, source.hash]));
-  const unknown = paths.filter((path) => !known.has(path));
+  const resolved = paths.map((path) => resolveAgainstRoot(root, path));
+  const unknown = resolved.filter((path) => !known.has(path));
   if (unknown.length > 0) {
     return { kind: "not-a-source", paths: unknown, sources: current.map((source) => source.path) };
   }
 
   const dir = policyBaselineDir(root);
-  if (!existsSync(dir) || paths.length === 0) {
+  if (!existsSync(dir) || resolved.length === 0) {
     return { kind: "nothing-to-accept" };
   }
 
@@ -179,7 +185,7 @@ export function acceptPolicySources(root: string, paths: string[]): AcceptOutcom
       continue;
     }
     const updated = baseline.map((source) =>
-      paths.includes(source.path) ? { path: source.path, hash: known.get(source.path) as string } : source,
+      resolved.includes(source.path) ? { path: source.path, hash: known.get(source.path) as string } : source,
     );
     try {
       writeFileSync(
@@ -189,7 +195,7 @@ export function acceptPolicySources(root: string, paths: string[]): AcceptOutcom
       );
     } catch {}
   }
-  return { kind: "accepted", paths };
+  return { kind: "accepted", paths: resolved };
 }
 
 // invariant: this is the layer that covers what shell parsing cannot — `bash script.sh`, a compiled binary,

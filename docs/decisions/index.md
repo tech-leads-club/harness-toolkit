@@ -120,6 +120,7 @@ Handoff section and a link back to this index.
 | [AD-110](/decisions/ad-110.md) | The documented ship-gate excludes promised two paths core is not allowed to name | active |
 | [AD-111](/decisions/ad-111.md) | The comment gate advises at edit-time, cheap enough to afford per edit; duplication stays stop-only | active |
 | [AD-112](/decisions/ad-112.md) | A codegen tool's own banner is not agent narration | active |
+| [AD-113](/decisions/ad-113.md) | `tlc harness policy accept` resolves a relative path against root | active |
 
 ## Archived
 

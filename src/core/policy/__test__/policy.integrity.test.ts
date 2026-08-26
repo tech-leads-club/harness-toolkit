@@ -197,6 +197,15 @@ test("a path the loader never reads is refused, and the real sources are named",
   }
 });
 
+test("a relative path resolves against root and is accepted the same as the absolute one", () => {
+  const root = newRoot();
+  recordPolicyBaseline(root, "s1");
+  writeFileSync(projectConfigPath(root), '{"version":2}', "utf8");
+  const outcome = acceptPolicySources(root, [".tlc/harness/config.json"]);
+  assert.equal(outcome.kind, "accepted");
+  assert.equal(checkPolicyBaseline(root, "s1").kind, "allow");
+});
+
 test("with no baseline recorded there is nothing to accept, and it is not an error", () => {
   const root = newRoot();
   assert.equal(acceptPolicySources(root, [projectConfigPath(root)]).kind, "nothing-to-accept");

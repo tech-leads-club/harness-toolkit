@@ -15,6 +15,7 @@ doctor reports against your own configuration.
 - **AD-110** — The documented ship-gate excludes promised two paths core is not allowed to name
 - **AD-111** — The comment gate advises at edit-time, cheap enough to afford per edit; duplication stays stop-only
 - **AD-112** — A codegen tool's own banner is not agent narration
+- **AD-113** — tlc harness policy accept resolves a relative path against root
 
 ## v0.6.0
 
