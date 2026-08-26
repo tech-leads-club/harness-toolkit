@@ -6,6 +6,12 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## Unreleased
+
+- **AD-111** — The comment gate advises at edit-time, cheap enough to afford per edit; duplication stays stop-only
+- **AD-112** — A codegen tool's own banner is not agent narration
+- **AD-113** — tlc harness policy accept resolves a relative path against root
+
 ## v0.7.0
 
 - **AD-106** — A build step's own exit code cannot be the publish guarantee when it is also a recovery path
@@ -13,9 +19,6 @@ doctor reports against your own configuration.
 - **AD-108** — Two fields in the unfinished-work formula had no writer, and the carried-gap merge dropped this turn's own result
 - **AD-109** — A lesson's credit is graded by the session that earned it, not by whichever session runs the gate next
 - **AD-110** — The documented ship-gate excludes promised two paths core is not allowed to name
-- **AD-111** — The comment gate advises at edit-time, cheap enough to afford per edit; duplication stays stop-only
-- **AD-112** — A codegen tool's own banner is not agent narration
-- **AD-113** — tlc harness policy accept resolves a relative path against root
 
 ## v0.6.0
 
