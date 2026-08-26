@@ -36,6 +36,7 @@
     "!tools/test-env*",
     "!docs/decisions",
     "config.example.json",
+    "schema.json",
     "NOTICE"
   ],
   "publishConfig": {

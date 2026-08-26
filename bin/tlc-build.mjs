@@ -16,9 +16,10 @@
  * entrypoint, and the missing bundle only surfaces when a hook fires on somebody's machine.
  */
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { generateConfigSchema } from "../tools/dev/generate-schema.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
@@ -115,3 +116,20 @@ for (const entry of readdirSync(dist, { withFileTypes: true })) {
 }
 
 console.log(`tlc-build: ok (${bundles} bundles)`);
+
+/**
+ * why here, not a separate script: this file is already the one place that builds every generated
+ * artefact this package ships — a second entry point for a second generated file would be the
+ * duplication AD-097 removed one of.
+ *
+ * invariant: never committed — see .gitignore. Nothing to commit means nothing to drift, so this
+ * needs no freshness gate the way `dist/` no longer does ([/decisions/ad-097.md](/decisions/ad-097.md)).
+ */
+try {
+  const schema = generateConfigSchema(root);
+  writeFileSync(join(root, "schema.json"), `${JSON.stringify(schema, null, 2)}\n`);
+  console.log("tlc-build: schema.json ok");
+} catch (error) {
+  console.error(`tlc-build: schema.json generation failed — ${error instanceof Error ? error.message : error}`);
+  process.exit(1);
+}
