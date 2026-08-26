@@ -352,15 +352,35 @@ describe("applyPlan", () => {
 
   // why: an editor keys $schema-based autocomplete off the property being present, not its position —
   // first is what a human reads first, though, and JSON.stringify preserves insertion order for it.
-  test("the written config's first key is $schema, pointing at unpkg", () => {
+  // This suite's TLC_HOME has no package.json (test-env.mjs sandboxes it empty), so this pins the
+  // fallback shape specifically; the version-pinned shape has its own test below.
+  test("the written config's first key is $schema, falling back to no version pin", () => {
     const root = newRoot();
     const outcome = applyPlan(root, parseFlags(["--minimal"]), { cursor: false, claude: false }, null);
     const written = JSON.parse(readFileSync(outcome.configPath, "utf8")) as Record<string, unknown>;
     assert.equal(Object.keys(written)[0], "$schema");
-    assert.match(
-      written.$schema as string,
-      /^https:\/\/unpkg\.com\/@tech-leads-club\/harness-toolkit(@\d+\.\d+)?\/schema\.json$/,
-    );
+    assert.equal(written.$schema, "https://unpkg.com/@tech-leads-club/harness-toolkit/schema.json");
+  });
+
+  // why: the fallback-shape test above can never exercise this branch — TLC_HOME has no package.json
+  // in this suite, so runtimeVersion() is always null there. This pins major.minor when it can be read.
+  test("the written config's $schema pins major.minor when the runtime's package.json is readable", () => {
+    const home = newRoot();
+    writeFileSync(join(home, "package.json"), JSON.stringify({ version: "1.4.9" }));
+    const previous = process.env.TLC_HOME;
+    process.env.TLC_HOME = home;
+    try {
+      const root = newRoot();
+      const outcome = applyPlan(root, parseFlags(["--minimal"]), { cursor: false, claude: false }, null);
+      const written = JSON.parse(readFileSync(outcome.configPath, "utf8")) as Record<string, unknown>;
+      assert.equal(written.$schema, "https://unpkg.com/@tech-leads-club/harness-toolkit@1.4/schema.json");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.TLC_HOME;
+      } else {
+        process.env.TLC_HOME = previous;
+      }
+    }
   });
 
   test("skips both providers when neither is present", () => {

@@ -60,3 +60,14 @@ test("no build-machine absolute path survives into the generated schema", () => 
   assert.equal(serialized.includes(repoRoot), false);
   assert.equal(serialized.includes(encodeURIComponent(repoRoot)), false);
 });
+
+// why: TypeScript prints its import() type queries against a canonicalised path, so a caller passing
+// an equivalent but differently-spelled root (a trailing "." segment here) used to defeat the redaction
+// entirely — the literal string it split on was never the string that got printed.
+test("a root spelled with a trailing . segment is still redacted", () => {
+  const unresolvedRoot = join(repoRoot, ".");
+  const schema = generateConfigSchema(unresolvedRoot);
+  const serialized = JSON.stringify(schema);
+  assert.equal(serialized.includes(repoRoot), false);
+  assert.equal(serialized.includes(unresolvedRoot), false);
+});

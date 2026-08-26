@@ -3,14 +3,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, afterEach, before, test } from "node:test";
-import { projectConfigPath } from "../../src/platform/paths.ts";
+import { machineConfigPath, projectConfigPath } from "../../src/platform/paths.ts";
 import { checkConfigKeys } from "../doctor.ts";
 
 const cleanup: string[] = [];
 
-// hazard: resolvedWithoutProjectTier() falls back to the runtime home's config.json, so an unsandboxed run reads
-// the contributor's own machine config — see the identical note in doctor.allowlist.test.ts
-// ([/decisions/ad-095.md](/decisions/ad-095.md)).
+// why: sandboxed so a test that writes a machine-tier config (below) never touches the contributor's
+// own — see the identical note in doctor.allowlist.test.ts ([/decisions/ad-095.md](/decisions/ad-095.md)).
 let runtimeSandbox: string;
 let previousHome: string | undefined;
 
@@ -62,6 +61,23 @@ test("a config with an unknown key names it", () => {
   assert.ok(unknown, "expected an unknown-key check");
   assert.equal(unknown?.level, "warn");
   assert.match(unknown?.detail ?? "", /format/);
+});
+
+// why: ground truth must be DEFAULTS, not resolvedWithoutProjectTier() — a machine-tier config
+// carrying the same unknown key used to merge it into "known", and the walk recursed into its leaf
+// instead of naming the block itself, misdirecting the operator from format to format.command.
+test("an unknown key present in the machine tier too is still named at its own level, not a leaf", () => {
+  const root = projectRoot();
+  const machinePath = machineConfigPath();
+  mkdirSync(dirname(machinePath), { recursive: true });
+  writeFileSync(machinePath, JSON.stringify({ format: { enabled: true } }));
+  writeRawConfig(root, JSON.stringify({ version: 1, format: { enabled: true, command: ["biome"] } }));
+
+  const checks = checkConfigKeys(root);
+  const unknown = checks.find((c) => c.name === "project policy has an unknown key");
+  assert.ok(unknown, "expected an unknown-key check");
+  assert.doesNotMatch(unknown?.detail ?? "", /format\.command/, "must not misdirect to the leaf");
+  assert.match(unknown?.detail ?? "", /: format\./, "format itself, named as the whole block");
 });
 
 test("a config with a type mismatch names the expected and actual type", () => {

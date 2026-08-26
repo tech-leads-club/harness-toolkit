@@ -33,6 +33,7 @@
     "!src/**/__test__",
     "!tools/__test__",
     "!tools/dev",
+    "tools/dev/generate-schema.ts",
     "!tools/test-env*",
     "!docs/decisions",
     "config.example.json",

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import * as TJS from "typescript-json-schema";
 
 /**
@@ -20,7 +20,10 @@ function compilerOptionsFrom(root: string): Record<string, unknown> {
  * invariant: `noExtraProps` is what makes an unknown key (the `format` class of bug) a schema
  * violation instead of something the schema silently accepts.
  */
-export function generateConfigSchema(root: string): Record<string, unknown> {
+export function generateConfigSchema(rawRoot: string): Record<string, unknown> {
+  // why: TypeScript prints an import() type query against its own canonicalised path — a `.` segment
+  // or backslashes in the caller's spelling would silently defeat redactBuildPath's string match below.
+  const root = resolve(rawRoot);
   const program = TJS.getProgramFromFiles([join(root, SOURCE_FILE)], compilerOptionsFrom(root), root);
   const schema = TJS.generateSchema(program, ROOT_TYPE, {
     required: true,
@@ -51,7 +54,14 @@ export function generateConfigSchema(root: string): Record<string, unknown> {
  * that are also definition keys, once URI-percent-encoded in the `$ref` string itself. Published
  * as-is, it would leak the CI runner's (or a contributor's) filesystem layout into a public schema.
  */
+// why: TypeScript always prints module specifiers with forward slashes, regardless of host OS — on
+// Windows `root` itself is backslash-separated, so the raw string alone never matches what got printed.
 function redactBuildPath(schema: Record<string, unknown>, root: string): Record<string, unknown> {
-  const serialized = JSON.stringify(schema).split(root).join(".").split(encodeURIComponent(root)).join(".");
+  const posixRoot = root.replace(/\\/g, "/");
+  const candidates = [root, posixRoot, encodeURIComponent(root), encodeURIComponent(posixRoot)];
+  let serialized = JSON.stringify(schema);
+  for (const candidate of candidates) {
+    serialized = serialized.split(candidate).join(".");
+  }
   return JSON.parse(serialized) as Record<string, unknown>;
 }

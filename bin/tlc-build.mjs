@@ -19,7 +19,6 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { generateConfigSchema } from "../tools/dev/generate-schema.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
@@ -117,15 +116,30 @@ for (const entry of readdirSync(dist, { withFileTypes: true })) {
 
 console.log(`tlc-build: ok (${bundles} bundles)`);
 
-/**
- * invariant: never committed — see .gitignore. Nothing to commit means nothing to drift, so this
- * needs no freshness gate the way `dist/` no longer does ([/decisions/ad-097.md](/decisions/ad-097.md)).
- */
+// invariant: never committed — see .gitignore. Nothing to commit means nothing to drift, so this
+// needs no freshness gate the way `dist/` no longer does ([/decisions/ad-097.md](/decisions/ad-097.md)).
+//
+// why dynamic, and why a missing module degrades instead of failing: typescript-json-schema is a
+// devDependency, absent from a plain install. The dist rebuild above is this script's real recovery
+// contract (bin/tlc-exec.mjs's "dist missing, run tlc-build.mjs" message) — schema.json is editor-only,
+// so its generator being unavailable there must not block the rebuild a broken install actually needs.
+let generateConfigSchema;
 try {
-  const schema = generateConfigSchema(root);
-  writeFileSync(join(root, "schema.json"), `${JSON.stringify(schema, null, 2)}\n`);
-  console.log("tlc-build: schema.json ok");
+  ({ generateConfigSchema } = await import("../tools/dev/generate-schema.ts"));
 } catch (error) {
-  console.error(`tlc-build: schema.json generation failed — ${error instanceof Error ? error.message : error}`);
-  process.exit(1);
+  if (error?.code !== "ERR_MODULE_NOT_FOUND") {
+    throw error;
+  }
+  console.log("tlc-build: schema.json skipped — typescript-json-schema is not installed here");
+}
+
+if (generateConfigSchema) {
+  try {
+    const schema = generateConfigSchema(root);
+    writeFileSync(join(root, "schema.json"), `${JSON.stringify(schema, null, 2)}\n`);
+    console.log("tlc-build: schema.json ok");
+  } catch (error) {
+    console.error(`tlc-build: schema.json generation failed — ${error instanceof Error ? error.message : error}`);
+    process.exit(1);
+  }
 }

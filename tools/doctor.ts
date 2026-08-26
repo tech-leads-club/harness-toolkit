@@ -597,7 +597,10 @@ export function checkConfigKeys(root: string): Check[] {
       },
     ];
   }
-  const resolved = coreFacade.policy.resolvedWithoutProjectTier();
+  // why: DEFAULTS, not resolvedWithoutProjectTier() — the machine tier is operator content, not the shape
+  // the harness reads. An unknown key present in both tiers used to recurse into it instead of naming it,
+  // because resolvedWithoutProjectTier() carries the machine tier's own keys, unknown or not, straight through.
+  const resolved = coreFacade.policy.DEFAULTS as unknown as Record<string, unknown>;
   const unknown = coreFacade.policy.unknownKeys(status.value, resolved);
   const mismatched = coreFacade.policy.typeMismatches(status.value, resolved);
   const checks: Check[] = [];
