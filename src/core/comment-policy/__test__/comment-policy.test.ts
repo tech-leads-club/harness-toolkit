@@ -7,6 +7,7 @@ import { test } from "node:test";
 import {
   attachedIdentifier,
   commentViolationMessage,
+  filterCommentTargets,
   findAddedComments,
   isCommentLine,
   type NextCodeLine,
@@ -373,4 +374,20 @@ test("an unknown extension is named, not silently passed", async () => {
   assert.deepEqual(unknownExtensions(["a.ts", "b.py", "c.cobol", "d.unknownext"]), [".cobol", ".unknownext"]);
   assert.deepEqual(unknownExtensions(["a.ts", "Dockerfile", "Makefile"]), []);
   assert.deepEqual(findAddedComments([{ file: "x.cobol", line: 1, text: "* narration" }]), []);
+});
+
+// invariant: the rail's scan target is the syntax catalog's coverage, not the nine-extension regex `filterCodeTargets`
+// shares with grind and duplication — a project whose changed files are Terraform, SQL, or any of the catalog's
+// other 30+ languages must still be scanned. A stale copy of that narrower list here would silently regress it.
+test("filterCommentTargets keeps every language the syntax catalog covers, not just the grind nine", () => {
+  const files = ["a.ts", "b.tf", "c.sql", "d.yaml", "e.rb", "f.java", "g.sh", "h.unknownext"];
+  assert.deepEqual(filterCommentTargets(files), [
+    "a.ts",
+    "b.tf",
+    "c.sql",
+    "d.yaml",
+    "e.rb",
+    "f.java",
+    "g.sh",
+  ]);
 });
