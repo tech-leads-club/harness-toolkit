@@ -6,7 +6,7 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
-## Unreleased
+## v0.8.0
 
 - **AD-111** — The comment gate advises at edit-time, cheap enough to afford per edit; duplication stays stop-only
 - **AD-112** — A codegen tool's own banner is not agent narration
