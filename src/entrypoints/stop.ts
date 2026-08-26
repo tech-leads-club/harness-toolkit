@@ -472,10 +472,14 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   const testTargets = filterTestTargets(changedFiles);
   // why: the comment rail scopes by the syntax catalog (40+ languages), not by `codeTargets`'s nine-extension
   // regex shared with grind and duplication — a Terraform- or SQL-heavy project changed no file `codeTargets`
-  // would ever keep, and the rail never ran regardless of `comments.mode`.
+  // would ever keep, and the rail never ran regardless of `comments.mode`. Scoped to `codePaths` here rather
+  // than inside `filterCommentTargets` itself, which would need `policy.loader.ts` and create an import cycle
+  // through `duplication.service.ts` (see the invariant on `filterCommentTargets`).
   const commentScope = changedFiles.filter((file) =>
     coreFacade.policy.isUnderCodePaths(file, policy.codePaths),
   );
+  // why: `unknown_extensions` reports over `commentScope`, not this — a language the catalog does not know is
+  // still named even though it was just excluded from the scan.
   const commentTargets = coreFacade.commentPolicy.filterCommentTargets(commentScope);
   // why: read from the snapshot taken before this handler patches anything, so a credit written by the previous
   // stop is still visible when the gate it belongs to runs below.

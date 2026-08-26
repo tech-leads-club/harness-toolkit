@@ -532,6 +532,25 @@ test("a comment declaring why passes the stop", async () => {
   }
 });
 
+// why: every other comment-rail test here changes an `.ts` file, which passes both `codeTargets`'s nine-extension
+// regex and the syntax catalog — so none of them can tell the rail's own scope apart from grind's. This one uses
+// a language only the catalog knows, which is what actually pins the fix: reverting the rail to `codeTargets`
+// makes this pass silently while every other test in this file stays green.
+test("an undeclared comment in a language codeTargets does not recognise still blocks the stop", async () => {
+  const root = repoWithChange();
+  try {
+    writeFileSync(join(root, "src", "main.tf"), '# get the region\nresource "aws_s3_bucket" "b" {}\n');
+    writeProjectPolicy(root, { comments: { enabled: true, onViolation: "followup" } });
+    const outcome = await runHandler(stopHandler, stdinOf(cursorStop(root)));
+    assert.equal(outcome.decision.kind, "continue");
+    if (outcome.decision.kind === "continue") {
+      assert.match(outcome.decision.text, /get the region/);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("budgetContinue with unfinished work under pressure yields continue", async () => {
   const root = cleanRepo();
   try {

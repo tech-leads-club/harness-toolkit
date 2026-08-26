@@ -49,10 +49,19 @@ export function syntaxFor(file: string): CommentSyntax | null {
   return lookupSyntax(file);
 }
 
+// why: an image, a font, a lockfile or a test snapshot was never a candidate for a catalog entry — it carries
+// no comment syntax to add. Reporting it as a coverage gap turns the signal an operator can act on into noise
+// they learn to ignore.
+const NOT_A_LANGUAGE =
+  /\.(png|jpe?g|gif|ico|bmp|webp|svg|woff2?|ttf|eot|otf|pdf|zip|gz|tgz|tar|lockb|snap)$/i;
+
 /** why: the operator needs the coverage gap named. A language nobody listed is a rail that silently passes. */
 export function unknownExtensions(files: readonly string[]): string[] {
   const unknown = new Set<string>();
   for (const file of files) {
+    if (NOT_A_LANGUAGE.test(file)) {
+      continue;
+    }
     if (lookupSyntax(file) === null) {
       const name = file.toLowerCase().replace(/\\/g, "/").split("/").pop() ?? file;
       const dot = name.lastIndexOf(".");

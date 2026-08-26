@@ -376,9 +376,35 @@ test("an unknown extension is named, not silently passed", async () => {
   assert.deepEqual(findAddedComments([{ file: "x.cobol", line: 1, text: "* narration" }]), []);
 });
 
+// why: an image, a lockfile or a snapshot was never a candidate for a catalog entry, so naming it a coverage
+// gap is noise rather than signal — see comment-syntax.store.ts.
+test("an asset extension is not named as a coverage gap", async () => {
+  const { unknownExtensions } = await import("../comment-syntax.store.ts");
+  assert.deepEqual(unknownExtensions(["a.ts", "logo.png", "app.snap", "bun.lockb"]), []);
+});
+
+// why: `middle: ["*"]` used to match any line starting with a bare `*` regardless of context, so a multi-line
+// SQL projection or a CSS reset flagged its own syntax as an undeclared comment.
+test("a bare * is not a comment in languages where it is also code", () => {
+  assert.equal(isCommentLine("*", "q.sql"), false);
+  assert.equal(isCommentLine("*, *::before { margin: 0; }", "reset.css"), false);
+  assert.deepEqual(
+    findAddedComments([
+      { file: "q.sql", line: 1, text: "SELECT" },
+      { file: "q.sql", line: 2, text: "  *" },
+      { file: "q.sql", line: 3, text: "FROM users" },
+    ]),
+    [],
+  );
+});
+
 // invariant: the rail's scan target is the syntax catalog's coverage, not the nine-extension regex `filterCodeTargets`
 // shares with grind and duplication — a project whose changed files are Terraform, SQL, or any of the catalog's
 // other 30+ languages must still be scanned. A stale copy of that narrower list here would silently regress it.
+//
+// why no `codePaths` here: that scoping happens in the caller (stop.ts), not inside this function — taking it
+// here would need `policy.loader.ts`, which imports `policy.defaults.ts`, which imports back into this module
+// through `duplication.service.ts`'s `matchesSyntax` import, an import cycle. See the function's own invariant.
 test("filterCommentTargets keeps every language the syntax catalog covers, not just the grind nine", () => {
   const files = ["a.ts", "b.tf", "c.sql", "d.yaml", "e.rb", "f.java", "g.sh", "h.unknownext"];
   assert.deepEqual(filterCommentTargets(files), [

@@ -155,14 +155,19 @@ export const COMMENT_SYNTAX: readonly CommentSyntaxEntry[] = [
     extensions: [".sql"],
     line: ["--"],
     block: [["/*", "*/"]],
-    middle: ["*"],
+    // hazard: `middle: ["*"]` matched any line starting with a bare `*`, comment or not. In C-family languages
+    // that is safe — a line rarely opens with `*` outside a block continuation — but `SELECT *` does exactly
+    // that, so a multi-line query flagged its own projection as an undeclared comment.
+    middle: [],
   },
   {
     id: "css",
     extensions: [".css", ".scss", ".sass", ".less"],
     line: ["//"],
     block: [["/*", "*/"]],
-    middle: ["*"],
+    // hazard: same defect as sql above — the universal selector `*` and a bare `*,` in a reset both start with
+    // `*`, so `middle: ["*"]` flagged ordinary CSS as an undeclared comment.
+    middle: [],
   },
   {
     id: "yaml",
