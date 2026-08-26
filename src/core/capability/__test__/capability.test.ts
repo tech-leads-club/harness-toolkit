@@ -14,7 +14,13 @@ import {
   listNewlyAnnounceable,
   resolveConfigPath,
 } from "../capability.service.ts";
-import { loadCatalog, readProjectPolicyRaw, readRuntimeSeen, writeRuntimeSeen } from "../capability.store.ts";
+import {
+  loadCatalog,
+  readProjectPolicyRaw,
+  readProjectPolicyStatus,
+  readRuntimeSeen,
+  writeRuntimeSeen,
+} from "../capability.store.ts";
 import {
   type CapabilityCatalog,
   type CatalogCapability,
@@ -122,6 +128,46 @@ test("readProjectPolicyRaw returns null when no policy exists", () => {
   const dir = tempProject();
   try {
     assert.equal(readProjectPolicyRaw(dir), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("readProjectPolicyStatus distinguishes absent from malformed", async () => {
+  const { projectConfigPath } = await import("../../../platform/paths.ts");
+  const dir = tempProject();
+  try {
+    assert.deepEqual(readProjectPolicyStatus(dir), { status: "absent" });
+
+    const path = projectConfigPath(dir);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "{ not valid json,");
+    const malformed = readProjectPolicyStatus(dir);
+    assert.equal(malformed.status, "malformed");
+    if (malformed.status === "malformed") {
+      assert.ok(malformed.error.length > 0);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("readProjectPolicyStatus strips $schema from a parsed config", async () => {
+  const { projectConfigPath } = await import("../../../platform/paths.ts");
+  const dir = tempProject();
+  try {
+    const path = projectConfigPath(dir);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify({ $schema: "https://unpkg.com/example/schema.json", mode: "solo" }));
+
+    const result = readProjectPolicyStatus(dir);
+    assert.equal(result.status, "parsed");
+    if (result.status === "parsed") {
+      assert.equal(Object.hasOwn(result.value, "$schema"), false);
+      assert.equal(result.value.mode, "solo");
+    }
+    // why: the existing narrower reader must keep working — same file, same $schema-free result.
+    assert.deepEqual(readProjectPolicyRaw(dir), { mode: "solo" });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

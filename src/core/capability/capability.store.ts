@@ -27,8 +27,35 @@ export function loadCatalog(home = runtimeHome()): CapabilityCatalog | null {
   return raw;
 }
 
+export type ConfigReadStatus =
+  | { status: "absent" }
+  | { status: "parsed"; value: Record<string, unknown> }
+  | { status: "malformed"; error: string };
+
+/**
+ * why a second reader for the same file `readJson` already covers: `readJson` collapses "absent" and
+ * "malformed" to the same `null`, which is the exact silent-corruption gap `doctor` needs to close —
+ * a config that fails to parse degrades to defaults with nothing telling the operator why.
+ */
+export function readProjectPolicyStatus(projectDir: string): ConfigReadStatus {
+  const path = projectConfigPath(projectDir);
+  if (!existsSync(path)) {
+    return { status: "absent" };
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    // why: a JSON Schema meta-key, not a Policy field — see the identical strip in policy.loader.ts,
+    // this is the second, independent read of the same file.
+    delete parsed.$schema;
+    return { status: "parsed", value: parsed };
+  } catch (error) {
+    return { status: "malformed", error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 export function readProjectPolicyRaw(projectDir: string): Record<string, unknown> | null {
-  return readJson<Record<string, unknown>>(projectConfigPath(projectDir));
+  const result = readProjectPolicyStatus(projectDir);
+  return result.status === "parsed" ? result.value : null;
 }
 
 function runtimeSeenPath(projectDir: string): string {
