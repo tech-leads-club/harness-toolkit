@@ -13,6 +13,7 @@ doctor reports against your own configuration.
 - **AD-108** — Two fields in the unfinished-work formula had no writer, and the carried-gap merge dropped this turn's own result
 - **AD-109** — A lesson's credit is graded by the session that earned it, not by whichever session runs the gate next
 - **AD-110** — The documented ship-gate excludes promised two paths core is not allowed to name
+- **AD-111** — The comment gate advises at edit-time, cheap enough to afford per edit; duplication stays stop-only
 
 ## v0.6.0
 

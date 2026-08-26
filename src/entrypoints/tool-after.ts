@@ -1,6 +1,8 @@
-import type { HarnessEvent, HarnessEventKind } from "../contracts/index.ts";
+import { relative } from "node:path";
+import type { Decision, HarnessEvent, HarnessEventKind } from "../contracts/index.ts";
 import { coreFacade, type ObsKind } from "../core/index.ts";
 import { estimateCostUsd, mapPoolToNeutral } from "../platform/pricing.ts";
+import { normalizeSeparators } from "../platform/sanitize.ts";
 import { readClaudeUsage } from "../providers/index.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
@@ -46,6 +48,37 @@ function usageGenAi(event: HarnessEvent, ctx: HandlerContext): Record<string, un
     cost_source: cost.source,
     cost_pool: mapPoolToNeutral(cost.pool),
   };
+}
+
+/**
+ * why: this is cheaper than the stop-time scan and scoped to the file this edit touched, so it can afford
+ * to run per edit — unlike duplication, which reads the whole tracked tree and stays stop-only
+ * ([/decisions/ad-111.md](/decisions/ad-111.md)). It never blocks; a real violation still blocks at stop.
+ */
+async function commentEditAdvisory(event: HarnessEvent, ctx: HandlerContext): Promise<Decision | null> {
+  const { policy } = ctx;
+  if (!policy.comments.enabled || policy.comments.onViolation !== "followup" || !event.filePath) {
+    return null;
+  }
+  const relativePath = normalizeSeparators(relative(event.projectDir, event.filePath));
+  if (relativePath.startsWith("..") || !coreFacade.policy.isUnderCodePaths(relativePath, policy.codePaths)) {
+    return null;
+  }
+  const targets = coreFacade.commentPolicy.filterCommentTargets([relativePath]);
+  if (targets.length === 0) {
+    return null;
+  }
+  const handoff = coreFacade.handoff.readHandoff(event.projectDir, event.provider);
+  const hits = await coreFacade.commentPolicy.scanAddedComments(
+    event.projectDir,
+    targets,
+    policy.comments.mode,
+    handoff.turn_base_sha ?? "HEAD",
+  );
+  if (hits.length === 0) {
+    return null;
+  }
+  return { kind: "context", text: coreFacade.commentPolicy.commentEditAdvisory(hits, policy.comments.mode) };
 }
 
 export const toolAfterHandler: Handler = async (event: HarnessEvent, ctx: HandlerContext) => {
@@ -100,7 +133,7 @@ export const toolAfterHandler: Handler = async (event: HarnessEvent, ctx: Handle
     });
   }
 
-  return coreFacade.untrusted.evaluateUntrustedContent({
+  const untrustedDecision = coreFacade.untrusted.evaluateUntrustedContent({
     root: event.projectDir,
     sessionKey: event.sessionKey,
     event: event.event,
@@ -109,6 +142,18 @@ export const toolAfterHandler: Handler = async (event: HarnessEvent, ctx: Handle
     config: ctx.policy.untrustedContent,
     providerTools: ctx.provider.policyDefaults().untrustedTools,
   });
+  if (untrustedDecision.kind !== "abstain") {
+    return untrustedDecision;
+  }
+
+  if (event.event === "edit.after") {
+    const advisory = await commentEditAdvisory(event, ctx);
+    if (advisory) {
+      return advisory;
+    }
+  }
+
+  return { kind: "abstain" };
 };
 
 if (import.meta.main) {

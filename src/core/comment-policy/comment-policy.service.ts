@@ -314,3 +314,18 @@ export function commentViolationMessage(hits: CommentFinding[], mode: CommentMod
     ...hits.slice(0, 20).map((h) => `${h.file}:${h.line}  ${h.text}`),
   ].join("\n");
 }
+
+/**
+ * why: this fires at edit-time, before stop has run — nothing is blocked yet, so it must not say `BLOCKED`
+ * like `commentViolationMessage` correctly does. Reusing that wording here would claim a refusal this call
+ * cannot make and never sees whether the agent honours.
+ */
+export function commentEditAdvisory(hits: CommentFinding[], mode: CommentMode = "declared"): string {
+  const marker = mode === "strict" ? "" : ` as ${COMMENT_MARKERS.join(" / ")}`;
+  return [
+    `HEADS UP: this edit added ${hits.length} comment(s) that would block the stop later.`,
+    `Fix now while it's cheap — delete it, or restate it${marker} if it records a non-obvious reason.`,
+    "",
+    ...hits.slice(0, 20).map((h) => `${h.file}:${h.line}  ${h.text}`),
+  ].join("\n");
+}

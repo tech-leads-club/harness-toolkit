@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -63,6 +64,40 @@ function claudeToolAfter(root: string, overrides: Record<string, unknown> = {}):
     session_id: "sess-1",
     tool_name: "Grep",
     ...overrides,
+  });
+}
+
+function repoWithCommittedFile(relativePath: string, committedContent: string): string {
+  const dir = tempRoot();
+  const git = (args: string[]): void => {
+    execFileSync("git", args, { cwd: dir });
+  };
+  git(["init", "-q"]);
+  git(["config", "user.email", "test@example.com"]);
+  git(["config", "user.name", "Test"]);
+  writeFileSync(join(dir, ".gitignore"), ".tlc/\n");
+  mkdirSync(join(dir, relativePath, ".."), { recursive: true });
+  writeFileSync(join(dir, relativePath), committedContent);
+  git(["add", "."]);
+  git(["commit", "-q", "-m", "initial"]);
+  return dir;
+}
+
+function writeCommentsPolicy(root: string, patch: Record<string, unknown> = {}): void {
+  mkdirSync(join(root, ".tlc", "harness"), { recursive: true });
+  writeFileSync(
+    join(root, ".tlc", "harness", "config.json"),
+    JSON.stringify({ version: 1, comments: { enabled: true, ...patch } }),
+  );
+}
+
+function claudeEditAfter(root: string, filePath: string): string {
+  return JSON.stringify({
+    hook_event_name: "PostToolUse",
+    cwd: root,
+    session_id: "sess-1",
+    tool_name: "Edit",
+    tool_input: { file_path: filePath },
   });
 }
 
@@ -477,5 +512,114 @@ test("obs.maxAttrChars from project policy truncates what the hook records", asy
   } finally {
     rmSync(wide, { recursive: true, force: true });
     rmSync(narrow, { recursive: true, force: true });
+  }
+});
+
+// AC1/AC2/AC3: an edit that adds an undeclared comment gets a non-blocking heads-up, not a BLOCKED refusal.
+test("edit.after advises, without blocking, when the edit added an undeclared comment", async () => {
+  const root = repoWithCommittedFile("src/app.ts", "export const a = 1;\n");
+  try {
+    writeCommentsPolicy(root);
+    writeFileSync(
+      join(root, "src", "app.ts"),
+      "export const a = 1;\n// this sets a to one\nexport const b = 2;\n",
+    );
+    const outcome = await runHandler(
+      toolAfterHandler,
+      stdinOf(claudeEditAfter(root, join(root, "src/app.ts"))),
+    );
+    assert.equal(outcome.decision.kind, "context");
+    if (outcome.decision.kind === "context") {
+      assert.match(outcome.decision.text, /HEADS UP/);
+      assert.doesNotMatch(outcome.decision.text, /BLOCKED/);
+      assert.match(outcome.decision.text, /src\/app\.ts:2/);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("edit.after stays silent when the added comment declares why:", async () => {
+  const root = repoWithCommittedFile("src/app.ts", "export const a = 1;\n");
+  try {
+    writeCommentsPolicy(root);
+    writeFileSync(
+      join(root, "src", "app.ts"),
+      "export const a = 1;\n// why: matches the schema field name exactly.\nexport const b = 2;\n",
+    );
+    const outcome = await runHandler(
+      toolAfterHandler,
+      stdinOf(claudeEditAfter(root, join(root, "src/app.ts"))),
+    );
+    assert.equal(outcome.decision.kind, "abstain");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// AC5: no new config surface — the advisory only fires under the exact condition stop's gate already uses.
+test("edit.after stays silent when the comment gate is disabled", async () => {
+  const root = repoWithCommittedFile("src/app.ts", "export const a = 1;\n");
+  try {
+    writeFileSync(join(root, "src", "app.ts"), "export const a = 1;\n// this sets a to one\n");
+    const outcome = await runHandler(
+      toolAfterHandler,
+      stdinOf(claudeEditAfter(root, join(root, "src/app.ts"))),
+    );
+    assert.equal(outcome.decision.kind, "abstain");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("edit.after stays silent when onViolation is off", async () => {
+  const root = repoWithCommittedFile("src/app.ts", "export const a = 1;\n");
+  try {
+    writeCommentsPolicy(root, { onViolation: "off" });
+    writeFileSync(join(root, "src", "app.ts"), "export const a = 1;\n// this sets a to one\n");
+    const outcome = await runHandler(
+      toolAfterHandler,
+      stdinOf(claudeEditAfter(root, join(root, "src/app.ts"))),
+    );
+    assert.equal(outcome.decision.kind, "abstain");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// AC6: scoped to the file this edit touched — a standing violation elsewhere must not surface here.
+test("edit.after does not report a violation in a different, untouched file", async () => {
+  const root = repoWithCommittedFile("src/app.ts", "export const a = 1;\nexport const c = 3;\n");
+  try {
+    writeCommentsPolicy(root);
+    writeFileSync(
+      join(root, "src", "app.ts"),
+      "export const a = 1;\n// this sets a to one\nexport const c = 3;\n",
+    );
+    mkdirSync(join(root, "src", "other"), { recursive: true });
+    writeFileSync(join(root, "src", "other", "clean.ts"), "export const d = 4;\n");
+    execFileSync("git", ["add", "src/other/clean.ts"], { cwd: root });
+    const outcome = await runHandler(
+      toolAfterHandler,
+      stdinOf(claudeEditAfter(root, join(root, "src/other/clean.ts"))),
+    );
+    assert.equal(outcome.decision.kind, "abstain");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("edit.after stays silent for a file outside codePaths", async () => {
+  const root = repoWithCommittedFile("scripts/x.ts", "export const a = 1;\n");
+  try {
+    writeCommentsPolicy(root);
+    writeFileSync(join(root, "scripts", "x.ts"), "export const a = 1;\n// this sets a to one\n");
+    const outcome = await runHandler(
+      toolAfterHandler,
+      stdinOf(claudeEditAfter(root, join(root, "scripts/x.ts"))),
+    );
+    assert.equal(outcome.decision.kind, "abstain");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });

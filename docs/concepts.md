@@ -217,6 +217,10 @@ than a deletion ([/decisions/ad-070.md](/decisions/ad-070.md)); `strict` accepts
 asks the operator to write it. Tool directives (`biome-ignore`, `@ts-`, `noqa`, `shellcheck`, shebang) are
 exempt in both modes.
 
+When `onViolation: "followup"` (the default), an Edit/Write also gets an early, non-blocking `HEADS UP` the
+moment it adds an undeclared comment — scoped to that one file, same diff base as the stop-time check,
+which still blocks unchanged ([/decisions/ad-111.md](/decisions/ad-111.md)).
+
 ## supply chain
 
 `supplyChain.enabled`, off by default. Blocks the stop when this turn added a dependency and left one of two

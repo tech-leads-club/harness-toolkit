@@ -22,6 +22,7 @@ import {
 } from "./capability/capability.store.ts";
 import { ENABLE_HINT } from "./capability/capability.types.ts";
 import {
+  commentEditAdvisory,
   commentViolationMessage,
   declaresReason,
   filterCommentTargets,
@@ -455,6 +456,7 @@ export const coreFacade = {
     isCommentLine,
     declaresReason,
     commentViolationMessage,
+    commentEditAdvisory,
     filterCommentTargets,
     unknownExtensions,
     KNOWN_EXTENSION_COUNT,
