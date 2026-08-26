@@ -515,7 +515,6 @@ test("obs.maxAttrChars from project policy truncates what the hook records", asy
   }
 });
 
-// AC1/AC2/AC3: an edit that adds an undeclared comment gets a non-blocking heads-up, not a BLOCKED refusal.
 test("edit.after advises, without blocking, when the edit added an undeclared comment", async () => {
   const root = repoWithCommittedFile("src/app.ts", "export const a = 1;\n");
   try {
@@ -557,7 +556,6 @@ test("edit.after stays silent when the added comment declares why:", async () =>
   }
 });
 
-// AC5: no new config surface — the advisory only fires under the exact condition stop's gate already uses.
 test("edit.after stays silent when the comment gate is disabled", async () => {
   const root = repoWithCommittedFile("src/app.ts", "export const a = 1;\n");
   try {
@@ -587,7 +585,6 @@ test("edit.after stays silent when onViolation is off", async () => {
   }
 });
 
-// AC6: scoped to the file this edit touched — a standing violation elsewhere must not surface here.
 test("edit.after does not report a violation in a different, untouched file", async () => {
   const root = repoWithCommittedFile("src/app.ts", "export const a = 1;\nexport const c = 3;\n");
   try {
