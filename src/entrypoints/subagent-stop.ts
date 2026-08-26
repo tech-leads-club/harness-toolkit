@@ -4,8 +4,8 @@ import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
 import { observeForRules } from "./support.ts";
 
-// why: no legacy predecessor covers subagent.stop verification — this reuses the same unfinished-work
-// signal (blockers/previous_gaps) already carried on the handoff slice.
+// why: no legacy predecessor covers subagent.stop verification — this reuses the blockers/previous_gaps
+// signal already carried on the handoff slice.
 export const subagentStopHandler: Handler = async (
   event: HarnessEvent,
   ctx: HandlerContext,
