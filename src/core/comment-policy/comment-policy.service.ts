@@ -54,16 +54,10 @@ const CLOSER_OR_CONTINUATION = /^\s*(?:\*\/|\*|\/\/)/;
 export const COMMENT_MARKERS = ["why:", "hazard:", "invariant:"] as const;
 
 /**
- * why: a codegen tool's own banner ("Code generated ... DO NOT EDIT", Phabricator's `@generated`) is not
- * agent narration — no operator wrote it and no agent chose the words, the generator stamps it on every
- * regeneration. Flagging it asked an agent to delete text that would just reappear on the next
- * `terramate generate`/`go generate`/etc., and deleting it by hand is what those tools' own drift checks
- * exist to catch.
- *
- * hazard: a declared reason always wins, checked first. A real `why:`/`hazard:` line that happens to
- * mention "generates" and "do not edit" near each other must never vanish from the scan uncounted — only
- * an *undeclared* line gets the benefit of this exemption, and only near the start of a short line, so a
- * banner ("GENERATED ... DO NOT EDIT") passes while a longer sentence merely mentioning both words does not.
+ * why: a codegen banner ("Code generated ... DO NOT EDIT", Phabricator's `@generated`) is not agent
+ * narration — nobody chose the words, the generator stamps it on every regeneration. hazard: a declared
+ * reason always wins, checked first, so a real `why:`/`hazard:` line near those same words is judged as
+ * declared prose, never swallowed — only an undeclared line near a short banner gets this exemption.
  */
 function isGeneratedFileBanner(text: string): boolean {
   if (DECLARED_REASON.test(text)) {
