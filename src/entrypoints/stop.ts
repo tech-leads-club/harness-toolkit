@@ -130,7 +130,7 @@ function recordGateDeferred(args: {
  * would have let `undefined` mean "fine" at three call sites that reach straight for `artifact.passed`
  * ([/decisions/ad-073.md](/decisions/ad-073.md)).
  */
-type GateRun =
+export type GateRun =
   | { kind: "ran"; artifact: LastGateArtifact; reused: boolean }
   | { kind: "deferred"; holder: string };
 
@@ -184,7 +184,12 @@ async function creditPendingLessons(args: {
   });
 }
 
-async function runLockedGate(args: {
+/**
+ * why exported: this is the one place a `commit`/`push`/`pr-open` ship-time gate
+ * ([/decisions/ad-116.md](/decisions/ad-116.md)) can ask the identical question `stop` asks — same lock, same
+ * content-hash cache, same observability. A second implementation is the drift AD-071 already named once.
+ */
+export async function runLockedGate(args: {
   root: string;
   shaRoot: string;
   provider: string;
