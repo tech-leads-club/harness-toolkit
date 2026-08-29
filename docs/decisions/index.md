@@ -124,6 +124,7 @@ Handoff section and a link back to this index.
 | [AD-114](/decisions/ad-114.md) | Rule proof `since HEAD` resolves sha from the event's own working directory, not the project root | active |
 | [AD-115](/decisions/ad-115.md) | A comment violation refuses commit, push and gh pr create, not only the stop | active |
 | [AD-116](/decisions/ad-116.md) | push and gh pr create run the stop-time battery before shipping, identically on every provider | active |
+| [AD-117](/decisions/ad-117.md) | turn_base_sha resolves sha from the event's own working directory, not the project root | active |
 
 ## Archived
 

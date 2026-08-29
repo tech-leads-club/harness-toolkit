@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
+import { coreFacade } from "../../core/index.ts";
 import { projectStateDir, runtimeSpoolPath } from "../../platform/paths.ts";
 import { compactBeforeHandler } from "../compact-before.ts";
 import { promptSubmitHandler } from "../prompt-submit.ts";
@@ -102,6 +104,61 @@ test("prompt.submit returns an abstain decision", async () => {
     assert.equal(outcome.rendered.exitCode, 0);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * why: AD-117 — the exact AD-114 divergence, but against `turn_base_sha` instead of a rule's proof sha.
+ * A worktree session's `cwd` differs from `CLAUDE_PROJECT_DIR`; `turn_base_sha` has to reflect the
+ * worktree actually being worked on, or every gate that diffs against it reads an untouched file as
+ * "added this turn."
+ */
+const previousProjectDir = process.env.CLAUDE_PROJECT_DIR;
+
+afterEach(() => {
+  if (previousProjectDir === undefined) {
+    delete process.env.CLAUDE_PROJECT_DIR;
+  } else {
+    process.env.CLAUDE_PROJECT_DIR = previousProjectDir;
+  }
+});
+
+function gitRepo(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  execFileSync("git", ["-C", dir, "init", "-q"]);
+  execFileSync("git", ["-C", dir, "commit", "-q", "--allow-empty", "-m", prefix], {
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@t",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@t",
+    },
+  });
+  return dir;
+}
+
+function headSha(dir: string): string {
+  return execFileSync("git", ["-C", dir, "rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
+}
+
+test("turn_base_sha reflects the event's own cwd, not CLAUDE_PROJECT_DIR", async () => {
+  const mainCheckout = gitRepo("tlc-prompt-main-");
+  const worktree = gitRepo("tlc-prompt-worktree-");
+  process.env.CLAUDE_PROJECT_DIR = mainCheckout;
+  try {
+    await runHandler(promptSubmitHandler, stdinOf(claudePromptSubmit(worktree)));
+
+    const handoff = coreFacade.handoff.readHandoff(mainCheckout, "claude");
+    assert.equal(handoff.turn_base_sha, headSha(worktree));
+    assert.notEqual(
+      headSha(worktree),
+      headSha(mainCheckout),
+      "the two repos must genuinely differ to prove anything",
+    );
+  } finally {
+    rmSync(mainCheckout, { recursive: true, force: true });
+    rmSync(worktree, { recursive: true, force: true });
   }
 });
 
