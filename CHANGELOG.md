@@ -6,7 +6,7 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
-## v0.9.0
+## Unreleased
 
 - **AD-114** — Rule proof `since HEAD` resolves sha from the event's own working directory, not the project root
 - **AD-115** — A comment violation refuses commit, push and gh pr create, not only the stop
