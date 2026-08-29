@@ -52,6 +52,13 @@ export type HarnessEvent = {
   event: HarnessEventKind;
   sessionKey: string;
   projectDir: string;
+  /**
+   * The host's own report of the actual working directory for this event — the worktree root after
+   * the agent enters one, or the directory after a `cd` ([/decisions/ad-114.md](/decisions/ad-114.md)).
+   * Absent when the host does not report a per-event working directory. Distinct from `projectDir`,
+   * which anchors state/config and deliberately does not move into a worktree.
+   */
+  cwd?: string;
   // hazard: the `spawn*` pair describes the child of a spawn; the unprefixed fields describe the
   // running agent. Conflating them clobbers sticky parent state.
   model?: string;

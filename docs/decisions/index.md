@@ -121,6 +121,7 @@ Handoff section and a link back to this index.
 | [AD-111](/decisions/ad-111.md) | The comment gate advises at edit-time, cheap enough to afford per edit; duplication stays stop-only | active |
 | [AD-112](/decisions/ad-112.md) | A codegen tool's own banner is not agent narration | active |
 | [AD-113](/decisions/ad-113.md) | `tlc harness policy accept` resolves a relative path against root | active |
+| [AD-114](/decisions/ad-114.md) | Rule proof `since HEAD` resolves sha from the event's own working directory, not the project root | active |
 
 ## Archived
 

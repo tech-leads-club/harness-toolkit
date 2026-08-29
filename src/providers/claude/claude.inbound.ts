@@ -119,6 +119,14 @@ export function claudeToEvent(raw: Record<string, unknown>): HarnessEvent | null
     event.permissionMode = permissionMode;
   }
 
+  // why: `cwd` is a common field on every Claude hook payload, and the host docs confirm it tracks the
+  // agent into a worktree or after a `cd` — unlike `projectDir`, which stays at the session's original
+  // root ([/decisions/ad-114.md](/decisions/ad-114.md)).
+  const cwd = asString(raw.cwd);
+  if (cwd) {
+    event.cwd = cwd;
+  }
+
   const isSpawnEvent = eventKind === "subagent.start" || eventKind === "subagent.stop";
   const model = isSpawnEvent ? undefined : asString(raw.model);
   if (model) {

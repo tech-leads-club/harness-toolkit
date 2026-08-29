@@ -194,6 +194,34 @@ test("projectDir resolves CLAUDE_PROJECT_DIR over cwd over process.cwd()", () =>
   }
 });
 
+// why: `cwd` and `projectDir` must be able to diverge — that divergence is the whole point of AD-114.
+// `projectDir` prefers CLAUDE_PROJECT_DIR; `event.cwd` always carries the raw payload's own `cwd`,
+// regardless of what CLAUDE_PROJECT_DIR says.
+test("cwd carries the raw payload's own cwd even when CLAUDE_PROJECT_DIR points elsewhere", () => {
+  const previous = process.env.CLAUDE_PROJECT_DIR;
+  process.env.CLAUDE_PROJECT_DIR = "/main-checkout";
+  try {
+    const event = claudeToEvent({
+      hook_event_name: "SubagentStop",
+      session_id: "s",
+      cwd: "/main-checkout/.claude/worktrees/feature-x",
+    });
+    assert.equal(event?.projectDir, "/main-checkout");
+    assert.equal(event?.cwd, "/main-checkout/.claude/worktrees/feature-x");
+  } finally {
+    if (previous === undefined) {
+      delete process.env.CLAUDE_PROJECT_DIR;
+    } else {
+      process.env.CLAUDE_PROJECT_DIR = previous;
+    }
+  }
+});
+
+test("cwd is absent when the raw payload carries none", () => {
+  const event = claudeToEvent({ hook_event_name: "SessionStart", session_id: "s" });
+  assert.equal(event?.cwd, undefined);
+});
+
 test("effort.level maps to the normalized EffortLevel when recognized", () => {
   const event = claudeToEvent({
     hook_event_name: "SubagentStart",
