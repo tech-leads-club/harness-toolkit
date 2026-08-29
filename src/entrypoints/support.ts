@@ -58,6 +58,18 @@ export async function currentGitBranch(root: string): Promise<string | null> {
   return branch.length > 0 ? branch : null;
 }
 
+/**
+ * why: `event.projectDir` prefers `CLAUDE_PROJECT_DIR`, which the host deliberately keeps pointed at the
+ * session's original root — including inside a git worktree, where it would otherwise return the wrong
+ * HEAD for a `since HEAD` rule proof. `event.cwd` is the field the host actually moves when the agent is
+ * working in a worktree or after a `cd`. Only the rules engine's proof sha needs this; every other use of
+ * `event.projectDir` (state dir, policy config, presence) is deliberately left alone
+ * ([/decisions/ad-114.md](/decisions/ad-114.md)).
+ */
+export function shaScopeRoot(event: HarnessEvent): string {
+  return event.cwd ?? event.projectDir;
+}
+
 export async function currentGitSha(root: string): Promise<string | null> {
   if (!existsSync(join(root, ".git"))) {
     return null;
