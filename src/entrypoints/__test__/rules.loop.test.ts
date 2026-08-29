@@ -456,3 +456,101 @@ describe("a spawn's declared type is the proof, not the name it was given", () =
     assert.equal(observations()[0]?.value, "the-judge");
   });
 });
+
+/**
+ * The AD-114 regression: a review recorded in one working directory must not satisfy `since HEAD` for a
+ * `pr-open` that fires from a different one, even when both share the same `CLAUDE_PROJECT_DIR` — which is
+ * exactly the shape of a git worktree the host reports through `cwd`, not through `projectDir`.
+ */
+describe("since HEAD is scoped to the event's own working directory, not the project root", () => {
+  let workDirA: string;
+  let workDirB: string;
+  let previousProjectDir: string | undefined;
+
+  function gitAt(dir: string, ...args: string[]): void {
+    execFileSync("git", ["-C", dir, ...args], {
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@t",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@t",
+      },
+    });
+  }
+
+  function shaAt(dir: string): string {
+    return execFileSync("git", ["-C", dir, "rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
+  }
+
+  beforeEach(() => {
+    // why: `root` (the beforeEach above) plays the main checkout — CLAUDE_PROJECT_DIR points there, as the
+    // host keeps it. workDirA/B play two different git worktrees, each with their own HEAD, reachable only
+    // through `cwd`.
+    workDirA = mkdtempSync(join(tmpdir(), "tlc-rules-loop-worktree-a-"));
+    gitAt(workDirA, "init", "-q");
+    gitAt(workDirA, "commit", "-q", "--allow-empty", "-m", "worktree a");
+
+    workDirB = mkdtempSync(join(tmpdir(), "tlc-rules-loop-worktree-b-"));
+    gitAt(workDirB, "init", "-q");
+    gitAt(workDirB, "commit", "-q", "--allow-empty", "-m", "worktree b");
+
+    previousProjectDir = process.env.CLAUDE_PROJECT_DIR;
+    process.env.CLAUDE_PROJECT_DIR = root;
+  });
+
+  afterEach(() => {
+    if (previousProjectDir === undefined) {
+      delete process.env.CLAUDE_PROJECT_DIR;
+    } else {
+      process.env.CLAUDE_PROJECT_DIR = previousProjectDir;
+    }
+    rmSync(workDirA, { recursive: true, force: true });
+    rmSync(workDirB, { recursive: true, force: true });
+  });
+
+  const claudeJudgeStoppedAt = (cwd: string): string =>
+    JSON.stringify({ hook_event_name: "SubagentStop", cwd, session_id: "sess-1", subagent_type: "the-judge" });
+
+  const claudePrOpenAt = (cwd: string): string =>
+    JSON.stringify({
+      hook_event_name: "PreToolUse",
+      cwd,
+      session_id: "sess-1",
+      tool_name: "Bash",
+      tool_input: { command: "gh pr create --fill" },
+    });
+
+  test("AC1 an observation records the sha of the event's own cwd, not of CLAUDE_PROJECT_DIR", async () => {
+    withRule("subagent(the-judge) since HEAD");
+
+    await runHandler(subagentStopHandler, stdinOf(claudeJudgeStoppedAt(workDirA)));
+
+    assert.equal(observations().length, 1);
+    assert.equal(observations()[0]?.sha, shaAt(workDirA));
+    assert.notEqual(shaAt(workDirA), shaAt(root), "the two directories must genuinely differ to prove anything");
+  });
+
+  test("AC2 a pr-open fired from the reviewed working directory is allowed, even though CLAUDE_PROJECT_DIR's own HEAD differs", async () => {
+    withRule("subagent(the-judge) since HEAD");
+    await runHandler(subagentStopHandler, stdinOf(claudeJudgeStoppedAt(workDirA)));
+
+    const outcome = await runHandler(toolBeforeHandler, stdinOf(claudePrOpenAt(workDirA)));
+
+    assert.notEqual(outcome.decision.kind, "deny");
+  });
+
+  test("AC3 a pr-open fired from a different working directory than the one reviewed is denied — the regression", async () => {
+    withRule("subagent(the-judge) since HEAD");
+    await runHandler(subagentStopHandler, stdinOf(claudeJudgeStoppedAt(workDirA)));
+
+    const outcome = await runHandler(toolBeforeHandler, stdinOf(claudePrOpenAt(workDirB)));
+
+    assert.equal(
+      outcome.decision.kind,
+      "deny",
+      "the-judge reviewed worktree A; a PR opened from worktree B has no review of its own HEAD",
+    );
+  });
+});
