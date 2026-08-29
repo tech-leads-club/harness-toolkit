@@ -2,7 +2,7 @@ import type { Decision, HarnessEvent } from "../contracts/index.ts";
 import { coreFacade } from "../core/index.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
-import { currentGitSha, obsConfigFor, readModelFromToolInput, subagentSpawnInput } from "./support.ts";
+import { currentGitSha, obsConfigFor, readModelFromToolInput, shaScopeRoot, subagentSpawnInput } from "./support.ts";
 
 const READONLY_BLOCKED_TOOLS = new Set(["Write", "Delete", "Shell"]);
 
@@ -61,7 +61,7 @@ async function rulesDecision(event: HarnessEvent, ctx: HandlerContext): Promise<
   }
   // why twice: the first pass answers whether any rule fired at all, which costs no git. Only then is the sha
   // worth a process, and the second pass is the one whose verdict counts.
-  const sha = await currentGitSha(event.projectDir);
+  const sha = await currentGitSha(shaScopeRoot(event));
   const verdict = coreFacade.rules.decideAction(event.projectDir, config, trigger, {
     sha,
     sessionKey: event.sessionKey,

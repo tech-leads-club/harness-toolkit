@@ -217,7 +217,7 @@ export async function observeForRules(
   if (!coreFacade.rules.wants(event.projectDir, config, event)) {
     return;
   }
-  const sha = await currentGitSha(event.projectDir);
+  const sha = await currentGitSha(shaScopeRoot(event));
   coreFacade.rules.observe(event.projectDir, config, event, {
     sha,
     sessionKey: event.sessionKey,
