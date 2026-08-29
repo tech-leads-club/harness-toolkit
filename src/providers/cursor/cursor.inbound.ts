@@ -142,6 +142,16 @@ export function cursorToEvent(raw: Record<string, unknown>): HarnessEvent | null
       if (output !== undefined) {
         event.toolOutput = output;
       }
+      // why: confirmed against cursor.com/docs/hooks — `cwd` exists only on `beforeShellExecution`
+      // (this event's `shell.before` half), not on `afterShellExecution` or any other event this
+      // adapter maps. Never guessed onto an event kind the host does not report it for
+      // ([/decisions/ad-114.md](/decisions/ad-114.md)).
+      if (eventKind === "shell.before") {
+        const cwd = asString(raw.cwd);
+        if (cwd !== undefined) {
+          event.cwd = cwd;
+        }
+      }
       break;
     }
     case "mcp.before":

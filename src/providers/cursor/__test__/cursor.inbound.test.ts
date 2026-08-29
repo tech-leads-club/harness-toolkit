@@ -56,10 +56,24 @@ test("beforeShellExecution maps to shell.before and carries command", () => {
   assert.equal(event?.command, "rm -rf /");
 });
 
+// why: cursor.com/docs/hooks confirms `cwd` exists only on `beforeShellExecution` — the one event kind
+// this adapter promotes it for ([/decisions/ad-114.md](/decisions/ad-114.md)).
+test("beforeShellExecution carries cwd onto the event", () => {
+  const event = cursorToEvent(fixture("shell-before"));
+  assert.equal(event?.cwd, "/repo");
+});
+
 test("afterShellExecution maps to shell.after and carries command", () => {
   const event = cursorToEvent(fixture("shell-after"));
   assert.equal(event?.event, "shell.after");
   assert.equal(event?.command, "npm test");
+});
+
+// why: the host does not document `cwd` on `afterShellExecution`, so it is never mapped here even
+// though the fixture (modeled loosely on a real payload) happens to carry one.
+test("afterShellExecution does not carry cwd, even when the raw payload has one", () => {
+  const event = cursorToEvent(fixture("shell-after"));
+  assert.equal(event?.cwd, undefined);
 });
 
 test("beforeMCPExecution maps to mcp.before and carries toolName and toolInput", () => {
