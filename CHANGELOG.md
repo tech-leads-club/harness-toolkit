@@ -8,9 +8,12 @@ doctor reports against your own configuration.
 
 ## Unreleased
 
-- **AD-114** — Rule proof `since HEAD` resolves sha from the event's own working directory, not the project root
 - **AD-115** — A comment violation refuses commit, push and gh pr create, not only the stop
 - **AD-116** — push and gh pr create run the stop-time battery before shipping, identically on every provider
+
+## v0.9.0
+
+- **AD-114** — Rule proof `since HEAD` resolves sha from the event's own working directory, not the project root
 
 ## v0.8.0
 
