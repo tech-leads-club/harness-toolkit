@@ -2,13 +2,40 @@ import type { Decision, HarnessEvent } from "../contracts/index.ts";
 import { coreFacade } from "../core/index.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
+import { shipGateVerdict } from "./ship-gate.ts";
 import {
   currentGitSha,
   obsConfigFor,
+  pendingCommentViolations,
   readModelFromToolInput,
   shaScopeRoot,
   subagentSpawnInput,
 } from "./support.ts";
+
+/**
+ * why `commit` gets only the cheap check and `push`/`pr-open` get the full battery
+ * (`shipGateVerdict`): measured in this repo, lint+test run ~9.4s cold — paying that on every local
+ * commit inside one turn is the edit-time cost AD-111 already declined, moved to a higher frequency.
+ * A bare commit is local and reversible; nothing shares it yet ([/decisions/ad-116.md](/decisions/ad-116.md)).
+ */
+async function commentGateBeforeCommit(event: HarnessEvent, ctx: HandlerContext): Promise<Decision> {
+  if (event.command === undefined) {
+    return { kind: "abstain" };
+  }
+  const context = { event: event.event, command: event.command };
+  if (!coreFacade.rules.triggerMatches({ kind: "commit" }, context)) {
+    return { kind: "abstain" };
+  }
+  const hits = await pendingCommentViolations(event.projectDir, event.provider, ctx.policy);
+  if (hits.length === 0) {
+    return { kind: "abstain" };
+  }
+  return {
+    kind: "deny",
+    reason: coreFacade.commentPolicy.commentViolationMessage(hits, ctx.policy.comments.mode),
+    rule: "comment-policy-before-ship",
+  };
+}
 
 const READONLY_BLOCKED_TOOLS = new Set(["Write", "Delete", "Shell"]);
 
@@ -204,6 +231,28 @@ export const toolBeforeHandler: Handler = async (
   if (rulesVerdict.kind !== "abstain") {
     recordShellDecisionIfShell(event, ctx, rulesVerdict);
     return rulesVerdict;
+  }
+
+  /**
+   * why after the operator rules and before the shell fallback: a built-in capability check, not
+   * operator-authored, so it is not a `.tlc/harness/rules/` rule — but it reads policy, so it is
+   * not floor-tier either ([/decisions/ad-115.md](/decisions/ad-115.md)).
+   */
+  const commitGuard = await commentGateBeforeCommit(event, ctx);
+  if (commitGuard.kind !== "abstain") {
+    recordShellDecisionIfShell(event, ctx, commitGuard);
+    return commitGuard;
+  }
+
+  /**
+   * why the full battery only for push/pr-open: that is the moment something leaves the machine —
+   * a shared branch, a PR, a deploy. A bare commit does not, so it keeps the cheap check above
+   * ([/decisions/ad-116.md](/decisions/ad-116.md)).
+   */
+  const shipGuard = await shipGateVerdict(event, ctx);
+  if (shipGuard.kind !== "abstain") {
+    recordShellDecisionIfShell(event, ctx, shipGuard);
+    return shipGuard;
   }
 
   switch (event.event) {
