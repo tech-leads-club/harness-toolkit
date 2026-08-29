@@ -164,22 +164,28 @@ The vocabulary is closed, so read it out rather than inventing terms:
 
 ```
 on:         pr-open | commit | push | stop | tool(<name>) | command(<pattern>)
-require:    subagent(<type>) | command(<pattern>) | gate(<name>) | file(<glob>)
+require:    subagent(<type>) | command(<pattern>) | gate(<name>) | file(<pattern>)
             each since HEAD (default) or since session
 otherwise:  deny | ask | follow-up | warn
 ```
 
 A rule is one file in `<repo>/.tlc/harness/rules/<name>.md` for the team, or in the runtime home's `rules/` for
 every repository on this machine. The frontmatter is enforced; the body is their own text, injected verbatim when
-the rule fires. Full grammar and the verdict matrix: `tlc harness help rules`.
+the rule fires. Full grammar, exact matching semantics per proof kind, and the verdict matrix:
+`tlc harness help rules`.
 
-Two things to say out loud, because both surprise people later:
+Three things to say out loud, because all three surprise people later:
 
 - **The proof has to be something the harness observed** — a subagent that ran, a command that completed, a gate
   that passed, a file that changed. It cannot judge whether the review was any good, and the agent cannot create
   a proof: that store is under the project state directory, which the floor refuses it.
 - **`since HEAD` means a new commit makes an old proof stale**, and a project with no git checkout cannot satisfy
   `since HEAD` at all.
+- **`subagent(<type>)` only holds on a host that lets the agent declare an arbitrary custom type.** A host with a
+  closed set of built-in spawn types (Cursor's `Task` tool, for one) can never produce a match for a custom name,
+  no matter what the actual work is called — the rule denies forever, not because nothing ran but because the
+  host cannot say which kind ran. If the rule has to hold on more than one host, ask what command the work itself
+  runs to do its job and require that instead: `command(<pattern>)` is producible identically everywhere.
 
 If they accept the capability but have no requirement in mind, write `rules.enabled: false` and say why — a switch
 with no file is the shape that looks like protection and is not.

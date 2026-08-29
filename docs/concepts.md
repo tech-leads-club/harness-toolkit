@@ -336,6 +336,38 @@ subcommands are refused from inside a session.
 `since HEAD` compares the sha the observation was made against with the current one, so a review followed by
 another commit is stale. A project with no git checkout cannot satisfy `since HEAD` at all.
 
+Each proof kind matches differently — picking the wrong one for what you actually want to check is the
+most common way a new rule reads as protection and is not:
+
+| proof | what it names | how it matches |
+|---|---|---|
+| `subagent(<type>)` | the *declared type* of a spawn that finished, not the name the spawning agent gave it | exact string |
+| `command(<pattern>)` | a shell command that ran (regardless of exit code) | the pattern's words, in order, as a contiguous run inside the command — `command(gh pr create)` matches `gh pr create --fill`, not `gh api pulls`|
+| `gate(<name>)` | one of this harness's own gates *passing* — never just running | exact string; the only names a gate ever reports are `lint`, `test`, `docs` |
+| `file(<pattern>)` | a file edited by a write tool | exact path, **or** `*<suffix>` (a leading `*`, matched against the path's end), **or** `<dir>/` (a trailing `/`, matched as a prefix) — three shapes, not a glob engine |
+
+One example per kind (shown separately — `require:` is a conjunction; listing more than one demands
+all of them):
+
+```
+require:
+  - subagent(<type>) since HEAD      # a spawn declaring exactly <type> finished
+  - command(<pattern>) since session # a shell command containing <pattern>, in order, ran this session
+  - gate(<name>) since HEAD          # this harness's own <name> gate passed at the current HEAD
+  - file(<pattern>) since HEAD       # a file matching <pattern> was edited since HEAD
+```
+
+**A `subagent(<type>)` proof needs the host to let the agent declare an arbitrary type when it spawns
+one.** Some hosts only offer a closed set of built-in spawn types and cannot declare a custom name at
+all — a rule naming one there never has a producer and denies forever, not because the work never ran
+but because the host has no way to say which custom kind ran (Cursor's `Task` tool is one example: its
+type field is a fixed enum, not a free string, so a custom skill name can never appear there no matter
+what the skill itself is called). A rule meant to hold on every host the operator actually uses should
+prove itself with something every host can produce identically: `command(<the work's own command>)` —
+the exact command the work already runs to do its job — is the portable choice, because running a
+command is not a closed set the way declaring a spawn's type can be. `subagent(<type>)` is the right
+proof only when every host the rule has to survive on can actually declare that type.
+
 The four verdicts land differently at the two moments a rule can fire:
 
 | verdict | on an action | at the stop |
