@@ -13,7 +13,7 @@ import {
 import { flagsDir } from "../platform/paths.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
-import { currentGitSha, formatLessonsBlock, obsConfigFor, sessionIdFromKey } from "./support.ts";
+import { currentGitSha, formatLessonsBlock, obsConfigFor, sessionIdFromKey, shaScopeRoot } from "./support.ts";
 
 const STAGNATION_FOLLOWUP = [
   "BLOCKED: identical validation fingerprint repeated — no progress between attempts.",
@@ -31,6 +31,7 @@ const STAGNATION_FOLLOWUP = [
  */
 async function observeGateForRules(args: {
   root: string;
+  shaRoot: string;
   sessionKey: string;
   policy: Policy;
   gate: string;
@@ -40,7 +41,7 @@ async function observeGateForRules(args: {
     return;
   }
   coreFacade.rules.observeGate(args.root, args.policy.rules, args.gate, {
-    sha: await currentGitSha(args.root),
+    sha: await currentGitSha(args.shaRoot),
     sessionKey: args.sessionKey,
     at: new Date().toISOString(),
   });
@@ -179,6 +180,7 @@ async function creditPendingLessons(args: {
 
 async function runLockedGate(args: {
   root: string;
+  shaRoot: string;
   provider: string;
   session: string;
   gate: "lint" | "test" | "docs";
@@ -429,6 +431,7 @@ async function failGate(args: {
  */
 async function decideStopRules(
   root: string,
+  shaRoot: string,
   policy: Policy,
   sessionKey: string,
 ): Promise<ReturnType<typeof coreFacade.rules.decideStop>> {
@@ -439,13 +442,14 @@ async function decideStopRules(
   }
   return coreFacade.rules.decideStop(root, policy.rules, {
     ...context,
-    sha: await currentGitSha(root),
+    sha: await currentGitSha(shaRoot),
   });
 }
 
 export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerContext): Promise<Decision> => {
   const { policy, capabilities } = ctx;
   const root = event.projectDir;
+  const shaRoot = shaScopeRoot(event);
   const provider = event.provider;
   const sessionKey = event.sessionKey;
   const session = sessionIdFromKey(event);
@@ -562,6 +566,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   if (policy.grind.enabled && policy.grind.lintCommand && codeTargets.length > 0) {
     const run = await runLockedGate({
       root,
+      shaRoot,
       provider,
       session,
       pendingCredit,
@@ -599,6 +604,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
       const recordFiles = testTargets.length > 0 ? testTargets : codeTargets;
       const run = await runLockedGate({
         root,
+        shaRoot,
         provider,
         session,
         pendingCredit,
@@ -757,6 +763,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   if (policy.docs.command && policy.docs.command.length > 0) {
     const run = await runLockedGate({
       root,
+      shaRoot,
       provider,
       session,
       pendingCredit,
@@ -900,7 +907,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
    * invariant: `warn` returns `context`, which does not block. Everything else refuses the stop, so a rule the
    * operator wrote cannot be ended past.
    */
-  const stopRules = await decideStopRules(root, policy, sessionKey);
+  const stopRules = await decideStopRules(root, shaRoot, policy, sessionKey);
   if (stopRules.decision.kind !== "abstain") {
     if (stopRules.decision.kind !== "context") {
       const worst = coreFacade.rules.strictest(stopRules.outcomes);
