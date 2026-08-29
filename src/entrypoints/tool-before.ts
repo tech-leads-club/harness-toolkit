@@ -2,7 +2,13 @@ import type { Decision, HarnessEvent } from "../contracts/index.ts";
 import { coreFacade } from "../core/index.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
-import { currentGitSha, obsConfigFor, readModelFromToolInput, shaScopeRoot, subagentSpawnInput } from "./support.ts";
+import {
+  currentGitSha,
+  obsConfigFor,
+  readModelFromToolInput,
+  shaScopeRoot,
+  subagentSpawnInput,
+} from "./support.ts";
 
 const READONLY_BLOCKED_TOOLS = new Set(["Write", "Delete", "Shell"]);
 

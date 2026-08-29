@@ -13,7 +13,13 @@ import {
 import { flagsDir } from "../platform/paths.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
-import { currentGitSha, formatLessonsBlock, obsConfigFor, sessionIdFromKey, shaScopeRoot } from "./support.ts";
+import {
+  currentGitSha,
+  formatLessonsBlock,
+  obsConfigFor,
+  sessionIdFromKey,
+  shaScopeRoot,
+} from "./support.ts";
 
 const STAGNATION_FOLLOWUP = [
   "BLOCKED: identical validation fingerprint repeated — no progress between attempts.",

@@ -511,7 +511,12 @@ describe("since HEAD is scoped to the event's own working directory, not the pro
   });
 
   const claudeJudgeStoppedAt = (cwd: string): string =>
-    JSON.stringify({ hook_event_name: "SubagentStop", cwd, session_id: "sess-1", subagent_type: "the-judge" });
+    JSON.stringify({
+      hook_event_name: "SubagentStop",
+      cwd,
+      session_id: "sess-1",
+      subagent_type: "the-judge",
+    });
 
   const claudePrOpenAt = (cwd: string): string =>
     JSON.stringify({
@@ -529,7 +534,11 @@ describe("since HEAD is scoped to the event's own working directory, not the pro
 
     assert.equal(observations().length, 1);
     assert.equal(observations()[0]?.sha, shaAt(workDirA));
-    assert.notEqual(shaAt(workDirA), shaAt(root), "the two directories must genuinely differ to prove anything");
+    assert.notEqual(
+      shaAt(workDirA),
+      shaAt(root),
+      "the two directories must genuinely differ to prove anything",
+    );
   });
 
   test("AC2 a pr-open fired from the reviewed working directory is allowed, even though CLAUDE_PROJECT_DIR's own HEAD differs", async () => {
