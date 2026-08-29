@@ -6,6 +6,10 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## Unreleased
+
+- **AD-118** — pr-open does not fire on a draft, so a proof needing the pull request to exist has a way to run
+
 ## v0.10.1
 
 - **AD-117** — turn_base_sha resolves sha from the event's own working directory, not the project root

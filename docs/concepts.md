@@ -342,7 +342,7 @@ most common way a new rule reads as protection and is not:
 | proof | what it names | how it matches |
 |---|---|---|
 | `subagent(<type>)` | the *declared type* of a spawn that finished, not the name the spawning agent gave it | exact string |
-| `command(<pattern>)` | a shell command that ran (regardless of exit code) | the pattern's words, in order, as a contiguous run inside the command — `command(gh pr create)` matches `gh pr create --fill`, not `gh api pulls`|
+| `command(<pattern>)` | a shell command that ran and did not fail | the pattern's words, in order, as a contiguous run inside the command — `command(gh pr create)` matches `gh pr create --fill`, not `gh api pulls`|
 | `gate(<name>)` | one of this harness's own gates *passing* — never just running | exact string; the only names a gate ever reports are `lint`, `test`, `docs` |
 | `file(<pattern>)` | a file edited by a write tool | exact path, **or** `*<suffix>` (a leading `*`, matched against the path's end), **or** `<dir>/` (a trailing `/`, matched as a prefix) — three shapes, not a glob engine |
 
@@ -387,6 +387,12 @@ Posture reaches `ask` and nothing else: it interrupts under `paired` and hardens
 A pattern trigger is policy rather than containment. A script written to disk and executed later, a command name
 built at runtime, `gh api` instead of `gh pr create`, or a pull request opened in a browser all escape it — the
 rule covers the agent's shell path ([/decisions/ad-100.md](/decisions/ad-100.md)).
+
+`pr-open` does not fire on opening a **draft** pull request — only on a non-draft create and on converting a
+draft to ready. This matters when a `require:` proof itself depends on the pull request already existing (a
+review step that reads the diff through the PR, for instance): open the draft first, satisfy the proof against
+it, then convert it to ready, which is still gated the same way
+([/decisions/ad-118.md](/decisions/ad-118.md)).
 
 ## plan gate
 

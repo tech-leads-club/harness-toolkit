@@ -36,6 +36,33 @@ describe("triggerMatches", () => {
     );
   });
 
+  /**
+   * why: a draft is not open for review, and it is the only way a proof that itself needs the pull request to
+   * exist — `gh pr view`, for one — can ever run at all ([/decisions/ad-118.md](/decisions/ad-118.md)).
+   */
+  test("AD-118 pr-open does not fire on a draft, but does on the real create and on ready", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "tool.before", command: "gh pr create --draft" }),
+      false,
+      "--draft",
+    );
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "tool.before", command: "gh pr create -d --fill" }),
+      false,
+      "-d",
+    );
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "tool.before", command: "gh pr create --fill" }),
+      true,
+      "a real, non-draft create still fires",
+    );
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "tool.before", command: "gh pr ready 42" }),
+      true,
+      "converting a draft to ready still fires",
+    );
+  });
+
   /** AC9 — the reason this uses the tokenizer instead of a substring test. */
   test("AC9 a triggering sub-command inside a compound command fires", () => {
     for (const command of [

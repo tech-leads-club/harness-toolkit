@@ -27,13 +27,24 @@ export type TriggerContext = {
  * every repository, or a rule copied between them silently stops firing. An operator who wants their own shape
  * writes `command(<pattern>)`.
  */
-const SHELL_SHAPES: Record<"pr-open" | "commit" | "push", readonly string[][]> = {
+type ShellShape = {
+  readonly prefix: readonly string[];
+  /**
+   * why this exists only on `gh pr create`: a draft is not yet open for review, so a rule gating `pr-open`
+   * has no work to demand proof of. It is also the only way a proof that itself depends on the pull request
+   * existing — `gh pr view`, for one — can ever run: open the draft, produce the proof against it, then
+   * `gh pr ready`, which keeps its own gate ([/decisions/ad-118.md](/decisions/ad-118.md)).
+   */
+  readonly excludeIfAny?: readonly string[];
+};
+
+const SHELL_SHAPES: Record<"pr-open" | "commit" | "push", readonly ShellShape[]> = {
   "pr-open": [
-    ["gh", "pr", "create"],
-    ["gh", "pr", "ready"],
+    { prefix: ["gh", "pr", "create"], excludeIfAny: ["--draft", "-d"] },
+    { prefix: ["gh", "pr", "ready"] },
   ],
-  commit: [["git", "commit"]],
-  push: [["git", "push"]],
+  commit: [{ prefix: ["git", "commit"] }],
+  push: [{ prefix: ["git", "push"] }],
 };
 
 /**
@@ -53,8 +64,15 @@ function subCommands(command: string): string[][] {
 }
 
 /** why prefix rather than equality: `gh pr create --fill --base main` is the same act as `gh pr create`. */
-function startsWithShape(words: readonly string[], shape: readonly string[]): boolean {
-  return shape.every((token, index) => words[index] === token);
+function startsWithShape(words: readonly string[], prefix: readonly string[]): boolean {
+  return prefix.every((token, index) => words[index] === token);
+}
+
+function matchesShape(words: readonly string[], shape: ShellShape): boolean {
+  if (!startsWithShape(words, shape.prefix)) {
+    return false;
+  }
+  return !shape.excludeIfAny?.some((flag) => words.includes(flag));
 }
 
 /**
@@ -82,9 +100,7 @@ export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): b
         return false;
       }
       const shapes = SHELL_SHAPES[trigger.kind];
-      return subCommands(context.command).some((words) =>
-        shapes.some((shape) => startsWithShape(words, shape)),
-      );
+      return subCommands(context.command).some((words) => shapes.some((shape) => matchesShape(words, shape)));
     }
     default: {
       if (context.command === undefined) {

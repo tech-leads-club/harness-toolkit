@@ -19,6 +19,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-115** — A comment violation refuses commit, push and gh pr create, not only the stop ([/decisions/ad-115.md](/decisions/ad-115.md))
 - **AD-116** — push and gh pr create run the stop-time battery before shipping, identically on every provider ([/decisions/ad-116.md](/decisions/ad-116.md))
 - **AD-117** — turn_base_sha resolves sha from the event's own working directory, not the project root ([/decisions/ad-117.md](/decisions/ad-117.md))
+- **AD-118** — pr-open does not fire on a draft, so a proof needing the pull request to exist has a way to run ([/decisions/ad-118.md](/decisions/ad-118.md))
 
 ## 2026-08-26
 

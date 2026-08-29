@@ -174,7 +174,7 @@ every repository on this machine. The frontmatter is enforced; the body is their
 the rule fires. Full grammar, exact matching semantics per proof kind, and the verdict matrix:
 `tlc harness help rules`.
 
-Three things to say out loud, because all three surprise people later:
+Four things to say out loud, because all four surprise people later:
 
 - **The proof has to be something the harness observed** — a subagent that ran, a command that completed, a gate
   that passed, a file that changed. It cannot judge whether the review was any good, and the agent cannot create
@@ -186,6 +186,10 @@ Three things to say out loud, because all three surprise people later:
   no matter what the actual work is called — the rule denies forever, not because nothing ran but because the
   host cannot say which kind ran. If the rule has to hold on more than one host, ask what command the work itself
   runs to do its job and require that instead: `command(<pattern>)` is producible identically everywhere.
+- **`on: pr-open` does not fire on opening a draft pull request** — only on a non-draft create and on
+  converting a draft to ready. If the requirement itself needs the pull request to already exist (a proof that
+  reads the diff through the PR, for one), have them open the draft, satisfy the proof against it, then convert
+  it to ready — still gated the same way.
 
 If they accept the capability but have no requirement in mind, write `rules.enabled: false` and say why — a switch
 with no file is the shape that looks like protection and is not.
