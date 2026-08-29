@@ -1,7 +1,15 @@
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { EffortLevel, HarnessEvent } from "../contracts/index.ts";
-import { coreFacade, type HarnessLesson, type ObservabilityConfig, type Policy } from "../core/index.ts";
+import {
+  type CommentFinding,
+  coreFacade,
+  type HarnessLesson,
+  type ObservabilityConfig,
+  type PendingLessonCredit,
+  type Policy,
+} from "../core/index.ts";
+import { filterCodeTargets, filterTestTargets, listChangedRepoFiles } from "../platform/git.ts";
 import { runProcess } from "../platform/process.ts";
 import { type ProviderPort, renderClaudeLessonsView, renderCursorLessonsView } from "../providers/index.ts";
 
@@ -68,6 +76,73 @@ export async function currentGitBranch(root: string): Promise<string | null> {
  */
 export function shaScopeRoot(event: HarnessEvent): string {
   return event.cwd ?? event.projectDir;
+}
+
+export type TurnScope = {
+  turnBase: string;
+  changedFiles: string[];
+  codeTargets: string[];
+  testTargets: string[];
+  commentTargets: string[];
+  pendingCredit: PendingLessonCredit | undefined;
+};
+
+/**
+ * "What did this turn add" — the one answer every gate that scopes by turn shares, whether it runs
+ * at `stop` or, since AD-116, before `commit`/`push`/`pr-open` ships it. A second, differently-scoped
+ * answer to the same question is the drift AD-071 already named once ([/decisions/ad-116.md](/decisions/ad-116.md)).
+ *
+ * invariant: `turn_base_sha` falls back to `HEAD` when the handoff is absent or its seal diverged —
+ * identical to `stop.ts`'s own fallback.
+ */
+export async function computeTurnScope(
+  root: string,
+  provider: string,
+  policy: Pick<Policy, "codePaths">,
+): Promise<TurnScope> {
+  const seal = coreFacade.handoff.handoffInjectable(root);
+  const handoff = seal.ok ? coreFacade.handoff.readHandoff(root, provider) : undefined;
+  const turnBase = handoff?.turn_base_sha ?? "HEAD";
+  const changedFiles = await listChangedRepoFiles(root, turnBase);
+  const codeTargets = filterCodeTargets(changedFiles, policy.codePaths);
+  const testTargets = filterTestTargets(changedFiles);
+  const commentScope = changedFiles.filter((file) =>
+    coreFacade.policy.isUnderCodePaths(file, policy.codePaths),
+  );
+  const commentTargets = coreFacade.commentPolicy.filterCommentTargets(commentScope);
+  return {
+    turnBase,
+    changedFiles,
+    codeTargets,
+    testTargets,
+    commentTargets,
+    pendingCredit: handoff?.pending_lesson_credit,
+  };
+}
+
+/**
+ * The same unresolved-comment check `stop.ts` already runs at the end of the turn, exposed so an
+ * action-time rail can ask the identical question before a `commit`/`push`/`pr-open` ships it
+ * ([/decisions/ad-115.md](/decisions/ad-115.md)).
+ */
+export async function pendingCommentViolations(
+  root: string,
+  provider: string,
+  policy: Pick<Policy, "comments" | "codePaths">,
+): Promise<CommentFinding[]> {
+  if (!policy.comments.enabled || policy.comments.onViolation !== "followup") {
+    return [];
+  }
+  const scope = await computeTurnScope(root, provider, policy);
+  if (scope.commentTargets.length === 0) {
+    return [];
+  }
+  return coreFacade.commentPolicy.scanAddedComments(
+    root,
+    scope.commentTargets,
+    policy.comments.mode,
+    scope.turnBase,
+  );
 }
 
 export async function currentGitSha(root: string): Promise<string | null> {

@@ -174,7 +174,7 @@ import {
   readRuleSources,
   recordObservation,
 } from "./rules/rules.store.ts";
-import { firingRules } from "./rules/rules.trigger.ts";
+import { firingRules, triggerMatches } from "./rules/rules.trigger.ts";
 import { evaluateShellCommand } from "./shell-policy/shell-policy.service.ts";
 import { clearShellStall } from "./shell-policy/shell-policy.stall.ts";
 import { coversHandler, decideShim } from "./shim/shim.precedence.ts";
@@ -489,6 +489,7 @@ export const coreFacade = {
     read: readRuleSources,
     build: buildRuleSet,
     firing: firingRules,
+    triggerMatches,
     observations: readObservations,
     record: recordObservation,
     observationFrom,
