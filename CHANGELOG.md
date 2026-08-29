@@ -6,7 +6,7 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
-## Unreleased
+## v0.10.1
 
 - **AD-117** — turn_base_sha resolves sha from the event's own working directory, not the project root
 
