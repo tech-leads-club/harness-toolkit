@@ -13,6 +13,10 @@ Generated from `docs/decisions/` — do not edit by hand. Run `node tools/render
 A reserved file of the [OKF v0.1](/decisions/ad-013.md) bundle: entries grouped under ISO 8601 headings,
 newest first. For what landed in which npm release, see `CHANGELOG.md` at the repository root.
 
+## 2026-08-29
+
+- **AD-114** — Rule proof `since HEAD` resolves sha from the event's own working directory, not the project root ([/decisions/ad-114.md](/decisions/ad-114.md))
+
 ## 2026-08-26
 
 - **AD-106** — A build step's own exit code cannot be the publish guarantee when it is also a recovery path ([/decisions/ad-106.md](/decisions/ad-106.md))
