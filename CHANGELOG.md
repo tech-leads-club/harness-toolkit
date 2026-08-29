@@ -6,7 +6,7 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
-## Unreleased
+## v0.10.0
 
 - **AD-115** — A comment violation refuses commit, push and gh pr create, not only the stop
 - **AD-116** — push and gh pr create run the stop-time battery before shipping, identically on every provider
