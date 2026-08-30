@@ -181,26 +181,64 @@ describe("missingProofs", () => {
     }
   });
 
-  test("since session says a different session, not a different commit", () => {
-    const proof: RuleProof = { kind: "subagent", value: "the-jury", since: "session" };
-    const target = rule([proof]);
+  /** why session and not commit, by kind: `staleReason` branches on `proof.since`, never on `proof.kind`. */
+  test("since session says a different session, not a different commit, by kind", () => {
+    const cases: Array<{ proof: RuleProof; observation: Partial<Observation> }> = [
+      {
+        proof: { kind: "subagent", value: "the-jury", since: "session" },
+        observation: { sessionKey: "hostA:other" },
+      },
+      {
+        proof: { kind: "command", value: "gh pr review", since: "session" },
+        observation: { kind: "command", value: "gh pr review 42", sessionKey: "hostA:other" },
+      },
+      {
+        proof: { kind: "gate", value: "test", since: "session" },
+        observation: { kind: "gate", value: "test", sessionKey: "hostA:other" },
+      },
+      {
+        proof: { kind: "file", value: "docs/review.md", since: "session" },
+        observation: { kind: "file", value: "docs/review.md", sessionKey: "hostA:other" },
+      },
+    ];
 
-    const missing = missingProofs(target, [observed({ sessionKey: "hostA:other" })], CONTEXT);
+    for (const { proof, observation } of cases) {
+      const target = rule([proof]);
+      const missing = missingProofs(target, [observed(observation)], CONTEXT);
 
-    assert.equal(missing[0]?.reason, "ran, but in a different session");
+      assert.equal(missing[0]?.reason, "ran, but in a different session", proof.kind);
+    }
   });
 
-  test("no git checkout says so, not a different commit", () => {
-    const proof: RuleProof = { kind: "subagent", value: "the-jury", since: "head" };
-    const target = rule([proof]);
+  /** why no-checkout, by kind: same branch, so the same guard against a kind-specific regression. */
+  test("no git checkout says so, not a different commit, by kind", () => {
     const context = { sha: null, sessionKey: "hostA:sess-1" };
+    const cases: Array<{ proof: RuleProof; observation: Partial<Observation> }> = [
+      { proof: { kind: "subagent", value: "the-jury", since: "head" }, observation: { sha: null } },
+      {
+        proof: { kind: "command", value: "gh pr review", since: "head" },
+        observation: { kind: "command", value: "gh pr review 42", sha: null },
+      },
+      {
+        proof: { kind: "gate", value: "test", since: "head" },
+        observation: { kind: "gate", value: "test", sha: null },
+      },
+      {
+        proof: { kind: "file", value: "docs/review.md", since: "head" },
+        observation: { kind: "file", value: "docs/review.md", sha: null },
+      },
+    ];
 
-    const missing = missingProofs(target, [observed({ sha: null })], context);
+    for (const { proof, observation } of cases) {
+      const target = rule([proof]);
+      const missing = missingProofs(target, [observed(observation)], context);
 
-    assert.equal(
-      missing[0]?.reason,
-      "ran, but this project is not a git checkout, so since HEAD can never be satisfied",
-    );
+      assert.equal(
+        missing[0]?.reason,
+        "ran, but this project is not a git checkout, so since HEAD can never be satisfied",
+        proof.kind,
+      );
+    }
   });
 
   test("truly never observed stays a flat, honest missing — no invented reason", () => {
