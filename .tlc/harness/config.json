@@ -3,7 +3,6 @@
     "projectName": "tlc-agent-harness",
     "mode": "focus",
     "codePaths": ["src", "tools", "bin"],
-    "format": { "enabled": true, "command": ["npx", "biome", "check", "--write"] },
     "grind": {
       "enabled": true,
       "maxLoops": 3,
