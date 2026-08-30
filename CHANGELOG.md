@@ -8,6 +8,10 @@ doctor reports against your own configuration.
 
 ## v0.10.3
 
+- **AD-120** — A rule denial names the directory and sha it actually checked
+
+## v0.10.3
+
 - **AD-119** — A rule's denial says whether the proof never ran or ran outside the window
 
 ## v0.10.2

@@ -343,6 +343,10 @@ be satisfied)`). The first of those three is common with more than one branch ch
 directory in turn — the proof is real, it is just stamped against whichever commit was checked out when it
 ran, not the one the current command has in mind.
 
+Every denial also names the directory and sha it was actually checked against: `— checked <path> at <sha or
+"no HEAD">`. If that path is not the one you expect — a worktree instead of the main checkout, for one — the
+resolution is wrong before the proof logic ever runs, and no amount of re-running the proof will fix it.
+
 Each proof kind matches differently — picking the wrong one for what you actually want to check is the
 most common way a new rule reads as protection and is not:
 

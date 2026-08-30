@@ -23,11 +23,17 @@ export function effectiveVerdict(declared: RuleVerdict, mode: OperatorMode): Rul
 }
 
 /**
- * why the body verbatim: the rule's instruction is the operator's, with their project's context and their
- * attachments. The harness adds the rule's name and what is missing, and changes nothing else.
+ * why: a stale directory handed to the harness for one event once produced a denial indistinguishable from a
+ * genuine miss, and nothing in the message said which directory was checked
+ * ([/decisions/ad-120.md](/decisions/ad-120.md)). The body stays verbatim beneath it either way.
  */
-export function ruleMessage(rule: Rule, missing: readonly ReturnType<typeof proofLabel>[]): string {
-  const head = `rule ${rule.name} (${rule.tier}): missing ${missing.join(", ")}`;
+export function ruleMessage(
+  rule: Rule,
+  missing: readonly ReturnType<typeof proofLabel>[],
+  shaRoot: string,
+  sha: string | null,
+): string {
+  const head = `rule ${rule.name} (${rule.tier}): missing ${missing.join(", ")} — checked ${shaRoot} at ${sha ?? "no HEAD"}`;
   return rule.body.trim() === "" ? head : `${head}\n\n${rule.body.trim()}`;
 }
 
@@ -45,7 +51,7 @@ export type RuleOutcome = {
 export function evaluateRules(
   rules: readonly Rule[],
   observations: readonly Observation[],
-  context: ProofContext & { mode: OperatorMode },
+  context: ProofContext & { mode: OperatorMode; shaRoot: string },
 ): RuleOutcome[] {
   const outcomes: RuleOutcome[] = [];
   for (const rule of rules) {
@@ -58,7 +64,7 @@ export function evaluateRules(
       rule,
       verdict: effectiveVerdict(rule.otherwise, context.mode),
       missing: labels,
-      message: ruleMessage(rule, labels),
+      message: ruleMessage(rule, labels, context.shaRoot, context.sha),
     });
   }
   return outcomes;

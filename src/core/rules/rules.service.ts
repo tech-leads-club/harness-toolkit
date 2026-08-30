@@ -136,7 +136,9 @@ export function decideStop(root: string, config: RulesConfig, context: RuleConte
   return decide(root, config, { event: "stop" }, context, stopDecision);
 }
 
-export type RuleContext = { sha: string | null; sessionKey: string; mode: OperatorMode };
+/** why `shaRoot` travels alongside `sha`: it is the one piece of a denial a message can name to make a wrong
+ * directory visible instead of indistinguishable from a genuine miss ([/decisions/ad-120.md](/decisions/ad-120.md)). */
+export type RuleContext = { sha: string | null; sessionKey: string; mode: OperatorMode; shaRoot: string };
 
 function decide(
   root: string,

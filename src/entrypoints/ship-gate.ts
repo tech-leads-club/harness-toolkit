@@ -164,7 +164,12 @@ export async function shipGateVerdict(event: HarnessEvent, ctx: HandlerContext):
   }
 
   const sha = await currentGitSha(shaRoot);
-  const stopRules = coreFacade.rules.decideStop(root, policy.rules, { sessionKey, mode: policy.mode, sha });
+  const stopRules = coreFacade.rules.decideStop(root, policy.rules, {
+    sessionKey,
+    mode: policy.mode,
+    sha,
+    shaRoot,
+  });
   const worst = coreFacade.rules.strictest(stopRules.outcomes);
   if (worst && worst.verdict !== "warn") {
     return { kind: "deny", reason: worst.message, rule: `rule:${worst.rule.name}` };

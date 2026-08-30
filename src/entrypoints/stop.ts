@@ -446,7 +446,7 @@ async function decideStopRules(
   policy: Policy,
   sessionKey: string,
 ): Promise<ReturnType<typeof coreFacade.rules.decideStop>> {
-  const context = { sessionKey, mode: policy.mode };
+  const context = { sessionKey, mode: policy.mode, shaRoot };
   const dryRun = coreFacade.rules.decideStop(root, policy.rules, { ...context, sha: null });
   if (dryRun.outcomes.length === 0) {
     return dryRun;

@@ -4,7 +4,7 @@ import { actionDecision, effectiveVerdict, evaluateRules, ruleMessage, strictest
 import type { Observation } from "../rules.proof.ts";
 import type { Rule, RuleVerdict } from "../rules.types.ts";
 
-const CONTEXT = { sha: "abc1234", sessionKey: "hostA:sess-1", mode: "solo" as const };
+const CONTEXT = { sha: "abc1234", sessionKey: "hostA:sess-1", mode: "solo" as const, shaRoot: "/repo" };
 
 function rule(overrides: Partial<Rule> = {}): Rule {
   return {
@@ -92,7 +92,7 @@ describe("evaluateRules", () => {
 /** AC6/D6 — the body is the operator's text, and the harness adds only the rule and what is missing. */
 describe("ruleMessage", () => {
   test("the operator's body survives verbatim, under the rule's name and the gap", () => {
-    const message = ruleMessage(rule(), ["subagent(the-jury) since HEAD"]);
+    const message = ruleMessage(rule(), ["subagent(the-jury) since HEAD"], "/repo", "abc1234");
 
     assert.match(message, /^rule review-before-pr \(global\): missing subagent\(the-jury\) since HEAD/);
     assert.match(message, /Convene the jury\./);
@@ -101,8 +101,27 @@ describe("ruleMessage", () => {
 
   test("a rule with no body still says which rule and what is missing", () => {
     assert.equal(
-      ruleMessage(rule({ body: "" }), ["gate(test) since HEAD"]),
-      "rule review-before-pr (global): missing gate(test) since HEAD",
+      ruleMessage(rule({ body: "" }), ["gate(test) since HEAD"], "/repo", "abc1234"),
+      "rule review-before-pr (global): missing gate(test) since HEAD — checked /repo at abc1234",
+    );
+  });
+
+  /** AD-120 — a wrong or stale directory is visible in the message, not indistinguishable from a genuine miss. */
+  test("AD-120 the message names the directory and sha the harness actually checked", () => {
+    const message = ruleMessage(rule({ body: "" }), ["gate(test) since HEAD"], "/some/worktree", "def5678");
+
+    assert.equal(
+      message,
+      "rule review-before-pr (global): missing gate(test) since HEAD — checked /some/worktree at def5678",
+    );
+  });
+
+  test("AD-120 no HEAD reads plainly when the project has no git checkout", () => {
+    const message = ruleMessage(rule({ body: "" }), ["gate(test) since HEAD"], "/repo", null);
+
+    assert.equal(
+      message,
+      "rule review-before-pr (global): missing gate(test) since HEAD — checked /repo at no HEAD",
     );
   });
 });

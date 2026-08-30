@@ -22,7 +22,7 @@ otherwise: deny
 Convene the jury.`;
 
 const PR_OPEN = { event: "shell.before" as const, command: "gh pr create --fill" };
-const CONTEXT = { sha: "abc1234", sessionKey: "hostA:sess-1", mode: "solo" as const };
+const CONTEXT = { sha: "abc1234", sessionKey: "hostA:sess-1", mode: "solo" as const, shaRoot: "/repo" };
 const SEEN = { sha: "abc1234", sessionKey: "hostA:sess-1", at: "2026-08-21T10:00:00.000Z" };
 const JURY_STOPPED = { event: "subagent.stop", spawnSubagentType: "the-jury" };
 

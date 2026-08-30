@@ -84,21 +84,24 @@ function recordShellDecisionIfShell(event: HarnessEvent, ctx: HandlerContext, de
 async function rulesDecision(event: HarnessEvent, ctx: HandlerContext): Promise<Decision> {
   const config = ctx.policy.rules;
   const trigger = { event: event.event, toolName: event.toolName, command: event.command };
+  const shaRoot = shaScopeRoot(event);
   const dryRun = coreFacade.rules.decideAction(event.projectDir, config, trigger, {
     sha: null,
     sessionKey: event.sessionKey,
     mode: ctx.policy.mode,
+    shaRoot,
   });
   if (dryRun.outcomes.length === 0) {
     return { kind: "abstain" };
   }
   // why twice: the first pass answers whether any rule fired at all, which costs no git. Only then is the sha
   // worth a process, and the second pass is the one whose verdict counts.
-  const sha = await currentGitSha(shaScopeRoot(event));
+  const sha = await currentGitSha(shaRoot);
   const verdict = coreFacade.rules.decideAction(event.projectDir, config, trigger, {
     sha,
     sessionKey: event.sessionKey,
     mode: ctx.policy.mode,
+    shaRoot,
   });
   return verdict.decision;
 }
