@@ -128,6 +128,7 @@ Handoff section and a link back to this index.
 | [AD-118](/decisions/ad-118.md) | pr-open does not fire on a draft, so a proof needing the pull request to exist has a way to run | active |
 | [AD-119](/decisions/ad-119.md) | A rule's denial says whether the proof never ran or ran outside the window | active |
 | [AD-120](/decisions/ad-120.md) | A rule denial names the directory and sha it actually checked | active |
+| [AD-121](/decisions/ad-121.md) | command(<pattern>) matches a bare word against a path ending in it, not only an exact word | active |
 
 ## Archived
 

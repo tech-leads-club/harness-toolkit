@@ -8,6 +8,10 @@ doctor reports against your own configuration.
 
 ## v0.10.4
 
+- **AD-121** — command(<pattern>) matches a bare word against a path ending in it, not only an exact word
+
+## v0.10.4
+
 - **AD-120** — A rule denial names the directory and sha it actually checked
 
 ## v0.10.3

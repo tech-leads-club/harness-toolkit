@@ -158,6 +158,73 @@ describe("triggerMatches", () => {
     assert.equal(triggerMatches(trigger, { event: "tool.before", command: "gh pr list" }), false);
   });
 
+  /**
+   * AD-121 — a bare token names the act, not the location. Confirmed live: a real proof stayed unsatisfied
+   * forever because every recorded invocation ran the script by its full path.
+   */
+  test("AD-121 a bare-filename token matches the script run by any path to it", () => {
+    const trigger = { kind: "command", pattern: "build.sh" } as const;
+
+    assert.equal(
+      triggerMatches(trigger, {
+        event: "tool.before",
+        command: "bash /home/user/tools/scripts/build.sh --release",
+      }),
+      true,
+      "absolute path",
+    );
+    assert.equal(
+      triggerMatches(trigger, { event: "tool.before", command: "bash ./scripts/build.sh" }),
+      true,
+      "relative path",
+    );
+    assert.equal(
+      triggerMatches(trigger, { event: "tool.before", command: "bash build.sh" }),
+      true,
+      "bare, unchanged from before",
+    );
+  });
+
+  /** AD-121 — the fallback is a basename match, not a substring scan. */
+  test("AD-121 a bare-filename token does not match another file that merely ends with it", () => {
+    const trigger = { kind: "command", pattern: "build.sh" } as const;
+
+    assert.equal(
+      triggerMatches(trigger, { event: "tool.before", command: "bash /scripts/rebuild.sh" }),
+      false,
+    );
+  });
+
+  /** AD-121 — a token the operator wrote as a path is a location, and a location is exact or wrong. */
+  test("AD-121 a token that already names a path is not given the same fallback", () => {
+    const trigger = { kind: "command", pattern: "scripts/build.sh" } as const;
+
+    assert.equal(
+      triggerMatches(trigger, {
+        event: "tool.before",
+        command: "bash /home/user/tools/scripts/build.sh",
+      }),
+      false,
+      "the operator's own path prefix does not get a suffix fallback",
+    );
+  });
+
+  /** AD-121 — the basename fallback applies per token, so a multi-word phrase is not weakened by adding it. */
+  test("AD-121 a multi-word phrase still requires every word, basename fallback or not", () => {
+    const trigger = { kind: "command", pattern: "gh pr review" } as const;
+
+    assert.equal(
+      triggerMatches(trigger, { event: "tool.before", command: "/usr/local/bin/gh pr review --approve" }),
+      true,
+      "the CLI binary invoked by its full path still counts as gh",
+    );
+    assert.equal(
+      triggerMatches(trigger, { event: "tool.before", command: "/usr/local/bin/gh pr list" }),
+      false,
+      "still requires the rest of the phrase",
+    );
+  });
+
   test("a shell trigger with no command in the event cannot fire", () => {
     assert.equal(triggerMatches({ kind: "pr-open" }, { event: "tool.before" }), false);
     assert.equal(triggerMatches({ kind: "command", pattern: "x" }, { event: "stop" }), false);

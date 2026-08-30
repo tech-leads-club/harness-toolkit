@@ -76,6 +76,24 @@ function matchesShape(words: readonly string[], shape: ShellShape): boolean {
 }
 
 /**
+ * why a basename fallback: a token with no `/` of its own names an act, not a location — `build.sh` is the
+ * same script whether it runs as `build.sh`, `./scripts/build.sh` or `/home/user/tools/scripts/build.sh`.
+ * Confirmed live: a real `command(<script>)` proof stayed unsatisfied forever because every recorded
+ * invocation ran the script by its full installed path, and a whole word is never `===` one of its own path
+ * segments ([/decisions/ad-121.md](/decisions/ad-121.md)).
+ *
+ * why the `/` guard and not a bare suffix check: a token that already contains a `/` is the operator naming a
+ * location, and a location is exact or it is the wrong one — treating `not_review.py` as a match for
+ * `review.py` would turn a word boundary into a substring scan.
+ */
+function tokenMatches(word: string | undefined, token: string): boolean {
+  if (word === undefined) {
+    return false;
+  }
+  return word === token || (!token.includes("/") && word.endsWith(`/${token}`));
+}
+
+/**
  * why a phrase and not a word: an operator writes `command(gh pr review)`, meaning those words in that order.
  * Matching the raw string against the whole command would let a heredoc or an unrelated argument satisfy it.
  */
@@ -84,7 +102,7 @@ export function matchesPhrase(words: readonly string[], pattern: string): boolea
   if (phrase.length === 0) {
     return false;
   }
-  return words.some((_, start) => phrase.every((token, index) => words[start + index] === token));
+  return words.some((_, start) => phrase.every((token, index) => tokenMatches(words[start + index], token)));
 }
 
 export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): boolean {

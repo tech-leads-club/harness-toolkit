@@ -16,6 +16,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 ## 2026-08-30
 
 - **AD-120** — A rule denial names the directory and sha it actually checked ([/decisions/ad-120.md](/decisions/ad-120.md))
+- **AD-121** — command(<pattern>) matches a bare word against a path ending in it, not only an exact word ([/decisions/ad-121.md](/decisions/ad-121.md))
 
 ## 2026-08-29
 

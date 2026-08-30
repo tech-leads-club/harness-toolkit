@@ -353,7 +353,7 @@ most common way a new rule reads as protection and is not:
 | proof | what it names | how it matches |
 |---|---|---|
 | `subagent(<type>)` | the *declared type* of a spawn that finished, not the name the spawning agent gave it | exact string |
-| `command(<pattern>)` | a shell command that ran and did not fail | the pattern's words, in order, as a contiguous run inside the command — `command(gh pr create)` matches `gh pr create --fill`, not `gh api pulls`|
+| `command(<pattern>)` | a shell command that ran and did not fail | the pattern's words, in order, as a contiguous run inside the command — `command(gh pr create)` matches `gh pr create --fill`, not `gh api pulls`. A word with no `/` of its own also matches a path ending in it: `command(build.sh)` matches `./scripts/build.sh` and `/opt/tools/build.sh` alike, never a different file that merely ends the same way |
 | `gate(<name>)` | one of this harness's own gates *passing* — never just running | exact string; the only names a gate ever reports are `lint`, `test`, `docs` |
 | `file(<pattern>)` | a file edited by a write tool | exact path, **or** `*<suffix>` (a leading `*`, matched against the path's end), **or** `<dir>/` (a trailing `/`, matched as a prefix) — three shapes, not a glob engine |
 

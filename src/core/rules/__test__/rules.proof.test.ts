@@ -87,6 +87,29 @@ describe("proofSatisfied", () => {
     assert.equal(proofSatisfied(proof, [observed({ kind: "command", value: "gh pr list" })], CONTEXT), false);
   });
 
+  /**
+   * AD-121 — reported live: a `command(<script>) since HEAD` proof stayed unsatisfied forever because every
+   * recorded invocation ran the script by its full path, and a whole word is never equal to one of its own
+   * path segments.
+   */
+  test("AD-121 a command proof of a bare filename is satisfied by that script run through any path", () => {
+    const proof: RuleProof = { kind: "command", value: "build.sh", since: "head" };
+
+    assert.equal(
+      proofSatisfied(
+        proof,
+        [
+          observed({
+            kind: "command",
+            value: "bash /home/user/tools/scripts/build.sh --release",
+          }),
+        ],
+        CONTEXT,
+      ),
+      true,
+    );
+  });
+
   test("AC5 a gate proof matches the gate's name", () => {
     const proof: RuleProof = { kind: "gate", value: "test", since: "head" };
 
