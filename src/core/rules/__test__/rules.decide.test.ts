@@ -73,11 +73,12 @@ describe("evaluateRules", () => {
     assert.deepEqual(outcome?.missing, ["subagent(the-jury) since HEAD"]);
   });
 
-  /** AC4 — proof against another sha is not proof. */
-  test("AC4 stale proof leaves the rule unsatisfied", () => {
+  /** AC4 — proof against another sha is not proof, and the message says it ran, just not here. */
+  test("AC4 stale proof leaves the rule unsatisfied, and says so", () => {
     const [outcome] = evaluateRules([rule()], [{ ...PROOF, sha: "0000000" }], CONTEXT);
 
     assert.equal(outcome?.verdict, "deny");
+    assert.deepEqual(outcome?.missing, ["subagent(the-jury) since HEAD (ran, but at a different commit)"]);
   });
 
   test("AC13 the declared ask becomes deny under solo, and stays ask under paired", () => {

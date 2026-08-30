@@ -336,6 +336,12 @@ subcommands are refused from inside a session.
 `since HEAD` compares the sha the observation was made against with the current one, so a review followed by
 another commit is stale. A project with no git checkout cannot satisfy `since HEAD` at all.
 
+A denial says which of two things happened: nothing of that kind and value was ever observed here (a flat
+`missing …`), or it was, just not inside the window (`missing … (ran, but at a different commit)` /
+`(ran, but in a different session)`). The second reading is common with more than one branch checked out of
+the same working directory in turn — the proof is real, it is just stamped against whichever commit was
+checked out when it ran, not the one the current command has in mind.
+
 Each proof kind matches differently — picking the wrong one for what you actually want to check is the
 most common way a new rule reads as protection and is not:
 

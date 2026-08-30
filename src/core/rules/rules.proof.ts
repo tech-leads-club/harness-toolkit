@@ -84,17 +84,43 @@ export function proofSatisfied(
   );
 }
 
+/**
+ * why this exists at all: "missing" reads the same whether the thing never ran or it ran and the window rejected
+ * it, and only one of those is a config-side fact worth stating rather than a guess. The fact is cheap and always
+ * true — an observation of this kind and value exists — so it is stated whenever it holds
+ * ([/decisions/ad-060.md](/decisions/ad-060.md)'s own distinction between a fact and a diagnosis).
+ */
+function staleReason(proof: RuleProof, context: ProofContext): string {
+  if (proof.since === "session") {
+    return "ran, but in a different session";
+  }
+  return context.sha === null
+    ? "ran, but this project is not a git checkout, so since HEAD can never be satisfied"
+    : "ran, but at a different commit";
+}
+
+export type MissingProof = { proof: RuleProof; reason: string | null };
+
 /** invariant: every proof must hold. The list is a conjunction, which is why there is no boolean algebra. */
 export function missingProofs(
   rule: Rule,
   observations: readonly Observation[],
   context: ProofContext,
-): RuleProof[] {
-  return rule.require.filter((proof) => !proofSatisfied(proof, observations, context));
+): MissingProof[] {
+  return rule.require
+    .filter((proof) => !proofSatisfied(proof, observations, context))
+    .map((proof) => ({
+      proof,
+      reason: observations.some((observation) => valueMatches(proof, observation))
+        ? staleReason(proof, context)
+        : null,
+    }));
 }
 
-export function proofLabel(proof: RuleProof): string {
-  return `${proof.kind}(${proof.value}) since ${proof.since === "head" ? "HEAD" : "session"}`;
+export function proofLabel(missing: MissingProof): string {
+  const { proof, reason } = missing;
+  const base = `${proof.kind}(${proof.value}) since ${proof.since === "head" ? "HEAD" : "session"}`;
+  return reason === null ? base : `${base} (${reason})`;
 }
 
 /**

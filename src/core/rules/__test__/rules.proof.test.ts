@@ -125,7 +125,7 @@ describe("missingProofs", () => {
     const missing = missingProofs(target, [observed()], CONTEXT);
 
     assert.equal(missing.length, 1);
-    assert.equal(missing[0]?.kind, "gate");
+    assert.equal(missing[0]?.proof.kind, "gate");
   });
 
   test("nothing missing when all proofs hold", () => {
@@ -141,10 +141,87 @@ describe("missingProofs", () => {
 
   test("the label an operator reads names the kind, the value and the window", () => {
     assert.equal(
-      proofLabel({ kind: "subagent", value: "the-jury", since: "head" }),
+      proofLabel({ proof: { kind: "subagent", value: "the-jury", since: "head" }, reason: null }),
       "subagent(the-jury) since HEAD",
     );
-    assert.equal(proofLabel({ kind: "gate", value: "test", since: "session" }), "gate(test) since session");
+    assert.equal(
+      proofLabel({ proof: { kind: "gate", value: "test", since: "session" }, reason: null }),
+      "gate(test) since session",
+    );
+  });
+
+  /**
+   * AC — the label distinguishes "never observed" from "observed, but the window rejected it," across every
+   * proof kind and both windows. A fact the harness already holds, not a new read.
+   */
+  test("a proof that ran under the wrong window says so, by kind", () => {
+    const cases: Array<{ proof: RuleProof; observation: Partial<Observation> }> = [
+      { proof: { kind: "subagent", value: "the-jury", since: "head" }, observation: { sha: "0000000" } },
+      {
+        proof: { kind: "command", value: "gh pr review", since: "head" },
+        observation: { kind: "command", value: "gh pr review 42", sha: "0000000" },
+      },
+      {
+        proof: { kind: "gate", value: "test", since: "head" },
+        observation: { kind: "gate", value: "test", sha: "0000000" },
+      },
+      {
+        proof: { kind: "file", value: "docs/review.md", since: "head" },
+        observation: { kind: "file", value: "docs/review.md", sha: "0000000" },
+      },
+    ];
+
+    for (const { proof, observation } of cases) {
+      const target = rule([proof]);
+      const missing = missingProofs(target, [observed(observation)], CONTEXT);
+
+      assert.equal(missing.length, 1, proof.kind);
+      assert.equal(missing[0]?.reason, "ran, but at a different commit", proof.kind);
+      assert.match(proofLabel(missing[0] as never), /\(ran, but at a different commit\)$/, proof.kind);
+    }
+  });
+
+  test("since session says a different session, not a different commit", () => {
+    const proof: RuleProof = { kind: "subagent", value: "the-jury", since: "session" };
+    const target = rule([proof]);
+
+    const missing = missingProofs(target, [observed({ sessionKey: "hostA:other" })], CONTEXT);
+
+    assert.equal(missing[0]?.reason, "ran, but in a different session");
+  });
+
+  test("no git checkout says so, not a different commit", () => {
+    const proof: RuleProof = { kind: "subagent", value: "the-jury", since: "head" };
+    const target = rule([proof]);
+    const context = { sha: null, sessionKey: "hostA:sess-1" };
+
+    const missing = missingProofs(target, [observed({ sha: null })], context);
+
+    assert.equal(
+      missing[0]?.reason,
+      "ran, but this project is not a git checkout, so since HEAD can never be satisfied",
+    );
+  });
+
+  test("truly never observed stays a flat, honest missing — no invented reason", () => {
+    const target = rule([{ kind: "subagent", value: "the-jury", since: "head" }]);
+
+    const missing = missingProofs(target, [], CONTEXT);
+
+    assert.equal(missing[0]?.reason, null);
+    assert.equal(proofLabel(missing[0] as never), "subagent(the-jury) since HEAD");
+  });
+
+  test("a value mismatch (wrong subagent/command/gate/file) is never mistaken for staleness", () => {
+    const target = rule([{ kind: "subagent", value: "the-jury", since: "head" }]);
+
+    const missing = missingProofs(target, [observed({ value: "explore" })], CONTEXT);
+
+    assert.equal(
+      missing[0]?.reason,
+      null,
+      'a different value never satisfied the kind, so it is not "stale"',
+    );
   });
 });
 

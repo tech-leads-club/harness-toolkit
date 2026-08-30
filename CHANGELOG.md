@@ -6,6 +6,10 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## Unreleased
+
+- **AD-119** — A rule's denial says whether the proof never ran or ran outside the window
+
 ## v0.10.2
 
 - **AD-118** — pr-open does not fire on a draft, so a proof needing the pull request to exist has a way to run

@@ -126,6 +126,7 @@ Handoff section and a link back to this index.
 | [AD-116](/decisions/ad-116.md) | push and gh pr create run the stop-time battery before shipping, identically on every provider | active |
 | [AD-117](/decisions/ad-117.md) | turn_base_sha resolves sha from the event's own working directory, not the project root | active |
 | [AD-118](/decisions/ad-118.md) | pr-open does not fire on a draft, so a proof needing the pull request to exist has a way to run | active |
+| [AD-119](/decisions/ad-119.md) | A rule's denial says whether the proof never ran or ran outside the window | active |
 
 ## Archived
 
