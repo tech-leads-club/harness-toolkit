@@ -6,7 +6,7 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
-## Unreleased
+## v0.10.5
 
 - **AD-121** — command(<pattern>) matches a bare word against a path ending in it, not only an exact word
 
