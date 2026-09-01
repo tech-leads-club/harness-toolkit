@@ -115,6 +115,38 @@ test("AD-122 the session's own field always wins over an inherited predecessor's
   }
 });
 
+/**
+ * why this repro matters: review found a materialized-but-inherited field could never be cleared — `readHandoff`
+ * re-merged the dead predecessor's slice on every call, and clearing a field is omitting its key (JSON drops
+ * `undefined`), indistinguishable from "this session never set it." Once materialization moved into this
+ * session's own first write ([/decisions/ad-122.md](/decisions/ad-122.md)), a later clear has nothing left to
+ * be masked by.
+ */
+test("AD-122 a materialized predecessor field can be cleared and never resurfaces", async () => {
+  const root = tempRoot();
+  try {
+    await patchHandoffSession(root, "provider-a", "session-dead", {
+      blockers: "ship gate failed (tests)",
+      next_action: "fix the failing test",
+    });
+
+    // why: this mirrors session-start.ts's own boilerplate patch, which always precedes its first readHandoff.
+    await patchHandoffSession(root, "provider-a", "session-new", { next_action: "boot" });
+    const inherited = readHandoff(root, "provider-a", "session-new");
+    assert.equal(inherited.blockers, "ship gate failed (tests)", "inherited once, at the first write");
+
+    await patchHandoffSession(root, "provider-a", "session-new", {
+      blockers: undefined,
+      next_action: "continue or commit when ready",
+    });
+    const cleared = readHandoff(root, "provider-a", "session-new");
+    assert.equal(cleared.blockers, undefined, "a cleared field must never resurface from the predecessor");
+    assert.equal(cleared.next_action, "continue or commit when ready");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 /** AD-122/F2 — a predecessor whose own file diverged outside a harness write is never inherited. */
 test("AD-122 readHandoff withholds a tampered predecessor's slice", async () => {
   const root = tempRoot();

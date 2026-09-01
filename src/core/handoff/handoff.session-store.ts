@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { updateJsonAtomic } from "../../platform/fs-atomic.ts";
 import { handoffSessionsDir } from "../../platform/paths.ts";
 import { sanitizeSegment } from "../../platform/sanitize.ts";
-import { seal, sealPath } from "../integrity/state-seal.ts";
+import { seal, sealPath, shouldInject, verifySeal } from "../integrity/state-seal.ts";
 import { isSessionLive } from "../presence/presence.service.ts";
 import {
   HANDOFF_SESSION_SCHEMA,
@@ -35,6 +35,28 @@ export function readHandoffSessionFile(root: string, sessionKey: string): Handof
   }
 }
 
+const EMPTY_SLICE: HandoffProviderSlice = { updated_at: "" };
+
+/**
+ * why: clearing a field is omitting its key (JSON drops `undefined`), indistinguishable from never written —
+ * re-merging a predecessor on every read cannot tell those apart, so a clear kept resurfacing. Copying it in
+ * once, at this session's own first write, makes this session's file the sole source from then on
+ * ([/decisions/ad-122.md](/decisions/ad-122.md)).
+ */
+function inheritedBase(
+  root: string,
+  provider: string,
+  sessionKey: string,
+  isLive: LivenessCheck,
+): HandoffProviderSlice {
+  const predecessor = findDeadPredecessor(root, provider, sessionKey, { isLive });
+  if (!predecessor) {
+    return EMPTY_SLICE;
+  }
+  const path = handoffSessionPath(root, predecessor.owner.session_key);
+  return shouldInject(verifySeal(path)) ? predecessor.slice : EMPTY_SLICE;
+}
+
 /** why: the owner is restamped on every write because this session wrote just now, which is the fact worth
  * keeping — liveness itself is decided elsewhere, against presence's own heartbeat
  * ([/decisions/ad-122.md](/decisions/ad-122.md)). */
@@ -43,12 +65,17 @@ export function patchHandoffSession(
   provider: string,
   sessionKey: string,
   patch: Partial<HandoffProviderSlice>,
+  options: PredecessorOptions = {},
 ): Promise<HandoffSessionFile> {
+  const isLive = options.isLive ?? defaultLiveness(root);
   const path = handoffSessionPath(root, sessionKey);
   return updateJsonAtomic<HandoffSessionFile>(
     path,
     (current) => {
-      const base = current && isHandoffSessionFile(current) ? current.slice : { updated_at: "" };
+      const base =
+        current && isHandoffSessionFile(current)
+          ? current.slice
+          : inheritedBase(root, provider, sessionKey, isLive);
       const now = new Date().toISOString();
       return {
         schema: HANDOFF_SESSION_SCHEMA,

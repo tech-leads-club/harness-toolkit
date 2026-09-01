@@ -68,6 +68,98 @@ describe("patchHandoffSession / readHandoffSessionFile", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  /** AD-122 — the first write for a brand-new session materializes a not-live predecessor's slice onto disk;
+   * a patch on top of it overrides only the fields it names. */
+  test("the first write for a new session materializes a not-live predecessor's slice", async () => {
+    const root = tempRoot();
+    try {
+      await patchHandoffSession(root, "provider-a", "session-dead", {
+        blockers: "left this",
+        next_action: "stale",
+      });
+      const written = await patchHandoffSession(
+        root,
+        "provider-a",
+        "session-new",
+        { next_action: "fresh" },
+        { isLive: NOT_LIVE },
+      );
+      assert.equal(written.slice.blockers, "left this");
+      assert.equal(written.slice.next_action, "fresh");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("the first write for a new session never materializes a live predecessor's slice", async () => {
+    const root = tempRoot();
+    try {
+      await patchHandoffSession(root, "provider-a", "session-live", { blockers: "still running" });
+      const written = await patchHandoffSession(
+        root,
+        "provider-a",
+        "session-new",
+        { next_action: "fresh" },
+        { isLive: LIVE },
+      );
+      assert.equal(written.slice.blockers, undefined);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** AD-122/F2 — the same tamper-withholding guarantee `readHandoff` gives a fallback read must also hold at
+   * the point of materialization, since that is now the only place a predecessor's slice is ever consumed. */
+  test("the first write for a new session never materializes a tampered predecessor's slice", async () => {
+    const root = tempRoot();
+    try {
+      await patchHandoffSession(root, "provider-a", "session-dead", { blockers: "left this" });
+      const { readFileSync, writeFileSync } = await import("node:fs");
+      const path = handoffSessionPath(root, "session-dead");
+      const file = JSON.parse(readFileSync(path, "utf8"));
+      file.slice.blockers = "INJECTED BY A NON-HARNESS WRITER";
+      writeFileSync(path, JSON.stringify(file));
+
+      const written = await patchHandoffSession(
+        root,
+        "provider-a",
+        "session-new",
+        { next_action: "fresh" },
+        { isLive: NOT_LIVE },
+      );
+      assert.equal(written.slice.blockers, undefined, "a diverged predecessor is withheld, not materialized");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** why a second patch must not re-consult the predecessor: once this session's own file exists, it is the
+   * sole source — otherwise a field cleared here would keep resurfacing from the predecessor on every later
+   * write, the exact defect this materialize-once design closes. */
+  test("a second patch for the same session never re-materializes the predecessor", async () => {
+    const root = tempRoot();
+    try {
+      await patchHandoffSession(root, "provider-a", "session-dead", { blockers: "left this" });
+      await patchHandoffSession(
+        root,
+        "provider-a",
+        "session-new",
+        { next_action: "first" },
+        { isLive: NOT_LIVE },
+      );
+      const cleared = await patchHandoffSession(
+        root,
+        "provider-a",
+        "session-new",
+        { blockers: undefined, next_action: "second" },
+        { isLive: NOT_LIVE },
+      );
+      assert.equal(cleared.slice.blockers, undefined);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("findDeadPredecessor", () => {

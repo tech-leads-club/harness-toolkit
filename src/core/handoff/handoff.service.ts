@@ -47,19 +47,25 @@ function sealedSlice(path: string, file: HandoffSessionFile | null): HandoffSess
 }
 
 /**
- * This session's own resolved continuity: shared facts, a dead predecessor's fields where this session has
- * not written its own yet, then this session's own ([/decisions/ad-122.md](/decisions/ad-122.md)). Neither a
- * live nor a tampered predecessor is ever a source — see `findDeadPredecessor` and `sealedSlice`.
+ * This session's own resolved continuity: shared facts plus this session's own slice
+ * ([/decisions/ad-122.md](/decisions/ad-122.md)). A dead predecessor's fields are copied into this session's
+ * own file once, at its first write (`patchHandoffSession`'s own materialization) — once that file exists, it
+ * is the sole source, so a field this session later clears never resurfaces from the predecessor. Before this
+ * session has written anything at all, the same not-live, seal-verified predecessor is read directly instead,
+ * for a read that happens ahead of any write.
  */
 export function readHandoff(root: string, provider: string, sessionKey: string): ResolvedHandoff {
   const shared = readHandoffFile(root).shared;
+  const own = readHandoffSessionFile(root, sessionKey);
+  if (own) {
+    return { ...shared, ...own.slice };
+  }
   const predecessor = findDeadPredecessor(root, provider, sessionKey);
   const verified = sealedSlice(
     predecessor ? handoffSessionPath(root, predecessor.owner.session_key) : "",
     predecessor,
   );
-  const own = readHandoffSessionFile(root, sessionKey);
-  return { ...shared, ...verified?.slice, ...own?.slice };
+  return { ...shared, ...verified?.slice };
 }
 
 /** The operator's diagnostic view of one provider: whichever session most recently wrote it, live or not —
