@@ -446,11 +446,15 @@ Healthy install checklist:
 
 ```mermaid
 graph LR
-    EV["provider event<br/><i>Cursor or Claude Code hook</i>"]
-    HK["user-level hook file"]
-    LX["bin/tlc-exec.mjs &lt;handler&gt;<br/><i>Bun first, Node + dist fallback</i>"]
-    EP["src/entrypoints/&lt;handler&gt;.ts<br/><i>core + resolved adapter</i>"]
-    OUT["follow-up · handoff · observability<br/><i>under project policy</i>"]
+    EV["`provider event
+    *Cursor or Claude Code hook*`"]
+    HK["`user-level hook file`"]
+    LX["`bin/tlc-exec.mjs #60;handler#62;
+    *Bun first, Node + dist fallback*`"]
+    EP["`src/entrypoints/#60;handler#62;.ts
+    *core + resolved adapter*`"]
+    OUT["`follow-up · handoff · observability
+    *under project policy*`"]
     EV --> HK --> LX --> EP --> OUT
 ```
 
