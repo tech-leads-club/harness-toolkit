@@ -1,5 +1,14 @@
 import { divergedMessage, shouldInject, verifySeal } from "../integrity/state-seal.ts";
-import { handoffPath, patchHandoff, readHandoffFile } from "./handoff.store.ts";
+import {
+  findDeadPredecessor,
+  handoffSessionPath,
+  latestSessionForProvider,
+  listHandoffSessionFiles,
+  patchHandoffSession,
+  pruneDeadHandoffSessions,
+  readHandoffSessionFile,
+} from "./handoff.session-store.ts";
+import { handoffPath, patchHandoffShared, readHandoffFile } from "./handoff.store.ts";
 import type { ForeignSlice, HandoffProviderSlice, HandoffShared } from "./handoff.types.ts";
 
 export type ResolvedHandoff = HandoffShared & HandoffProviderSlice;
@@ -7,22 +16,61 @@ export type ResolvedHandoff = HandoffShared & HandoffProviderSlice;
 /**
  * Whether the handoff is safe to read aloud to the model.
  *
- * why: separate from `readHandoff`, because reading and injecting are different acts. `tlc harness handoff`
- * displaying a diverged file is how an operator investigates it; a turn being *told* what it says is the moment
- * worth withholding ([/decisions/ad-078.md](/decisions/ad-078.md)).
+ * why: the shared facts and this session's own continuity are two separately-sealed writes now
+ * ([/decisions/ad-122.md](/decisions/ad-122.md)) — either one changing outside a harness write withholds the
+ * whole handoff from this turn, the same as before the split.
  */
-export function handoffInjectable(root: string): { ok: boolean; note: string | null } {
-  const target = handoffPath(root);
-  const verdict = verifySeal(target);
-  return shouldInject(verdict)
+export function handoffInjectable(root: string, sessionKey: string): { ok: boolean; note: string | null } {
+  const sharedVerdict = verifySeal(handoffPath(root));
+  if (!shouldInject(sharedVerdict)) {
+    return { ok: false, note: divergedMessage(handoffPath(root), "The handoff") };
+  }
+  const sessionPath = handoffSessionPath(root, sessionKey);
+  const sessionVerdict = verifySeal(sessionPath);
+  return shouldInject(sessionVerdict)
     ? { ok: true, note: null }
-    : { ok: false, note: divergedMessage(target, "The handoff") };
+    : { ok: false, note: divergedMessage(sessionPath, "The handoff") };
 }
 
-export function readHandoff(root: string, provider: string): ResolvedHandoff {
-  const file = readHandoffFile(root);
-  const slice = file.by_provider[provider] ?? { updated_at: file.shared.updated_at };
-  return { ...file.shared, ...slice };
+/**
+ * This session's own resolved continuity: shared project facts, a dead predecessor's carried fields where
+ * this session has not yet written its own, and this session's own fields wherever it has
+ * ([/decisions/ad-122.md](/decisions/ad-122.md)). A *live* other session is never a source — see
+ * `findDeadPredecessor`.
+ */
+export function readHandoff(root: string, provider: string, sessionKey: string): ResolvedHandoff {
+  const shared = readHandoffFile(root).shared;
+  const predecessor = findDeadPredecessor(root, provider, sessionKey);
+  const own = readHandoffSessionFile(root, sessionKey);
+  return { ...shared, ...predecessor?.slice, ...own?.slice };
+}
+
+/** The operator's diagnostic view of one provider: whichever session most recently wrote it, live or not —
+ * reading here is not the injection surface AD-078 protects, so it is not liveness-gated. */
+export function readLatestSlice(root: string, provider: string): ResolvedHandoff {
+  const shared = readHandoffFile(root).shared;
+  const latest = latestSessionForProvider(root, provider);
+  return { ...shared, ...latest?.slice };
+}
+
+export type HandoffPatch = {
+  shared?: Partial<HandoffShared>;
+  slice?: Partial<HandoffProviderSlice>;
+};
+
+export async function patchHandoff(
+  root: string,
+  provider: string,
+  sessionKey: string,
+  patch: HandoffPatch,
+): Promise<ResolvedHandoff> {
+  if (patch.shared) {
+    await patchHandoffShared(root, patch.shared);
+  }
+  if (patch.slice) {
+    await patchHandoffSession(root, provider, sessionKey, patch.slice);
+  }
+  return readHandoff(root, provider, sessionKey);
 }
 
 const CLEARED_SLICE: Partial<HandoffProviderSlice> = {
@@ -39,35 +87,40 @@ function hasStuckSignal(slice: HandoffProviderSlice): boolean {
 }
 
 /**
- * why: an operator's escape hatch. These are the exact fields `subagent-stop.ts` reads as "unfinished
- * work" — clearing anything wider would erase state no gate is stuck on.
+ * why: the operator's escape hatch runs from their own terminal, never from inside an agent session
+ * (`policy-surface-write` refuses it there) — by the time it runs, "which sessions are still live" is not the
+ * question; a stuck signal left behind by any of them, dead or not, is what it clears.
  */
 export async function clearStuckSignals(root: string): Promise<string[]> {
-  const file = readHandoffFile(root);
   const cleared: string[] = [];
-  for (const [provider, slice] of Object.entries(file.by_provider)) {
-    if (!hasStuckSignal(slice)) {
+  for (const file of listHandoffSessionFiles(root)) {
+    if (!hasStuckSignal(file.slice)) {
       continue;
     }
-    await patchHandoff(root, provider, { slice: CLEARED_SLICE });
-    cleared.push(provider);
+    await patchHandoffSession(root, file.owner.provider, file.owner.session_key, CLEARED_SLICE);
+    cleared.push(`${file.owner.provider}:${file.owner.session_key}`);
   }
   return cleared;
 }
 
 export function readForeignSlices(root: string, provider: string): ForeignSlice[] {
-  const file = readHandoffFile(root);
+  const otherProviders = new Set(
+    listHandoffSessionFiles(root)
+      .map((file) => file.owner.provider)
+      .filter((name) => name !== provider),
+  );
   const foreign: ForeignSlice[] = [];
-  for (const [name, slice] of Object.entries(file.by_provider)) {
-    if (name === provider) {
+  for (const name of otherProviders) {
+    const latest = latestSessionForProvider(root, name);
+    if (!latest) {
       continue;
     }
-    if (slice.next_action === undefined && slice.blockers === undefined) {
+    if (latest.slice.next_action === undefined && latest.slice.blockers === undefined) {
       continue;
     }
-    foreign.push({ provider: name, next_action: slice.next_action, blockers: slice.blockers });
+    foreign.push({ provider: name, next_action: latest.slice.next_action, blockers: latest.slice.blockers });
   }
   return foreign;
 }
 
-export { patchHandoff, readHandoffFile };
+export { handoffSessionPath, listHandoffSessionFiles, pruneDeadHandoffSessions, readHandoffFile };

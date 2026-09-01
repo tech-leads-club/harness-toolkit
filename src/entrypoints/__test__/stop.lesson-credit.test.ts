@@ -129,7 +129,7 @@ test("a failing gate records which lessons it injected, for that gate", async ()
 
   await runHandler(stopHandler, stopEvent(root));
 
-  const handoff = coreFacade.handoff.readHandoff(root, "claude");
+  const handoff = coreFacade.handoff.readHandoff(root, "claude", "claude-sess-credit");
   assert.equal(handoff.pending_lesson_credit?.gate, "lint");
   assert.ok(handoff.pending_lesson_credit?.ids.includes(id));
   assert.equal(projectLesson(root, id)?.injectedCount, 1);
@@ -180,7 +180,10 @@ test("a credit is consumed once", async () => {
   await runHandler(stopHandler, stopEvent(root));
 
   assert.equal(projectLesson(root, id)?.helpedCount, 1);
-  assert.equal(coreFacade.handoff.readHandoff(root, "claude").pending_lesson_credit, undefined);
+  assert.equal(
+    coreFacade.handoff.readHandoff(root, "claude", "claude-sess-credit").pending_lesson_credit,
+    undefined,
+  );
 });
 
 // hazard: without comparing the gate name, lessons injected for `lint` would be graded by whichever gate ran next.
@@ -224,7 +227,10 @@ test("a lesson injected by one session is not credited by a different session", 
   const graded = projectLesson(root, id);
   assert.equal(graded?.helpedCount, 0);
   assert.equal(graded?.neutralCount, 0);
-  assert.equal(coreFacade.handoff.readHandoff(root, "claude").pending_lesson_credit?.ids.includes(id), true);
+  assert.equal(
+    coreFacade.handoff.readHandoff(root, "claude", "claude-sess-a").pending_lesson_credit?.ids.includes(id),
+    true,
+  );
 });
 
 // invariant: the originating session still credits normally once it is the one that grades the gate.
@@ -258,7 +264,7 @@ test("a stale lesson is neither injected nor credited", async () => {
 
   await runHandler(stopHandler, stopEvent(root));
 
-  const handoff = coreFacade.handoff.readHandoff(root, "claude");
+  const handoff = coreFacade.handoff.readHandoff(root, "claude", "claude-sess-credit");
   assert.equal(handoff.pending_lesson_credit?.ids.includes(saved.id) ?? false, false);
   assert.equal(projectLesson(root, saved.id)?.injectedCount, 0);
 });

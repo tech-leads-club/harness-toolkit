@@ -179,7 +179,7 @@ async function creditPendingLessons(args: {
     return;
   }
   await coreFacade.lesson.creditLessons(args.root, pending.ids, args.passed ? "helped" : "neutral");
-  await coreFacade.handoff.patchHandoff(args.root, args.provider, {
+  await coreFacade.handoff.patchHandoff(args.root, args.provider, args.sessionKey, {
     slice: { pending_lesson_credit: undefined },
   });
 }
@@ -282,7 +282,7 @@ async function failGate(args: {
     ? "config"
     : coreFacade.turn.classifyGateFailure(args.gate);
   const freshGaps = coreFacade.gate.gapsFromArtifact({ artifact: args.artifact, category });
-  const handoff = coreFacade.handoff.readHandoff(args.root, args.provider);
+  const handoff = coreFacade.handoff.readHandoff(args.root, args.provider, args.sessionKey);
   const gaps = intel.progressiveContext
     ? coreFacade.turn.mergeGaps(handoff.previous_gaps, freshGaps)
     : freshGaps;
@@ -300,7 +300,7 @@ async function failGate(args: {
       })
     : null;
 
-  await coreFacade.handoff.patchHandoff(args.root, args.provider, {
+  await coreFacade.handoff.patchHandoff(args.root, args.provider, args.sessionKey, {
     slice: {
       last_gate_result: "fail",
       last_fingerprint: fingerprint,
@@ -348,7 +348,7 @@ async function failGate(args: {
   // the thing that grades them ([/decisions/ad-039.md](/decisions/ad-039.md)).
   if (selected.usedIds.length > 0) {
     await coreFacade.lesson.markGradeable(args.root, selected.usedIds);
-    await coreFacade.handoff.patchHandoff(args.root, args.provider, {
+    await coreFacade.handoff.patchHandoff(args.root, args.provider, args.sessionKey, {
       slice: {
         pending_lesson_credit: {
           gate: args.gate,
@@ -475,9 +475,9 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
    * risk — a decision taken from planted text. Withholding here means deciding from the file's absence, which is
    * the same answer a first turn gets ([/decisions/ad-080.md](/decisions/ad-080.md)).
    */
-  const stopSeal = coreFacade.handoff.handoffInjectable(root);
+  const stopSeal = coreFacade.handoff.handoffInjectable(root, sessionKey);
   const handoff = stopSeal.ok
-    ? coreFacade.handoff.readHandoff(root, provider)
+    ? coreFacade.handoff.readHandoff(root, provider, sessionKey)
     : ({} as ReturnType<typeof coreFacade.handoff.readHandoff>);
   // hazard: read before the file list, because the list is diffed against it. A turn that commits moves `HEAD`
   // past its own changes, and every gate below then saw an empty diff and skipped — the comment gate in a repo
@@ -506,7 +506,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   // stop is still visible when the gate it belongs to runs below.
   const pendingCredit = handoff.pending_lesson_credit;
 
-  await coreFacade.handoff.patchHandoff(root, provider, {
+  await coreFacade.handoff.patchHandoff(root, provider, sessionKey, {
     slice: { last_stop_status: status, last_changed_files: changedFiles, last_gate_result: "skipped" },
   });
 
@@ -515,7 +515,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
 
   if (skipVerify || status !== "completed" || cap.capReached) {
     if (cap.capReached) {
-      await coreFacade.handoff.patchHandoff(root, provider, {
+      await coreFacade.handoff.patchHandoff(root, provider, sessionKey, {
         slice: {
           blockers: `Grind cap hit (${maxLoops} stop loops). Fix manually or pause gates.`,
           next_action: "Inspect failures, fix root cause, then continue.",
@@ -543,7 +543,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
     //
     // invariant: this rail records what it saw and never writes a field it reads. `next_action` is not one of
     // them, and the follow-up text carries the instruction anyway.
-    await coreFacade.handoff.patchHandoff(root, provider, {
+    await coreFacade.handoff.patchHandoff(root, provider, sessionKey, {
       slice: {
         last_failure_category: "agent-quality",
         next_action: "Attempt the work, or proceed under a stated assumption.",
@@ -557,7 +557,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
     (typeof event.contextUsagePercent === "number" && event.contextUsagePercent >= 85);
 
   if (intel.budgetContinue && unfinishedWork && budgetPressure) {
-    await coreFacade.handoff.patchHandoff(root, provider, {
+    await coreFacade.handoff.patchHandoff(root, provider, sessionKey, {
       slice: {
         last_failure_category: "budget",
         next_action: coreFacade.turn.suggestionFor("budget", "budget"),
@@ -686,7 +686,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
       turnBase,
     );
     if (hits.length > 0) {
-      await coreFacade.handoff.patchHandoff(root, provider, {
+      await coreFacade.handoff.patchHandoff(root, provider, sessionKey, {
         slice: {
           last_gate_result: "fail",
           blockers: `This turn added ${hits.length} undeclared comment line(s).`,
@@ -721,7 +721,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
         },
       });
       if (outcome.findings.length > 0) {
-        await coreFacade.handoff.patchHandoff(root, provider, {
+        await coreFacade.handoff.patchHandoff(root, provider, sessionKey, {
           slice: {
             last_gate_result: "fail",
             blockers: `This turn changed the dependency graph in ${outcome.findings.length} way(s) that outlive it.`,
@@ -757,7 +757,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
     );
     const hits = coreFacade.duplication.findDuplications(added, scan.index, policy.duplication.minRun);
     if (hits.length > 0) {
-      await coreFacade.handoff.patchHandoff(root, provider, {
+      await coreFacade.handoff.patchHandoff(root, provider, sessionKey, {
         slice: {
           last_gate_result: "fail",
           blockers: `This turn added ${hits.length} run(s) the project already has.`,
@@ -824,7 +824,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
     changedFiles,
   });
   if (planDecision.kind !== "abstain") {
-    await coreFacade.handoff.patchHandoff(root, provider, {
+    await coreFacade.handoff.patchHandoff(root, provider, sessionKey, {
       slice: {
         last_gate_result: "fail",
         last_failure_category: "policy",
@@ -845,7 +845,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
     changedFilesCount: changedFiles.length,
   });
   if (emptyDiffDecision.kind !== "abstain") {
-    await coreFacade.handoff.patchHandoff(root, provider, {
+    await coreFacade.handoff.patchHandoff(root, provider, sessionKey, {
       slice: {
         last_gate_result: "fail",
         blockers: "Structured ship claim with empty diff.",
@@ -875,7 +875,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
     evidenceNotBeforeMs: coreFacade.ship.newestChangeMs(root, changedFiles),
   });
   if (shipEvidenceDecision.kind !== "abstain") {
-    await coreFacade.handoff.patchHandoff(root, provider, {
+    await coreFacade.handoff.patchHandoff(root, provider, sessionKey, {
       slice: {
         last_gate_result: "fail",
         blockers: "HARNESS_SHIP_CLAIM without recent production evidence on runtime changes.",
@@ -922,7 +922,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   if (stopRules.decision.kind !== "abstain") {
     if (stopRules.decision.kind !== "context") {
       const worst = coreFacade.rules.strictest(stopRules.outcomes);
-      await coreFacade.handoff.patchHandoff(root, provider, {
+      await coreFacade.handoff.patchHandoff(root, provider, sessionKey, {
         slice: {
           last_gate_result: "fail",
           last_failure_category: "policy",
@@ -960,7 +960,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
    * a `why` kind, so `tlc harness why` answers it after the fact.
    */
   const holders = [...new Set(deferred)];
-  await coreFacade.handoff.patchHandoff(root, provider, {
+  await coreFacade.handoff.patchHandoff(root, provider, sessionKey, {
     slice: {
       last_gate_result: holders.length > 0 ? "skipped" : "pass",
       blockers: undefined,

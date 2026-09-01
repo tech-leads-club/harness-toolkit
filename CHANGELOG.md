@@ -8,6 +8,10 @@ doctor reports against your own configuration.
 
 ## v0.10.5
 
+- **AD-122** — Handoff continuity is scoped per session, and a live neighbour is never a source
+
+## v0.10.5
+
 - **AD-121** — command(<pattern>) matches a bare word against a path ending in it, not only an exact word
 
 ## v0.10.4

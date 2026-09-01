@@ -149,7 +149,7 @@ test("turn_base_sha reflects the event's own cwd, not CLAUDE_PROJECT_DIR", async
   try {
     await runHandler(promptSubmitHandler, stdinOf(claudePromptSubmit(worktree)));
 
-    const handoff = coreFacade.handoff.readHandoff(mainCheckout, "claude");
+    const handoff = coreFacade.handoff.readHandoff(mainCheckout, "claude", "claude-sess-1");
     assert.equal(handoff.turn_base_sha, headSha(worktree));
     assert.notEqual(
       headSha(worktree),

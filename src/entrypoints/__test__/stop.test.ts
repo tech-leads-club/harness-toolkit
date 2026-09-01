@@ -135,7 +135,7 @@ test("hitting the loop cap records a budget blocker in the handoff", async () =>
     for (let i = 0; i < 6; i++) {
       await runHandler(stopHandler, stdinOf(claudeStop(root)));
     }
-    const handoff = coreFacade.handoff.readHandoff(root, "claude");
+    const handoff = coreFacade.handoff.readHandoff(root, "claude", "claude-sess-1");
     assert.equal(handoff.last_failure_category, "budget");
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -211,7 +211,7 @@ test("a ship claim with an empty diff yields continue when emptyDiffAntiShip is 
   const root = cleanRepo();
   try {
     writeProjectPolicy(root, { shipGate: { enabled: true, emptyDiffAntiShip: true } });
-    await coreFacade.handoff.patchHandoff(root, "cursor", {
+    await coreFacade.handoff.patchHandoff(root, "cursor", "cursor-conv-1", {
       slice: {
         last_ship_claim_kind: "structured",
         last_ship_claim_at: new Date().toISOString(),
@@ -237,7 +237,7 @@ test("a ship claim with a non-empty diff does not trigger the empty-diff gate", 
     writeProjectPolicy(root, {
       shipGate: { enabled: true, emptyDiffAntiShip: true, evidenceDir: join(root, "evidence") },
     });
-    await coreFacade.handoff.patchHandoff(root, "cursor", {
+    await coreFacade.handoff.patchHandoff(root, "cursor", "cursor-conv-1", {
       slice: {
         last_ship_claim_kind: "structured",
         last_ship_claim_at: new Date().toISOString(),
@@ -290,7 +290,7 @@ test("a grind lock held by a neighbour defers the gate instead of blocking the t
     );
 
     // invariant: `skipped`, never `pass` — no gate produced a verdict for this turn.
-    const handoff = coreFacade.handoff.readHandoff(root, "cursor");
+    const handoff = coreFacade.handoff.readHandoff(root, "cursor", "cursor-conv-1");
     assert.equal(handoff?.last_gate_result, "skipped");
     assert.match(handoff?.next_action ?? "", /other-session/);
 
@@ -345,7 +345,7 @@ test("a reusable verdict is honoured while a neighbour holds the lock", async ()
     assert.equal(outcome.decision.kind, "abstain");
 
     // invariant: reused, not deferred. The lock was never needed, so a live holder is irrelevant.
-    const handoff = coreFacade.handoff.readHandoff(root, "cursor");
+    const handoff = coreFacade.handoff.readHandoff(root, "cursor", "cursor-conv-1");
     assert.equal(handoff?.last_gate_result, "pass");
 
     const plane =
@@ -555,7 +555,9 @@ test("budgetContinue with unfinished work under pressure yields continue", async
   const root = cleanRepo();
   try {
     writeProjectPolicy(root, { intelligence: { budgetContinue: true, budgetContinueAfterLoops: 1 } });
-    await coreFacade.handoff.patchHandoff(root, "claude", { slice: { blockers: "still working" } });
+    await coreFacade.handoff.patchHandoff(root, "claude", "claude-sess-1", {
+      slice: { blockers: "still working" },
+    });
     coreFacade.turn.nextLoop(root, "claude-sess-1");
     const outcome = await runHandler(stopHandler, stdinOf(claudeStop(root)));
     assert.equal(outcome.decision.kind, "continue");
@@ -613,7 +615,7 @@ test("a ship-evidence gate without recent evidence blocks a recent structured cl
   const root = repoWithChange();
   try {
     writeProjectPolicy(root, { shipGate: { enabled: true, evidenceDir: join(root, "evidence") } });
-    await coreFacade.handoff.patchHandoff(root, "cursor", {
+    await coreFacade.handoff.patchHandoff(root, "cursor", "cursor-conv-1", {
       slice: {
         last_ship_claim_kind: "structured",
         last_ship_claim_at: new Date().toISOString(),
@@ -636,7 +638,7 @@ test("a ship-evidence gate with recent PASS evidence appends a pass ledger row a
     mkdirSync(evidenceDir, { recursive: true });
     writeFileSync(join(evidenceDir, "90-verdict.txt"), "PASS\n");
     writeProjectPolicy(root, { shipGate: { enabled: true, evidenceDir: join(root, "evidence") } });
-    await coreFacade.handoff.patchHandoff(root, "cursor", {
+    await coreFacade.handoff.patchHandoff(root, "cursor", "cursor-conv-1", {
       slice: {
         last_ship_claim_kind: "structured",
         last_ship_claim_at: new Date().toISOString(),
@@ -654,7 +656,7 @@ test("the handoff records last_stop_status and last_changed_files even on the ea
   const root = repoWithChange();
   try {
     await runHandler(stopHandler, stdinOf(cursorStop(root, { status: "aborted" })));
-    const handoff = coreFacade.handoff.readHandoff(root, "cursor");
+    const handoff = coreFacade.handoff.readHandoff(root, "cursor", "cursor-conv-1");
     assert.equal(handoff.last_stop_status, "aborted");
     assert.ok(handoff.last_changed_files?.includes("src/app.ts"));
   } finally {
@@ -667,7 +669,7 @@ test("a lint failure records last_gate_result fail in the handoff", async () => 
   try {
     writeProjectPolicy(root, ALWAYS_FAIL);
     await runHandler(stopHandler, stdinOf(cursorStop(root)));
-    const handoff = coreFacade.handoff.readHandoff(root, "cursor");
+    const handoff = coreFacade.handoff.readHandoff(root, "cursor", "cursor-conv-1");
     assert.equal(handoff.last_gate_result, "fail");
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -816,11 +818,11 @@ test("a justified deviation lets the same stop through", async () => {
     const blocked = await runHandler(stopHandler, stdinOf(cursorStop(root)));
     assert.equal(blocked.decision.kind, "continue");
 
-    const changed = readFileSync(join(root, ".tlc", "harness", "state", "handoff.json"), "utf8");
+    const changed = readFileSync(coreFacade.handoff.handoffSessionPath(root, "cursor-conv-1"), "utf8");
     const parsed = JSON.parse(changed) as {
-      by_provider: Record<string, { last_changed_files?: string[] }>;
+      slice: { last_changed_files?: string[] };
     };
-    const touched = parsed.by_provider.cursor?.last_changed_files ?? [];
+    const touched = parsed.slice.last_changed_files ?? [];
     assert.ok(touched.length > 0);
     await declarePlan(root, `HARNESS_PLAN_DEVIATION: ${touched[0]} — the change belongs to this task`);
 
@@ -1036,7 +1038,7 @@ test("the idle-turn gate does not write the open work it reads", async () => {
   const root = cleanRepo();
   try {
     writeProjectPolicy(root, { intelligence: { idleTurnGate: true } });
-    await coreFacade.handoff.patchHandoff(root, "cursor", {
+    await coreFacade.handoff.patchHandoff(root, "cursor", "cursor-conv-1", {
       slice: { blockers: "something else set this" },
     });
     coreFacade.observability.recordObs(root, coreFacade.observability.DEFAULT_OBS, {
@@ -1052,7 +1054,7 @@ test("the idle-turn gate does not write the open work it reads", async () => {
     }
 
     // the blocker that armed it is untouched; the rail added none of its own
-    const after = coreFacade.handoff.readHandoff(root, "cursor");
+    const after = coreFacade.handoff.readHandoff(root, "cursor", "cursor-conv-1");
     assert.equal(after.blockers, "something else set this");
     assert.equal(after.next_action, "Attempt the work, or proceed under a stated assumption.");
   } finally {
@@ -1064,7 +1066,9 @@ test("a turn that ran a tool is not idle, even when the tool succeeded", async (
   const root = cleanRepo();
   try {
     writeProjectPolicy(root, { intelligence: { idleTurnGate: true } });
-    await coreFacade.handoff.patchHandoff(root, "cursor", { slice: { blockers: "open work" } });
+    await coreFacade.handoff.patchHandoff(root, "cursor", "cursor-conv-1", {
+      slice: { blockers: "open work" },
+    });
     const obs = coreFacade.observability.DEFAULT_OBS;
     coreFacade.observability.recordObs(root, obs, {
       provider: "cursor",

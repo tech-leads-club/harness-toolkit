@@ -52,8 +52,10 @@ test("facade.stagnation tracks and clears fingerprint hits per session", () => {
 test("facade.handoff round-trips a provider slice", async () => {
   const root = tempRoot();
   try {
-    await coreFacade.handoff.patchHandoff(root, "provider-a", { slice: { next_action: "run tests" } });
-    const resolved = coreFacade.handoff.readHandoff(root, "provider-a");
+    await coreFacade.handoff.patchHandoff(root, "provider-a", "session-1", {
+      slice: { next_action: "run tests" },
+    });
+    const resolved = coreFacade.handoff.readHandoff(root, "provider-a", "session-1");
     assert.equal(resolved.next_action, "run tests");
   } finally {
     rmSync(root, { recursive: true, force: true });

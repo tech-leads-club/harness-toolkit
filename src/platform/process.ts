@@ -1,6 +1,44 @@
 import { spawn } from "node:child_process";
+import { hostname } from "node:os";
 
 const TIMEOUT_EXIT_CODE = 124;
+
+/** Asks the OS whether a pid exists. Injected so the ESRCH and EPERM branches are testable on every platform. */
+export type ProcessProbe = (pid: number) => void;
+
+const defaultProbe: ProcessProbe = (pid) => {
+  process.kill(pid, 0);
+};
+
+/**
+ * Whether the process that recorded `pid`/`host` is still running, right now, on this machine.
+ *
+ * why: a pid means nothing on another host, so a mismatch answers "alive" rather than guessing — the caller's
+ * only safe reading of "cannot prove gone" is to treat the record as still owned. `process.kill(pid, 0)` sends
+ * no signal, it only asks whether the process exists; `ESRCH` is the one answer that proves it does not.
+ * Extracted from `gate.lock.ts`'s original `isLockOwnerGone`, which used this exact check for one lock file —
+ * `handoff`'s per-session continuity needed the identical answer for a different file, and a second
+ * implementation is the drift that makes one of them wrong later ([/decisions/ad-122.md](/decisions/ad-122.md)).
+ */
+export function isProcessAlive(
+  pid: number,
+  host: string,
+  thisHost: string = hostname(),
+  probe: ProcessProbe = defaultProbe,
+): boolean {
+  if (host !== thisHost) {
+    return true;
+  }
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return true;
+  }
+  try {
+    probe(pid);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
 
 export async function readStdinText(): Promise<string> {
   const chunks: Buffer[] = [];

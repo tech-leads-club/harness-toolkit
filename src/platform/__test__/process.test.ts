@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { hostname } from "node:os";
 import { describe, test } from "node:test";
-import { runProcess } from "../process.ts";
+import { isProcessAlive, runProcess } from "../process.ts";
 
 describe("runProcess", () => {
   test("resolves with exit code 0 and captures stdout for a successful command", async () => {
@@ -42,5 +43,52 @@ describe("runProcess", () => {
     });
     assert.equal(result.exitCode, 0);
     assert.equal(result.stdout.trim(), "done");
+  });
+});
+
+function throwing(code: string): (pid: number) => void {
+  return () => {
+    const error = new Error(code) as NodeJS.ErrnoException;
+    error.code = code;
+    throw error;
+  };
+}
+
+/**
+ * AD-122 — extracted from `gate.lock.ts`'s own liveness check, which already covered every branch below with
+ * an injected probe rather than a real pid, for the same cross-platform reason: no pid is guaranteed to exist
+ * or not exist identically on linux, macos and windows.
+ */
+describe("isProcessAlive", () => {
+  test("a different host is never provable dead", () => {
+    assert.equal(isProcessAlive(123, "other-host", "this-host"), true);
+  });
+
+  test("a pid that cannot name a process is never consulted", () => {
+    for (const pid of [0, -1, 1.5, Number.NaN]) {
+      assert.equal(isProcessAlive(pid, hostname()), true, String(pid));
+    }
+  });
+
+  test("a process that exists but is not ours (EPERM) counts as alive", () => {
+    assert.equal(isProcessAlive(123, hostname(), hostname(), throwing("EPERM")), true);
+  });
+
+  test("only ESRCH means the process is gone", () => {
+    assert.equal(isProcessAlive(123, hostname(), hostname(), throwing("ESRCH")), false);
+    for (const code of ["EINVAL", "EACCES", "UNKNOWN", ""]) {
+      assert.equal(isProcessAlive(123, hostname(), hostname(), throwing(code)), true, code);
+    }
+  });
+
+  test("a probe that returns without throwing means the process is alive", () => {
+    assert.equal(
+      isProcessAlive(123, hostname(), hostname(), () => undefined),
+      true,
+    );
+  });
+
+  test("the default probe finds this very test process alive", () => {
+    assert.equal(isProcessAlive(process.pid, hostname()), true);
   });
 });

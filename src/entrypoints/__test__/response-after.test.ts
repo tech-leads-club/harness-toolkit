@@ -43,7 +43,7 @@ test("a HARNESS_SHIP_CLAIM response records a claim on the handoff", async () =>
       responseAfterHandler,
       stdinOf(cursorResponse(root, "HARNESS_SHIP_CLAIM: shipped the fix")),
     );
-    const handoff = coreFacade.handoff.readHandoff(root, "cursor");
+    const handoff = coreFacade.handoff.readHandoff(root, "cursor", "cursor-conv-1");
     assert.equal(handoff.last_ship_claim_kind, "structured");
     assert.match(String(handoff.last_ship_claim_snippet), /shipped the fix/);
   } finally {
@@ -55,7 +55,7 @@ test("free-English 'done' text does not record a claim", async () => {
   const root = tempRoot();
   try {
     await runHandler(responseAfterHandler, stdinOf(cursorResponse(root, "I'm done, everything works now.")));
-    const handoff = coreFacade.handoff.readHandoff(root, "cursor");
+    const handoff = coreFacade.handoff.readHandoff(root, "cursor", "cursor-conv-1");
     assert.equal(handoff.last_ship_claim_kind, undefined);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -66,7 +66,7 @@ test("an empty response text does not record a claim", async () => {
   const root = tempRoot();
   try {
     await runHandler(responseAfterHandler, stdinOf(cursorResponse(root, "")));
-    const handoff = coreFacade.handoff.readHandoff(root, "cursor");
+    const handoff = coreFacade.handoff.readHandoff(root, "cursor", "cursor-conv-1");
     assert.equal(handoff.last_ship_claim_kind, undefined);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -81,7 +81,7 @@ test("the claim is written with a parseable timestamp", async () => {
       ...stdinOf(cursorResponse(root, "HARNESS_SHIP_CLAIM: done")),
       now: () => now,
     });
-    const handoff = coreFacade.handoff.readHandoff(root, "cursor");
+    const handoff = coreFacade.handoff.readHandoff(root, "cursor", "cursor-conv-1");
     assert.equal(handoff.last_ship_claim_at, now.toISOString());
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -92,8 +92,8 @@ test("the claim is written to the active provider's own slice, not the other pro
   const root = tempRoot();
   try {
     await runHandler(responseAfterHandler, stdinOf(cursorResponse(root, "HARNESS_SHIP_CLAIM: done")));
-    const cursorSlice = coreFacade.handoff.readHandoff(root, "cursor");
-    const claudeSlice = coreFacade.handoff.readHandoff(root, "claude");
+    const cursorSlice = coreFacade.handoff.readHandoff(root, "cursor", "cursor-conv-1");
+    const claudeSlice = coreFacade.handoff.readHandoff(root, "claude", "claude-none");
     assert.equal(cursorSlice.last_ship_claim_kind, "structured");
     assert.equal(claudeSlice.last_ship_claim_kind, undefined);
   } finally {

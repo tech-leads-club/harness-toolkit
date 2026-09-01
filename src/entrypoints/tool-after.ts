@@ -68,7 +68,7 @@ async function commentEditAdvisory(event: HarnessEvent, ctx: HandlerContext): Pr
   if (targets.length === 0) {
     return null;
   }
-  const handoff = coreFacade.handoff.readHandoff(event.projectDir, event.provider);
+  const handoff = coreFacade.handoff.readHandoff(event.projectDir, event.provider, event.sessionKey);
   const hits = await coreFacade.commentPolicy.scanAddedComments(
     event.projectDir,
     targets,

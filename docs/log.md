@@ -13,6 +13,10 @@ Generated from `docs/decisions/` — do not edit by hand. Run `node tools/render
 A reserved file of the [OKF v0.1](/decisions/ad-013.md) bundle: entries grouped under ISO 8601 headings,
 newest first. For what landed in which npm release, see `CHANGELOG.md` at the repository root.
 
+## 2026-09-01
+
+- **AD-122** — Handoff continuity is scoped per session, and a live neighbour is never a source ([/decisions/ad-122.md](/decisions/ad-122.md))
+
 ## 2026-08-30
 
 - **AD-120** — A rule denial names the directory and sha it actually checked ([/decisions/ad-120.md](/decisions/ad-120.md))

@@ -13,7 +13,7 @@ export const responseAfterHandler: Handler = async (
     const plan = coreFacade.plan.detectPlan(text);
     const deviations = coreFacade.plan.detectDeviations(text);
     if (plan) {
-      await coreFacade.handoff.patchHandoff(event.projectDir, event.provider, {
+      await coreFacade.handoff.patchHandoff(event.projectDir, event.provider, event.sessionKey, {
         slice: {
           plan_paths: plan.paths,
           plan_at: ctx.now.toISOString(),
@@ -25,11 +25,11 @@ export const responseAfterHandler: Handler = async (
     if (deviations.length > 0) {
       // why: a deviation can be justified in a later message than the one that declared the plan, so they
       // accumulate for the plan's window instead of replacing what was already accepted.
-      const handoff = coreFacade.handoff.readHandoff(event.projectDir, event.provider);
+      const handoff = coreFacade.handoff.readHandoff(event.projectDir, event.provider, event.sessionKey);
       const known = handoff.plan_deviations ?? [];
       const fresh = deviations.filter((deviation) => !known.some((seen) => seen.path === deviation.path));
       if (fresh.length > 0) {
-        await coreFacade.handoff.patchHandoff(event.projectDir, event.provider, {
+        await coreFacade.handoff.patchHandoff(event.projectDir, event.provider, event.sessionKey, {
           slice: { plan_deviations: [...known, ...fresh] },
         });
       }
@@ -38,7 +38,7 @@ export const responseAfterHandler: Handler = async (
 
   const claim = coreFacade.ship.detectShipClaim(text);
   if (claim) {
-    await coreFacade.handoff.patchHandoff(event.projectDir, event.provider, {
+    await coreFacade.handoff.patchHandoff(event.projectDir, event.provider, event.sessionKey, {
       slice: {
         last_ship_claim_at: ctx.now.toISOString(),
         last_ship_claim_snippet: claim.snippet,

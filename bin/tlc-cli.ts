@@ -195,9 +195,10 @@ export function setPaused(root: string, on: boolean): string {
 }
 
 /**
- * why: the operator's escape hatch for a stuck gate — `blockers` and `previous_gaps` are project-wide,
- * so a grind-cap or stagnation signal from one session can block every later subagent until either a
- * clean stop clears it or this runs. Denied from inside a session by `policy-surface-write`.
+ * why: the operator's escape hatch for a stuck gate — `blockers`/`previous_gaps` are per session
+ * ([/decisions/ad-122.md](/decisions/ad-122.md)), and a subagent inheriting its parent's session key inherits
+ * a stuck signal the same way, until either a clean stop clears it or this runs across every session on
+ * record. Denied from inside a session by `policy-surface-write`.
  */
 export async function resetStuckState(root: string): Promise<string> {
   const cleared = await coreFacade.handoff.clearStuckSignals(root);
@@ -244,22 +245,23 @@ export function setMode(root: string, raw: string): string {
 
 export type HandoffReport = {
   root: string;
-  providers: Record<string, ReturnType<typeof coreFacade.handoff.readHandoff>>;
+  providers: Record<string, ReturnType<typeof coreFacade.handoff.readLatestSlice>>;
 };
 
 /**
  * The sanctioned way to read handoff state.
  *
- * why: the bootstrap used to tell the agent to read `.tlc/harness/state/handoff.json`, a path the floor guards. So
- * the instruction and the permission disagreed, and the obvious command — `test -f … && head -c 2000 …` — was
- * refused with advice about writing policy. An instruction is not an affordance; the route the harness asks for has
- * to be one it grants ([/decisions/ad-047.md](/decisions/ad-047.md)).
+ * why: the route the floor grants instead of the raw file path it guards ([/decisions/ad-047.md](/decisions/ad-047.md)).
+ * One row per provider, the most recent session, not liveness-gated — a diagnostic summary, not a turn's own
+ * decision ([/decisions/ad-122.md](/decisions/ad-122.md)).
  */
 export function handoffJson(root: string): HandoffReport {
-  const file = coreFacade.handoff.readHandoffFile(root);
+  const providerNames = new Set(
+    coreFacade.handoff.listHandoffSessionFiles(root).map((file) => file.owner.provider),
+  );
   const providers: HandoffReport["providers"] = {};
-  for (const provider of Object.keys(file.by_provider)) {
-    providers[provider] = coreFacade.handoff.readHandoff(root, provider);
+  for (const provider of providerNames) {
+    providers[provider] = coreFacade.handoff.readLatestSlice(root, provider);
   }
   return { root, providers };
 }

@@ -16,7 +16,7 @@ export const promptSubmitHandler: Handler = async (event: HarnessEvent, ctx: Han
   // whole untouched file read as "added this turn" ([/decisions/ad-117.md](/decisions/ad-117.md)).
   const sha = await currentGitSha(shaScopeRoot(event));
   if (sha) {
-    await coreFacade.handoff.patchHandoff(event.projectDir, event.provider, {
+    await coreFacade.handoff.patchHandoff(event.projectDir, event.provider, event.sessionKey, {
       slice: { turn_base_sha: sha },
     });
   }

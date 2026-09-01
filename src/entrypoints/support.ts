@@ -98,10 +98,11 @@ export type TurnScope = {
 export async function computeTurnScope(
   root: string,
   provider: string,
+  sessionKey: string,
   policy: Pick<Policy, "codePaths">,
 ): Promise<TurnScope> {
-  const seal = coreFacade.handoff.handoffInjectable(root);
-  const handoff = seal.ok ? coreFacade.handoff.readHandoff(root, provider) : undefined;
+  const seal = coreFacade.handoff.handoffInjectable(root, sessionKey);
+  const handoff = seal.ok ? coreFacade.handoff.readHandoff(root, provider, sessionKey) : undefined;
   const turnBase = handoff?.turn_base_sha ?? "HEAD";
   const changedFiles = await listChangedRepoFiles(root, turnBase);
   const codeTargets = filterCodeTargets(changedFiles, policy.codePaths);
@@ -128,12 +129,13 @@ export async function computeTurnScope(
 export async function pendingCommentViolations(
   root: string,
   provider: string,
+  sessionKey: string,
   policy: Pick<Policy, "comments" | "codePaths">,
 ): Promise<CommentFinding[]> {
   if (!policy.comments.enabled || policy.comments.onViolation !== "followup") {
     return [];
   }
-  const scope = await computeTurnScope(root, provider, policy);
+  const scope = await computeTurnScope(root, provider, sessionKey, policy);
   if (scope.commentTargets.length === 0) {
     return [];
   }

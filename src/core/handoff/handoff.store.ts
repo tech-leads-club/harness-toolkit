@@ -3,13 +3,7 @@ import { join } from "node:path";
 import { updateJsonAtomic } from "../../platform/fs-atomic.ts";
 import { projectStateDir } from "../../platform/paths.ts";
 import { seal } from "../integrity/state-seal.ts";
-import {
-  defaultHandoffFile,
-  type HandoffFile,
-  type HandoffProviderSlice,
-  type HandoffShared,
-  isHandoffFile,
-} from "./handoff.types.ts";
+import { defaultHandoffFile, type HandoffFile, type HandoffShared, isHandoffFile } from "./handoff.types.ts";
 
 export function handoffPath(root: string): string {
   return join(projectStateDir(root), "handoff.json");
@@ -33,25 +27,16 @@ export function readHandoffFile(root: string): HandoffFile {
   return defaultHandoffFile();
 }
 
-export type HandoffPatch = {
-  shared?: Partial<HandoffShared>;
-  slice?: Partial<HandoffProviderSlice>;
-};
-
-export function patchHandoff(root: string, provider: string, patch: HandoffPatch): Promise<HandoffFile> {
+/** why shared only: the turn-scoped continuity slice moved to its own per-session file
+ * ([/decisions/ad-122.md](/decisions/ad-122.md)) — nothing here is provider- or session-specific any more. */
+export function patchHandoffShared(root: string, patch: Partial<HandoffShared>): Promise<HandoffFile> {
   return updateJsonAtomic<HandoffFile>(
     handoffPath(root),
     (current) => {
       const base = current && isHandoffFile(current) ? current : defaultHandoffFile();
-      const now = new Date().toISOString();
-      const ownSlice = base.by_provider[provider] ?? { updated_at: now };
       return {
         schema: base.schema,
-        shared: { ...base.shared, ...patch.shared, updated_at: now },
-        by_provider: {
-          ...base.by_provider,
-          [provider]: { ...ownSlice, ...patch.slice, updated_at: now },
-        },
+        shared: { ...base.shared, ...patch, updated_at: new Date().toISOString() },
       };
     },
     { lockPath: handoffLockPath(root), afterWrite: seal },

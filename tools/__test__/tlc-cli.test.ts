@@ -166,12 +166,12 @@ describe("setPaused", () => {
 describe("resetStuckState", () => {
   test("clears a project's blockers and reports it", async () => {
     const root = newRoot();
-    await coreFacade.handoff.patchHandoff(root, "claude", {
+    await coreFacade.handoff.patchHandoff(root, "claude", "claude-session-1", {
       slice: { blockers: "Grind cap hit (3 stop loops).", last_failure_category: "budget" },
     });
     const summary = await resetStuckState(root);
-    assert.match(summary, /cleared blockers for: claude/);
-    const resolved = coreFacade.handoff.readHandoff(root, "claude");
+    assert.match(summary, /cleared blockers for: claude:claude-session-1/);
+    const resolved = coreFacade.handoff.readHandoff(root, "claude", "claude-session-1");
     assert.equal(resolved.blockers, undefined);
   });
 

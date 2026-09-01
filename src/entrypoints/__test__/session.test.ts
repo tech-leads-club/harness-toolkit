@@ -126,7 +126,7 @@ test("session.start under Claude does not render an env key", async () => {
 test("session.start bootstrap context includes a foreign slice labelled with its provider under Cursor", async () => {
   const root = tempRoot();
   try {
-    await coreFacade.handoff.patchHandoff(root, "claude", {
+    await coreFacade.handoff.patchHandoff(root, "claude", "claude-other", {
       slice: { next_action: "finish the migration", blockers: "waiting on review" },
     });
     const outcome = await runHandler(sessionStartHandler, stdinOf(cursorStart(root)));
@@ -144,7 +144,7 @@ test("session.start bootstrap context includes a foreign slice labelled with its
 test("session.start bootstrap context includes a foreign slice labelled with its provider under Claude", async () => {
   const root = tempRoot();
   try {
-    await coreFacade.handoff.patchHandoff(root, "cursor", {
+    await coreFacade.handoff.patchHandoff(root, "cursor", "cursor-other", {
       slice: { next_action: "review the PR" },
     });
     const outcome = await runHandler(sessionStartHandler, stdinOf(claudeStart(root)));
@@ -268,7 +268,7 @@ test("injected bootstrap context over the context budget is truncated with the m
   try {
     writeProjectPolicy(root, { intelligence: { lessons: { maxCharsSession: 200 } } });
     for (let i = 0; i < 120; i++) {
-      await coreFacade.handoff.patchHandoff(root, `foreign-${i}`, {
+      await coreFacade.handoff.patchHandoff(root, `foreign-${i}`, `foreign-${i}-sess`, {
         slice: { next_action: "x".repeat(100), blockers: "y".repeat(100) },
       });
     }
@@ -526,7 +526,7 @@ test("session.start points at the sanctioned command, not at the protected path"
   const root = tempRoot();
   try {
     await runHandler(sessionStartHandler, stdinOf(cursorStart(root)));
-    const handoff = coreFacade.handoff.readHandoff(root, "cursor");
+    const handoff = coreFacade.handoff.readHandoff(root, "cursor", "cursor-conv-1");
     assert.match(String(handoff.next_action), /tlc harness handoff/);
     assert.doesNotMatch(String(handoff.next_action), /\.tlc\/harness\/state/);
   } finally {
@@ -538,7 +538,7 @@ test("session.end patches the handoff next_action to point at resuming", async (
   const root = tempRoot();
   try {
     await runHandler(sessionEndHandler, stdinOf(cursorEnd(root)));
-    const handoff = coreFacade.handoff.readHandoff(root, "cursor");
+    const handoff = coreFacade.handoff.readHandoff(root, "cursor", "cursor-conv-1");
     assert.match(String(handoff.next_action), /Session ended/);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -569,7 +569,7 @@ test("presence directory holds exactly one record after a session.start", async 
 test("session.start carries the gaps the previous session ended with", async () => {
   const root = tempRoot();
   try {
-    await coreFacade.handoff.patchHandoff(root, "cursor", {
+    await coreFacade.handoff.patchHandoff(root, "cursor", "cursor-conv-1", {
       slice: {
         previous_gaps: [
           { id: "test-0", gate: "test", category: "verification", summary: "auth.spec.ts expected 200" },
@@ -591,7 +591,7 @@ test("progressiveHandoff off withholds the carried gaps", async () => {
   const root = tempRoot();
   try {
     writeProjectPolicy(root, { intelligence: { progressiveHandoff: false } });
-    await coreFacade.handoff.patchHandoff(root, "cursor", {
+    await coreFacade.handoff.patchHandoff(root, "cursor", "cursor-conv-1", {
       slice: {
         previous_gaps: [
           { id: "test-0", gate: "test", category: "verification", summary: "auth.spec.ts expected 200" },

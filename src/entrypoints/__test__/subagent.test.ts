@@ -196,7 +196,9 @@ test("an unblocked, allowlisted subagent spawn is allowed under Claude", async (
 test("subagent.stop with unfinished work yields continue (followup_message) under Cursor", async () => {
   const root = tempRoot();
   try {
-    await coreFacade.handoff.patchHandoff(root, "cursor", { slice: { blockers: "still failing lint" } });
+    await coreFacade.handoff.patchHandoff(root, "cursor", "cursor-conv-1", {
+      slice: { blockers: "still failing lint" },
+    });
     const outcome = await runHandler(subagentStopHandler, stdinOf(cursorSubagentStop(root)));
     assert.equal(outcome.decision.kind, "continue");
     assert.match(String(outcome.rendered.stdout), /"followup_message"/);
@@ -208,7 +210,9 @@ test("subagent.stop with unfinished work yields continue (followup_message) unde
 test('subagent.stop with unfinished work yields {"decision":"block"} under Claude', async () => {
   const root = tempRoot();
   try {
-    await coreFacade.handoff.patchHandoff(root, "claude", { slice: { blockers: "still failing lint" } });
+    await coreFacade.handoff.patchHandoff(root, "claude", "claude-sess-1", {
+      slice: { blockers: "still failing lint" },
+    });
     const outcome = await runHandler(subagentStopHandler, stdinOf(claudeSubagentStop(root)));
     assert.equal(outcome.decision.kind, "continue");
     assert.match(String(outcome.rendered.stdout), /"decision":"block"/);
@@ -220,7 +224,7 @@ test('subagent.stop with unfinished work yields {"decision":"block"} under Claud
 test("subagent.stop with open gaps on the handoff also yields continue", async () => {
   const root = tempRoot();
   try {
-    await coreFacade.handoff.patchHandoff(root, "cursor", {
+    await coreFacade.handoff.patchHandoff(root, "cursor", "cursor-conv-1", {
       slice: { previous_gaps: [{ id: "g1", gate: "test", category: "verification", summary: "still red" }] },
     });
     const outcome = await runHandler(subagentStopHandler, stdinOf(cursorSubagentStop(root)));
@@ -233,7 +237,7 @@ test("subagent.stop with open gaps on the handoff also yields continue", async (
 test("subagent.stop abstains when the only blocker is the session's own budget/grind cap", async () => {
   const root = tempRoot();
   try {
-    await coreFacade.handoff.patchHandoff(root, "cursor", {
+    await coreFacade.handoff.patchHandoff(root, "cursor", "cursor-conv-1", {
       slice: {
         blockers: "Grind cap hit (3 stop loops). Fix manually or pause gates.",
         last_failure_category: "budget",
@@ -249,7 +253,7 @@ test("subagent.stop abstains when the only blocker is the session's own budget/g
 test("subagent.stop still blocks on a budget blocker if other unfinished work is also present", async () => {
   const root = tempRoot();
   try {
-    await coreFacade.handoff.patchHandoff(root, "cursor", {
+    await coreFacade.handoff.patchHandoff(root, "cursor", "cursor-conv-1", {
       slice: {
         blockers: "Grind cap hit (3 stop loops). Fix manually or pause gates.",
         last_failure_category: "budget",
@@ -288,7 +292,9 @@ test("subagent.stop with no unfinished work renders no stdout under Claude", asy
 test("the subagent.stop follow-up names the reporting subagent type", async () => {
   const root = tempRoot();
   try {
-    await coreFacade.handoff.patchHandoff(root, "cursor", { slice: { blockers: "still failing lint" } });
+    await coreFacade.handoff.patchHandoff(root, "cursor", "cursor-conv-1", {
+      slice: { blockers: "still failing lint" },
+    });
     const outcome = await runHandler(
       subagentStopHandler,
       stdinOf(cursorSubagentStop(root, { subagent_type: "explore" })),

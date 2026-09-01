@@ -49,10 +49,10 @@ export async function shipGateVerdict(event: HarnessEvent, ctx: HandlerContext):
   const provider = event.provider;
   const sessionKey = event.sessionKey;
   const session = sessionIdFromKey(event);
-  const scope = await computeTurnScope(root, provider, policy);
+  const scope = await computeTurnScope(root, provider, sessionKey, policy);
   const shaRoot = shaScopeRoot(event);
 
-  const commentHits = await pendingCommentViolations(root, provider, policy);
+  const commentHits = await pendingCommentViolations(root, provider, sessionKey, policy);
   if (commentHits.length > 0) {
     return {
       kind: "deny",

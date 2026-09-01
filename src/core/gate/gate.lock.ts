@@ -12,6 +12,7 @@ import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { nextDelay } from "../../platform/backoff.ts";
 import { projectStateDir } from "../../platform/paths.ts";
+import { isProcessAlive, type ProcessProbe } from "../../platform/process.ts";
 import type { LockBody } from "./gate.types.ts";
 
 export const GATE_LOCK_WAIT_MS = 120_000;
@@ -87,42 +88,17 @@ export function isLockUnreadable(path: string, args: { now: number; graceMs: num
 /**
  * Whether the recorded process is provably gone.
  *
- * hazard: a pid means nothing on another machine, so this answers `false` unless the lock names this host.
- * Without that check a shared checkout would let one machine reclaim a lock whose owner is alive on another,
- * and two gates would run at once — the thing the lock exists to prevent.
- *
- * why: `process.kill(pid, 0)` sends no signal, it only asks whether the process exists. `EPERM` means it
- * exists and belongs to another user, which is alive for our purposes. Anything unexpected is treated as
- * alive, because the age rule is the safe fallback and reclaiming a live holder is the expensive mistake.
+ * why: `isProcessAlive` answers the OS-level liveness question generically
+ * ([/decisions/ad-122.md](/decisions/ad-122.md)); this file's own contribution is only "does the body even
+ * carry a usable pid/host to ask about" — a lock with no usable body has nothing to prove gone.
  */
-/** Asks the OS whether a pid exists. Injected so the ESRCH and EPERM branches are testable on every platform. */
-export type ProcessProbe = (pid: number) => void;
+export type { ProcessProbe };
 
-const probeProcess: ProcessProbe = (pid) => {
-  process.kill(pid, 0);
-};
-
-export function isLockOwnerGone(
-  body: unknown,
-  thisHost: string = hostname(),
-  probe: ProcessProbe = probeProcess,
-): boolean {
-  if (!isUsableLockBody(body)) {
+export function isLockOwnerGone(body: unknown, thisHost: string = hostname(), probe?: ProcessProbe): boolean {
+  if (!isUsableLockBody(body) || body.host === undefined) {
     return false;
   }
-  const { host, pid } = body;
-  if (typeof host !== "string" || host !== thisHost) {
-    return false;
-  }
-  if (!Number.isInteger(pid) || pid <= 0) {
-    return false;
-  }
-  try {
-    probe(pid);
-    return false;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "ESRCH";
-  }
+  return !isProcessAlive(body.pid, body.host, thisHost, probe);
 }
 
 export function isLockReclaimable(

@@ -12,7 +12,7 @@ export const sessionEndHandler: Handler = async (
   const root = event.projectDir;
   const session = sessionIdFromKey(event);
 
-  await coreFacade.handoff.patchHandoff(root, event.provider, {
+  await coreFacade.handoff.patchHandoff(root, event.provider, event.sessionKey, {
     slice: {
       next_action: "Session ended. Run `tlc harness handoff` before resuming.",
     },

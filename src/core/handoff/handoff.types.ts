@@ -15,7 +15,6 @@ export type HandoffShared = {
 
 export type HandoffProviderSlice = {
   updated_at: string;
-  session_key?: string;
   session_narrative?: string;
   completed?: string[];
   last_ship_claim_at?: string;
@@ -46,12 +45,13 @@ export type HandoffProviderSlice = {
   machine_state?: Record<string, unknown>;
 };
 
-export const HANDOFF_SCHEMA = "harness.handoff.v2" as const;
+export const HANDOFF_SCHEMA = "harness.handoff.v3" as const;
 
+/** The project-wide facts every session shares — no turn-scoped continuity here (moved to per-session files,
+ * [/decisions/ad-122.md](/decisions/ad-122.md)). */
 export type HandoffFile = {
   schema: typeof HANDOFF_SCHEMA;
   shared: HandoffShared;
-  by_provider: Record<string, HandoffProviderSlice>;
 };
 
 export type ForeignSlice = {
@@ -68,7 +68,6 @@ export function defaultHandoffFile(mode: OperatorMode = "solo"): HandoffFile {
   return {
     schema: HANDOFF_SCHEMA,
     shared: { mode, updated_at: new Date().toISOString() },
-    by_provider: {},
   };
 }
 
@@ -78,10 +77,51 @@ export function isHandoffFile(value: unknown): value is HandoffFile {
   }
   const candidate = value as Partial<HandoffFile>;
   return (
-    candidate.schema === HANDOFF_SCHEMA &&
-    typeof candidate.shared === "object" &&
-    candidate.shared !== null &&
-    typeof candidate.by_provider === "object" &&
-    candidate.by_provider !== null
+    candidate.schema === HANDOFF_SCHEMA && typeof candidate.shared === "object" && candidate.shared !== null
+  );
+}
+
+export const HANDOFF_SESSION_SCHEMA = "harness.handoff-session.v1" as const;
+
+/**
+ * who last wrote this session's own continuity file, and whether that process is still running is the one
+ * question that separates a legitimate handoff from a live neighbour's state
+ * ([/decisions/ad-122.md](/decisions/ad-122.md)).
+ */
+type HandoffSessionOwner = {
+  pid: number;
+  host: string;
+  session_key: string;
+  provider: string;
+  updated_at: string;
+};
+
+export type HandoffSessionFile = {
+  schema: typeof HANDOFF_SESSION_SCHEMA;
+  owner: HandoffSessionOwner;
+  slice: HandoffProviderSlice;
+};
+
+export function isHandoffSessionFile(value: unknown): value is HandoffSessionFile {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Partial<HandoffSessionFile>;
+  if (candidate.schema !== HANDOFF_SESSION_SCHEMA) {
+    return false;
+  }
+  const owner = candidate.owner;
+  if (typeof owner !== "object" || owner === null) {
+    return false;
+  }
+  const o = owner as Partial<HandoffSessionOwner>;
+  return (
+    typeof o.pid === "number" &&
+    typeof o.host === "string" &&
+    typeof o.session_key === "string" &&
+    typeof o.provider === "string" &&
+    typeof o.updated_at === "string" &&
+    typeof candidate.slice === "object" &&
+    candidate.slice !== null
   );
 }

@@ -52,10 +52,14 @@ import { gapsFromArtifact } from "./gate/gate.service.ts";
 import {
   clearStuckSignals,
   handoffInjectable,
+  handoffSessionPath,
+  listHandoffSessionFiles,
   patchHandoff,
+  pruneDeadHandoffSessions,
   readForeignSlices,
   readHandoff,
   readHandoffFile,
+  readLatestSlice,
 } from "./handoff/handoff.service.ts";
 import { authoredLessonId, buildAuthoredLesson } from "./lesson/lesson.authored.ts";
 import type { LessonVerdict } from "./lesson/lesson.credit.ts";
@@ -306,11 +310,15 @@ export const coreFacade = {
   },
   handoff: {
     handoffInjectable,
+    handoffSessionPath,
     patchHandoff,
     readHandoff,
     readHandoffFile,
     readForeignSlices,
+    readLatestSlice,
     clearStuckSignals,
+    listHandoffSessionFiles,
+    pruneDeadHandoffSessions,
   },
   shim: {
     coversHandler,

@@ -43,7 +43,9 @@ export const sessionStartHandler: Handler = async (
     branch: branch ?? "unknown",
   });
 
-  await coreFacade.handoff.patchHandoff(root, event.provider, {
+  coreFacade.handoff.pruneDeadHandoffSessions(root);
+
+  await coreFacade.handoff.patchHandoff(root, event.provider, event.sessionKey, {
     shared: {
       mode: policy.mode,
       project_name: policy.projectName,
@@ -51,7 +53,6 @@ export const sessionStartHandler: Handler = async (
       git_sha: sha ?? undefined,
     },
     slice: {
-      session_key: event.sessionKey,
       // why: names the command, not the file. The path is on the policy surface, so an instruction pointing at it
       // asked for something the floor then refused ([/decisions/ad-047.md](/decisions/ad-047.md)).
       next_action: "Run `tlc harness handoff` if resuming; otherwise start from the user request.",
@@ -63,10 +64,10 @@ export const sessionStartHandler: Handler = async (
    * did not make is text placed in front of every later turn. Withholding is the answer, not refusing the turn
    * ([/decisions/ad-078.md](/decisions/ad-078.md)).
    */
-  const handoffSeal = coreFacade.handoff.handoffInjectable(root);
+  const handoffSeal = coreFacade.handoff.handoffInjectable(root, event.sessionKey);
   const lessonSeal = coreFacade.lesson.projectLessonsInjectable(root);
   const handoff = handoffSeal.ok
-    ? coreFacade.handoff.readHandoff(root, event.provider)
+    ? coreFacade.handoff.readHandoff(root, event.provider, event.sessionKey)
     : ({} as ReturnType<typeof coreFacade.handoff.readHandoff>);
   const foreign = handoffSeal.ok ? coreFacade.handoff.readForeignSlices(root, event.provider) : [];
 
