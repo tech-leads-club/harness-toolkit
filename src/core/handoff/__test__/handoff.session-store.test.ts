@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
-import { hostname, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import {
@@ -39,8 +39,6 @@ describe("patchHandoffSession / readHandoffSessionFile", () => {
       });
       assert.equal(written.owner.provider, "provider-a");
       assert.equal(written.owner.session_key, "session-1");
-      assert.equal(written.owner.pid, process.pid);
-      assert.equal(written.owner.host, hostname());
 
       const read = readHandoffSessionFile(root, "session-1");
       assert.equal(read?.slice.next_action, "run tests");

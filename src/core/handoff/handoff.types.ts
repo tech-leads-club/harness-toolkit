@@ -83,14 +83,9 @@ export function isHandoffFile(value: unknown): value is HandoffFile {
 
 export const HANDOFF_SESSION_SCHEMA = "harness.handoff-session.v1" as const;
 
-/**
- * who last wrote this session's own continuity file, and whether that process is still running is the one
- * question that separates a legitimate handoff from a live neighbour's state
- * ([/decisions/ad-122.md](/decisions/ad-122.md)).
- */
+/** which session last wrote this continuity file, and when — liveness itself is decided elsewhere, against
+ * presence's own heartbeat, not against anything stored here ([/decisions/ad-122.md](/decisions/ad-122.md)). */
 type HandoffSessionOwner = {
-  pid: number;
-  host: string;
   session_key: string;
   provider: string;
   updated_at: string;
@@ -116,8 +111,6 @@ export function isHandoffSessionFile(value: unknown): value is HandoffSessionFil
   }
   const o = owner as Partial<HandoffSessionOwner>;
   return (
-    typeof o.pid === "number" &&
-    typeof o.host === "string" &&
     typeof o.session_key === "string" &&
     typeof o.provider === "string" &&
     typeof o.updated_at === "string" &&

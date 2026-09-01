@@ -1,5 +1,4 @@
 import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
-import { hostname } from "node:os";
 import { join } from "node:path";
 import { updateJsonAtomic } from "../../platform/fs-atomic.ts";
 import { handoffSessionsDir } from "../../platform/paths.ts";
@@ -36,11 +35,9 @@ export function readHandoffSessionFile(root: string, sessionKey: string): Handof
   }
 }
 
-/**
- * why: `pid`/`host` are forensic — which process last touched this — not evidence of liveness, which this
- * harness's one-shot hook processes can never provide ([/decisions/ad-122.md](/decisions/ad-122.md)). The rest
- * of the owner is restamped on every write because this session wrote just now, which is the fact worth keeping.
- */
+/** why: the owner is restamped on every write because this session wrote just now, which is the fact worth
+ * keeping — liveness itself is decided elsewhere, against presence's own heartbeat
+ * ([/decisions/ad-122.md](/decisions/ad-122.md)). */
 export function patchHandoffSession(
   root: string,
   provider: string,
@@ -55,7 +52,7 @@ export function patchHandoffSession(
       const now = new Date().toISOString();
       return {
         schema: HANDOFF_SESSION_SCHEMA,
-        owner: { pid: process.pid, host: hostname(), session_key: sessionKey, provider, updated_at: now },
+        owner: { session_key: sessionKey, provider, updated_at: now },
         slice: { ...base, ...patch, updated_at: now },
       };
     },

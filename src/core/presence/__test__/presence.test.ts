@@ -8,6 +8,7 @@ import { sanitizeSegment } from "../../../platform/sanitize.ts";
 import {
   checkCollision,
   heartbeat,
+  isSessionLive,
   listPresenceRecords,
   presenceSessionKey,
   readPresenceRecord,
@@ -81,10 +82,46 @@ test("heartbeat bounds recent_files to a fixed length without duplicating a re-t
   }
 });
 
-test("heartbeat on a session that was never registered returns null", () => {
+/**
+ * why this must self-heal: a "no-such" session is exactly what a genuinely-live session looks like the moment
+ * after `sweepStale` deletes its record — the fixed defect found by review was that a no-op left it
+ * permanently misdiagnosed as dead, since nothing else ever re-creates the file.
+ */
+test("heartbeat on a session with no existing record creates a fresh, live one", () => {
   const root = tempRoot();
   try {
-    assert.equal(heartbeat(root, { provider: "provider-a", session: "no-such" }), null);
+    const created = heartbeat(root, {
+      provider: "provider-a",
+      session: "no-such",
+      now: new Date("2026-07-29T10:00:00.000Z"),
+    });
+    assert.equal(created.provider, "provider-a");
+    assert.equal(created.session, "no-such");
+    assert.equal(created.heartbeat_at, "2026-07-29T10:00:00.000Z");
+    assert.deepEqual(readPresenceRecord(root, "provider-a", "no-such"), created);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/** AD-122 — the exact repro review found: a session swept for going ten-plus minutes quiet is not dead, and
+ * its own next heartbeat must undo the sweep rather than leave it permanently unreadable as live. */
+test("a session swept for going quiet becomes live again on its own next heartbeat", () => {
+  const root = tempRoot();
+  try {
+    register(root, {
+      provider: "provider-a",
+      session: "session-a",
+      pid: 1,
+      branch: "main",
+      now: new Date("2026-07-29T10:00:00.000Z"),
+    });
+    const afterSweep = new Date("2026-07-29T10:35:00.000Z");
+    assert.equal(sweepStale(root, afterSweep), 1, "quiet past the conversation window is swept");
+    assert.equal(isSessionLive(root, "provider-a", "session-a", afterSweep), false);
+
+    heartbeat(root, { provider: "provider-a", session: "session-a", now: afterSweep });
+    assert.equal(isSessionLive(root, "provider-a", "session-a", afterSweep), true);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -169,12 +206,33 @@ test("sweepStale deletes only expired records", () => {
       session: "session-b",
       pid: 2,
       branch: "main",
-      now: new Date("2026-07-29T10:20:00.000Z"),
+      now: new Date("2026-07-29T10:29:00.000Z"),
     });
-    const swept = sweepStale(root, new Date("2026-07-29T10:21:00.000Z"));
+    const swept = sweepStale(root, new Date("2026-07-29T10:31:00.000Z"));
     assert.equal(swept, 1);
     assert.equal(readPresenceRecord(root, "provider-a", "session-a"), null);
     assert.ok(readPresenceRecord(root, "provider-b", "session-b"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/** why this must not use checkCollision's shorter window: a conversation that has simply gone quiet for
+ * longer than a file-edit claim survives is not the same fact as one that has ended — sweeping it away on the
+ * claim window's timing would make `isSessionLive` disagree with the record's own continued existence. */
+test("sweepStale tolerates a record quiet longer than the file-claim window but not the conversation window", () => {
+  const root = tempRoot();
+  try {
+    register(root, {
+      provider: "provider-a",
+      session: "session-a",
+      pid: 1,
+      branch: "main",
+      now: new Date("2026-07-29T10:00:00.000Z"),
+    });
+    const swept = sweepStale(root, new Date("2026-07-29T10:15:00.000Z"));
+    assert.equal(swept, 0, "fifteen quiet minutes exceeds the ten-minute claim window but not the thirty");
+    assert.ok(readPresenceRecord(root, "provider-a", "session-a"));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
