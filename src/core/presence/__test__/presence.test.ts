@@ -127,6 +127,35 @@ test("a session swept for going quiet becomes live again on its own next heartbe
   }
 });
 
+/** why this must not use checkCollision's shorter window: fifteen quiet minutes is an operator reading long
+ * output, not a conversation that ended — the exact misdiagnosis a second review pass reproduced against ten
+ * minutes ([/decisions/ad-122.md](/decisions/ad-122.md)). `isSessionLive` deciding whether a predecessor's
+ * continuity leaks into another session is the one call site this AD exists to get right. */
+test("isSessionLive tolerates a session quiet longer than the file-claim window but not the conversation window", () => {
+  const root = tempRoot();
+  try {
+    register(root, {
+      provider: "provider-a",
+      session: "session-a",
+      pid: 1,
+      branch: "main",
+      now: new Date("2026-07-29T10:00:00.000Z"),
+    });
+    assert.equal(
+      isSessionLive(root, "provider-a", "session-a", new Date("2026-07-29T10:15:00.000Z")),
+      true,
+      "fifteen quiet minutes exceeds the ten-minute claim window but not the thirty",
+    );
+    assert.equal(
+      isSessionLive(root, "provider-a", "session-a", new Date("2026-07-29T10:31:00.000Z")),
+      false,
+      "thirty-one quiet minutes exceeds the conversation window",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("checkCollision asks and names the foreign provider, session, and elapsed time", () => {
   const root = tempRoot();
   try {

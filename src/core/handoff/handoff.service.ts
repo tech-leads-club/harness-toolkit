@@ -61,10 +61,8 @@ export function readHandoff(root: string, provider: string, sessionKey: string):
     return { ...shared, ...own.slice };
   }
   const predecessor = findDeadPredecessor(root, provider, sessionKey);
-  const verified = sealedSlice(
-    predecessor ? handoffSessionPath(root, predecessor.owner.session_key) : "",
-    predecessor,
-  );
+  const verified =
+    predecessor && sealedSlice(handoffSessionPath(root, predecessor.owner.session_key), predecessor);
   return { ...shared, ...verified?.slice };
 }
 
