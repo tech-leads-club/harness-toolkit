@@ -20,13 +20,18 @@ Global does the work. Project only configures *this* repo. Do not copy `~/.tlc/h
 ```mermaid
 graph LR
     subgraph one["One machine"]
-        R["~/.tlc/harness<br/><i>runtime, CLI, hooks</i>"]
-        CU["cursor config<br/><i>hooks.json</i>"]
-        CL["claude config<br/><i>settings.json</i>"]
+        R["`~/.tlc/harness
+        *runtime, CLI, hooks*`"]
+        CU["`cursor config
+        *hooks.json*`"]
+        CL["`claude config
+        *settings.json*`"]
     end
     subgraph repo["One repository, shared by both"]
-        PC["config.json<br/><i>policy, tracked</i>"]
-        ST["state/<br/><i>handoff, lessons, obs</i>"]
+        PC["`config.json
+        *policy, tracked*`"]
+        ST["`state/
+        *handoff, lessons, obs*`"]
     end
     CU --> R
     CL --> R
@@ -55,11 +60,16 @@ Arrows are imports, and every one of them is checked mechanically:
 
 ```mermaid
 graph TD
-    E["entrypoints/<br/><i>one file per hook handler</i>"]
-    C["core/<br/><i>steering logic, provider-agnostic</i>"]
-    P["providers/<br/><i>one ACL adapter per provider</i>"]
-    K["contracts/<br/><i>shared vocabulary</i>"]
-    L["platform/<br/><i>OS primitives</i>"]
+    E["`entrypoints/
+    *one file per hook handler*`"]
+    C["`core/
+    *steering logic, provider-agnostic*`"]
+    P["`providers/
+    *one ACL adapter per provider*`"]
+    K["`contracts/
+    *shared vocabulary*`"]
+    L["`platform/
+    *OS primitives*`"]
 
     E --> C
     E --> P
