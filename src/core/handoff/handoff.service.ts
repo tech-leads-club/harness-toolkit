@@ -9,7 +9,12 @@ import {
   readHandoffSessionFile,
 } from "./handoff.session-store.ts";
 import { handoffPath, patchHandoffShared, readHandoffFile } from "./handoff.store.ts";
-import type { ForeignSlice, HandoffProviderSlice, HandoffShared } from "./handoff.types.ts";
+import type {
+  ForeignSlice,
+  HandoffProviderSlice,
+  HandoffSessionFile,
+  HandoffShared,
+} from "./handoff.types.ts";
 
 export type ResolvedHandoff = HandoffShared & HandoffProviderSlice;
 
@@ -33,16 +38,28 @@ export function handoffInjectable(root: string, sessionKey: string): { ok: boole
 }
 
 /**
- * This session's own resolved continuity: shared project facts, a dead predecessor's carried fields where
- * this session has not yet written its own, and this session's own fields wherever it has
- * ([/decisions/ad-122.md](/decisions/ad-122.md)). A *live* other session is never a source — see
- * `findDeadPredecessor`.
+ * why: a file this turn merges in belongs to a *different* session, so nothing at the call site already
+ * checked its seal the way `handoffInjectable` checks the caller's own — an untampered predecessor is the one
+ * this function is allowed to promise ([/decisions/ad-078.md](/decisions/ad-078.md), read alongside AD-122).
+ */
+function sealedSlice(path: string, file: HandoffSessionFile | null): HandoffSessionFile | null {
+  return file && shouldInject(verifySeal(path)) ? file : null;
+}
+
+/**
+ * This session's own resolved continuity: shared facts, a dead predecessor's fields where this session has
+ * not written its own yet, then this session's own ([/decisions/ad-122.md](/decisions/ad-122.md)). Neither a
+ * live nor a tampered predecessor is ever a source — see `findDeadPredecessor` and `sealedSlice`.
  */
 export function readHandoff(root: string, provider: string, sessionKey: string): ResolvedHandoff {
   const shared = readHandoffFile(root).shared;
   const predecessor = findDeadPredecessor(root, provider, sessionKey);
+  const verified = sealedSlice(
+    predecessor ? handoffSessionPath(root, predecessor.owner.session_key) : "",
+    predecessor,
+  );
   const own = readHandoffSessionFile(root, sessionKey);
-  return { ...shared, ...predecessor?.slice, ...own?.slice };
+  return { ...shared, ...verified?.slice, ...own?.slice };
 }
 
 /** The operator's diagnostic view of one provider: whichever session most recently wrote it, live or not —
@@ -104,21 +121,30 @@ export async function clearStuckSignals(root: string): Promise<string[]> {
 }
 
 export function readForeignSlices(root: string, provider: string): ForeignSlice[] {
-  const otherProviders = new Set(
-    listHandoffSessionFiles(root)
-      .map((file) => file.owner.provider)
-      .filter((name) => name !== provider),
-  );
+  const byProvider = new Map<string, HandoffSessionFile>();
+  for (const file of listHandoffSessionFiles(root)) {
+    if (file.owner.provider === provider) {
+      continue;
+    }
+    const current = byProvider.get(file.owner.provider);
+    if (!current || file.owner.updated_at > current.owner.updated_at) {
+      byProvider.set(file.owner.provider, file);
+    }
+  }
   const foreign: ForeignSlice[] = [];
-  for (const name of otherProviders) {
-    const latest = latestSessionForProvider(root, name);
-    if (!latest) {
+  for (const [name, latest] of byProvider) {
+    const verified = sealedSlice(handoffSessionPath(root, latest.owner.session_key), latest);
+    if (!verified) {
       continue;
     }
-    if (latest.slice.next_action === undefined && latest.slice.blockers === undefined) {
+    if (verified.slice.next_action === undefined && verified.slice.blockers === undefined) {
       continue;
     }
-    foreign.push({ provider: name, next_action: latest.slice.next_action, blockers: latest.slice.blockers });
+    foreign.push({
+      provider: name,
+      next_action: verified.slice.next_action,
+      blockers: verified.slice.blockers,
+    });
   }
   return foreign;
 }

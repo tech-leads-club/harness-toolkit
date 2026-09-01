@@ -116,4 +116,31 @@ export function release(root: string, provider: string, session: string): void {
   deletePresenceRecord(root, provider, session);
 }
 
+/**
+ * why the session key, not the raw session id: every caller outside this module already carries the prefixed
+ * form (`${provider}-${id}`) — every inbound mapper produces it that way — and asking each one to also derive
+ * the bare id is the duplication a shared helper exists to remove.
+ */
+function sessionIdFromSessionKey(provider: string, sessionKey: string): string {
+  const prefix = `${provider}-`;
+  return sessionKey.startsWith(prefix) ? sessionKey.slice(prefix.length) : sessionKey;
+}
+
+/**
+ * why heartbeat and not a process check: this harness's hook processes are one-shot — every entrypoint calls
+ * `process.exit` at the end of the single event it handled ([/decisions/ad-122.md](/decisions/ad-122.md)) — so
+ * no pid outlives the event that recorded it, and a pid-liveness check answers "dead" for every session,
+ * including one still very much in conversation. A heartbeat refreshed on every recognized event, regardless of
+ * which process handled it, is the one signal that survives the process boundary.
+ */
+export function isSessionLive(
+  root: string,
+  provider: string,
+  sessionKey: string,
+  now: Date = new Date(),
+): boolean {
+  const record = readPresenceRecord(root, provider, sessionIdFromSessionKey(provider, sessionKey));
+  return record !== null && !isStale(record, now.getTime());
+}
+
 export { listPresenceRecords, presenceSessionKey, readPresenceRecord };

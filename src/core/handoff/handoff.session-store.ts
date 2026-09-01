@@ -3,9 +3,9 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import { updateJsonAtomic } from "../../platform/fs-atomic.ts";
 import { handoffSessionsDir } from "../../platform/paths.ts";
-import { isProcessAlive, type ProcessProbe } from "../../platform/process.ts";
 import { sanitizeSegment } from "../../platform/sanitize.ts";
-import { seal } from "../integrity/state-seal.ts";
+import { seal, sealPath } from "../integrity/state-seal.ts";
+import { isSessionLive } from "../presence/presence.service.ts";
 import {
   HANDOFF_SESSION_SCHEMA,
   type HandoffProviderSlice,
@@ -37,9 +37,9 @@ export function readHandoffSessionFile(root: string, sessionKey: string): Handof
 }
 
 /**
- * why the owner is restamped on every write: freshness is the whole point — a session that patches its own
- * slice is, by definition, alive right now, so `updated_at`/`pid`/`host` always reflect this process
- * ([/decisions/ad-122.md](/decisions/ad-122.md)).
+ * why: `pid`/`host` are forensic — which process last touched this — not evidence of liveness, which this
+ * harness's one-shot hook processes can never provide ([/decisions/ad-122.md](/decisions/ad-122.md)). The rest
+ * of the owner is restamped on every write because this session wrote just now, which is the fact worth keeping.
  */
 export function patchHandoffSession(
   root: string,
@@ -89,15 +89,27 @@ export function listHandoffSessionFiles(root: string): HandoffSessionFile[] {
   return readAllSessionFiles(root).map((entry) => entry.file);
 }
 
+function mostRecent(files: readonly HandoffSessionFile[]): HandoffSessionFile | null {
+  if (files.length === 0) {
+    return null;
+  }
+  return files.reduce((latest, file) => (file.owner.updated_at > latest.owner.updated_at ? file : latest));
+}
+
+type LivenessCheck = (provider: string, sessionKey: string) => boolean;
+
+function defaultLiveness(root: string): LivenessCheck {
+  return (provider, sessionKey) => isSessionLive(root, provider, sessionKey);
+}
+
 export type PredecessorOptions = {
-  thisHost?: string;
-  probe?: ProcessProbe;
+  isLive?: LivenessCheck;
 };
 
 /**
- * The most-recently-updated *other* session of this provider whose process is confirmed gone — a legitimate
- * handoff. A live neighbour, however recent, is never a candidate: that is the one property this whole file
- * exists to guarantee ([/decisions/ad-122.md](/decisions/ad-122.md)).
+ * why: the most-recently-updated *other* session of this provider whose conversation is confirmed not live is
+ * a legitimate handoff. A live neighbour, however recent, is never a candidate — that is the one property this
+ * whole file exists to guarantee ([/decisions/ad-122.md](/decisions/ad-122.md)).
  */
 export function findDeadPredecessor(
   root: string,
@@ -105,62 +117,59 @@ export function findDeadPredecessor(
   sessionKey: string,
   options: PredecessorOptions = {},
 ): HandoffSessionFile | null {
+  const isLive = options.isLive ?? defaultLiveness(root);
   const candidates = readAllSessionFiles(root)
     .map((entry) => entry.file)
     .filter((file) => file.owner.provider === provider && file.owner.session_key !== sessionKey)
-    .filter((file) => !isProcessAlive(file.owner.pid, file.owner.host, options.thisHost, options.probe));
-  if (candidates.length === 0) {
-    return null;
-  }
-  return candidates.reduce((latest, file) =>
-    file.owner.updated_at > latest.owner.updated_at ? file : latest,
-  );
+    .filter((file) => !isLive(file.owner.provider, file.owner.session_key));
+  return mostRecent(candidates);
 }
 
-/** The most-recently-updated session file for a *different* provider, regardless of liveness — session-start
- * cross-tool visibility ([/decisions/ad-039.md](/decisions/ad-039.md) precedent: informational, not continuity). */
+/** The most-recently-updated session file for a *given* provider, regardless of liveness — used both for the
+ * requesting provider's own foreign-slice lookups and for the operator's diagnostic view
+ * ([/decisions/ad-039.md](/decisions/ad-039.md) precedent: informational, not continuity). */
 export function latestSessionForProvider(root: string, provider: string): HandoffSessionFile | null {
   const candidates = readAllSessionFiles(root)
     .map((entry) => entry.file)
     .filter((file) => file.owner.provider === provider);
-  if (candidates.length === 0) {
-    return null;
-  }
-  return candidates.reduce((latest, file) =>
-    file.owner.updated_at > latest.owner.updated_at ? file : latest,
-  );
+  return mostRecent(candidates);
 }
 
 export type PruneOptions = {
   now?: number;
   staleMs?: number;
-  thisHost?: string;
-  probe?: ProcessProbe;
+  isLive?: LivenessCheck;
 };
 
 const HANDOFF_SESSION_STALE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * why bounded rather than immediate: a dead session's file is exactly what the *next* session inherits from.
- * Deleting it the moment its owner exits would remove the handoff before anyone reads it. Deleting it never
- * would grow the directory forever on a long-lived project. Seven days is long enough for a same-week restart
- * to still inherit, and bounded enough that it does not accumulate without limit.
+ * why: a not-live session's file is exactly what the *next* session inherits from, so deleting it the moment
+ * its conversation goes quiet would remove the handoff before anyone reads it — and never deleting it would
+ * grow the directory forever. Seven days is long enough for a same-week restart to still inherit, and bounded
+ * enough that it does not accumulate without limit. The seal sidecar is removed alongside the session file.
  */
 export function pruneDeadHandoffSessions(root: string, options: PruneOptions = {}): number {
   const now = options.now ?? Date.now();
   const staleMs = options.staleMs ?? HANDOFF_SESSION_STALE_MS;
+  const isLive = options.isLive ?? defaultLiveness(root);
   let pruned = 0;
   for (const entry of readAllSessionFiles(root)) {
     const age = now - Date.parse(entry.file.owner.updated_at);
     if (Number.isNaN(age) || age < staleMs) {
       continue;
     }
-    if (isProcessAlive(entry.file.owner.pid, entry.file.owner.host, options.thisHost, options.probe)) {
+    if (isLive(entry.file.owner.provider, entry.file.owner.session_key)) {
       continue;
     }
     try {
       unlinkSync(entry.path);
       pruned += 1;
+    } catch {
+      continue;
+    }
+    try {
+      unlinkSync(sealPath(entry.path));
     } catch {}
   }
   return pruned;

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import {
   findDeadPredecessor,
+  handoffSessionPath,
   latestSessionForProvider,
   patchHandoffSession,
   pruneDeadHandoffSessions,
@@ -15,35 +16,17 @@ function tempRoot(): string {
   return mkdtempSync(join(tmpdir(), "tlc-handoff-session-store-"));
 }
 
-function throwing(code: string): (pid: number) => void {
-  return () => {
-    const error = new Error(code) as NodeJS.ErrnoException;
-    error.code = code;
-    throw error;
-  };
-}
+const NOT_LIVE = () => false;
+const LIVE = () => true;
 
-const ALIVE = () => undefined;
-const DEAD = throwing("ESRCH");
-
-/** Rewrites a session file's owner in place, bypassing `patchHandoffSession`'s own restamp-on-write —
- * the only way to construct a fixture with a specific, chosen `updated_at`/`pid` after the fact. */
-async function writeOwnerFields(
-  root: string,
-  sessionKey: string,
-  fields: Partial<{ pid: number; updatedAt: string }>,
-): Promise<void> {
-  const { handoffSessionPath } = await import("../handoff.session-store.ts");
+/** Rewrites a session file's owner `updated_at` in place, bypassing `patchHandoffSession`'s own
+ * restamp-on-write — the only way to construct a fixture with a specific, chosen timestamp after the fact. */
+async function writeUpdatedAt(root: string, sessionKey: string, updatedAt: string): Promise<void> {
   const { readFileSync, writeFileSync } = await import("node:fs");
   const path = handoffSessionPath(root, sessionKey);
   const file = JSON.parse(readFileSync(path, "utf8"));
-  if (fields.pid !== undefined) {
-    file.owner.pid = fields.pid;
-  }
-  if (fields.updatedAt !== undefined) {
-    file.owner.updated_at = fields.updatedAt;
-    file.slice.updated_at = fields.updatedAt;
-  }
+  file.owner.updated_at = updatedAt;
+  file.slice.updated_at = updatedAt;
   writeFileSync(path, JSON.stringify(file));
 }
 
@@ -99,11 +82,11 @@ describe("findDeadPredecessor", () => {
     }
   });
 
-  test("a dead candidate of the same provider is returned", async () => {
+  test("a not-live candidate of the same provider is returned", async () => {
     const root = tempRoot();
     try {
       await patchHandoffSession(root, "provider-a", "session-old", { blockers: "left this" });
-      const found = findDeadPredecessor(root, "provider-a", "session-new", { probe: DEAD });
+      const found = findDeadPredecessor(root, "provider-a", "session-new", { isLive: NOT_LIVE });
       assert.equal(found?.slice.blockers, "left this");
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -114,19 +97,16 @@ describe("findDeadPredecessor", () => {
     const root = tempRoot();
     try {
       await patchHandoffSession(root, "provider-a", "session-old", { blockers: "still running" });
-      const found = findDeadPredecessor(root, "provider-a", "session-new", { probe: ALIVE });
+      const found = findDeadPredecessor(root, "provider-a", "session-new", { isLive: LIVE });
       assert.equal(found, null);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  /**
-   * AD-122 — the gap a discrimination sensor found in the first version of this fix: picking *a* dead
-   * predecessor is not enough if two exist, because the wrong one silently wins whenever "first" and "most
-   * recent" happen to differ.
-   */
-  test("AD-122 among two dead candidates, the most recently updated one wins", async () => {
+  /** why: a discrimination sensor found that picking *a* not-live predecessor is not enough if two exist,
+   * because the wrong one silently wins whenever "first" and "most recent" happen to differ. */
+  test("AD-122 among two not-live candidates, the most recently updated one wins", async () => {
     const root = tempRoot();
     try {
       // why: names invert alphabetical vs chronological order, so a bug that picks the first directory entry
@@ -134,14 +114,14 @@ describe("findDeadPredecessor", () => {
       await patchHandoffSession(root, "provider-a", "session-aaa-stale", {
         blockers: "stale, written first",
       });
-      await writeOwnerFields(root, "session-aaa-stale", { updatedAt: "2026-06-01T00:00:00.000Z" });
+      await writeUpdatedAt(root, "session-aaa-stale", "2026-06-01T00:00:00.000Z");
 
       await patchHandoffSession(root, "provider-a", "session-zzz-fresh", {
         blockers: "fresh, written second",
       });
-      await writeOwnerFields(root, "session-zzz-fresh", { updatedAt: "2026-06-02T00:00:00.000Z" });
+      await writeUpdatedAt(root, "session-zzz-fresh", "2026-06-02T00:00:00.000Z");
 
-      const found = findDeadPredecessor(root, "provider-a", "session-requesting", { probe: DEAD });
+      const found = findDeadPredecessor(root, "provider-a", "session-requesting", { isLive: NOT_LIVE });
       assert.equal(found?.owner.session_key, "session-zzz-fresh");
       assert.equal(found?.slice.blockers, "fresh, written second");
     } finally {
@@ -153,19 +133,47 @@ describe("findDeadPredecessor", () => {
     const root = tempRoot();
     try {
       await patchHandoffSession(root, "provider-a", "session-1", { blockers: "mine" });
-      const found = findDeadPredecessor(root, "provider-a", "session-1", { probe: DEAD });
+      const found = findDeadPredecessor(root, "provider-a", "session-1", { isLive: NOT_LIVE });
       assert.equal(found, null);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  test("excludes a dead session of a different provider", async () => {
+  test("excludes a not-live session of a different provider", async () => {
     const root = tempRoot();
     try {
       await patchHandoffSession(root, "provider-b", "session-1", { blockers: "not yours" });
-      const found = findDeadPredecessor(root, "provider-a", "session-new", { probe: DEAD });
+      const found = findDeadPredecessor(root, "provider-a", "session-new", { isLive: NOT_LIVE });
       assert.equal(found, null);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** why this test exists at all: every other case above injects `isLive` — this is the one that proves the
+   * *default* wiring (real presence, no override) also tells a genuinely-live session apart from a quiet one,
+   * which is the exact property AD-122 exists to guarantee end to end. */
+  test("AD-122 the real, non-injected default correctly reads a live presence record", async () => {
+    const root = tempRoot();
+    const { register } = await import("../../presence/presence.service.ts");
+    try {
+      register(root, { provider: "provider-a", session: "old", pid: 4242, branch: "main" });
+      await patchHandoffSession(root, "provider-a", "provider-a-old", { blockers: "still in conversation" });
+
+      const found = findDeadPredecessor(root, "provider-a", "provider-a-new");
+      assert.equal(found, null, "a real, freshly-heartbeated presence record must not read as dead");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("AD-122 the real, non-injected default inherits once no presence record exists", async () => {
+    const root = tempRoot();
+    try {
+      await patchHandoffSession(root, "provider-a", "provider-a-old", { blockers: "conversation ended" });
+      const found = findDeadPredecessor(root, "provider-a", "provider-a-new");
+      assert.equal(found?.slice.blockers, "conversation ended");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -177,9 +185,9 @@ describe("latestSessionForProvider", () => {
     const root = tempRoot();
     try {
       await patchHandoffSession(root, "provider-a", "session-1", { next_action: "first" });
-      await writeOwnerFields(root, "session-1", { updatedAt: "2026-01-01T00:00:00.000Z" });
+      await writeUpdatedAt(root, "session-1", "2026-01-01T00:00:00.000Z");
       await patchHandoffSession(root, "provider-a", "session-2", { next_action: "second" });
-      await writeOwnerFields(root, "session-2", { updatedAt: "2026-06-01T00:00:00.000Z" });
+      await writeUpdatedAt(root, "session-2", "2026-06-01T00:00:00.000Z");
 
       const latest = latestSessionForProvider(root, "provider-a");
       assert.equal(latest?.slice.next_action, "second");
@@ -201,16 +209,16 @@ describe("latestSessionForProvider", () => {
 describe("pruneDeadHandoffSessions", () => {
   const FAR_FUTURE = Date.parse("2026-01-08T00:00:00.000Z");
 
-  test("deletes a confirmed-dead session past the retention window", async () => {
+  test("deletes a not-live session past the retention window", async () => {
     const root = tempRoot();
     try {
       await patchHandoffSession(root, "provider-a", "session-old", { next_action: "gone" });
-      await writeOwnerFields(root, "session-old", { updatedAt: "2026-01-01T00:00:00.000Z" });
+      await writeUpdatedAt(root, "session-old", "2026-01-01T00:00:00.000Z");
 
       const pruned = pruneDeadHandoffSessions(root, {
         now: FAR_FUTURE,
         staleMs: 24 * 60 * 60 * 1000,
-        probe: DEAD,
+        isLive: NOT_LIVE,
       });
       assert.equal(pruned, 1);
       assert.equal(readHandoffSessionFile(root, "session-old"), null);
@@ -219,14 +227,14 @@ describe("pruneDeadHandoffSessions", () => {
     }
   });
 
-  test("a confirmed-dead session inside the retention window survives", async () => {
+  test("a not-live session inside the retention window survives", async () => {
     const root = tempRoot();
     try {
       await patchHandoffSession(root, "provider-a", "session-recent", { next_action: "still fresh" });
       const pruned = pruneDeadHandoffSessions(root, {
         now: Date.now(),
         staleMs: 24 * 60 * 60 * 1000,
-        probe: DEAD,
+        isLive: NOT_LIVE,
       });
       assert.equal(pruned, 0);
       assert.notEqual(readHandoffSessionFile(root, "session-recent"), null);
@@ -236,18 +244,18 @@ describe("pruneDeadHandoffSessions", () => {
   });
 
   /** AD-122 — the one property this function must never violate: age alone is never sufficient to delete. */
-  test("a still-alive session survives no matter how old, and is never a candidate for deletion", async () => {
+  test("a live session survives no matter how old, and is never a candidate for deletion", async () => {
     const root = tempRoot();
     try {
       await patchHandoffSession(root, "provider-a", "session-ancient-but-alive", {
         next_action: "still here",
       });
-      await writeOwnerFields(root, "session-ancient-but-alive", { updatedAt: "2020-01-01T00:00:00.000Z" });
+      await writeUpdatedAt(root, "session-ancient-but-alive", "2020-01-01T00:00:00.000Z");
 
       const pruned = pruneDeadHandoffSessions(root, {
         now: FAR_FUTURE,
         staleMs: 24 * 60 * 60 * 1000,
-        probe: ALIVE,
+        isLive: LIVE,
       });
       assert.equal(pruned, 0);
       assert.notEqual(readHandoffSessionFile(root, "session-ancient-but-alive"), null);
@@ -256,35 +264,28 @@ describe("pruneDeadHandoffSessions", () => {
     }
   });
 
-  test("prunes only the dead-and-stale files among a mix, and counts exactly them", async () => {
+  test("prunes only the not-live-and-stale files among a mix, and counts exactly them", async () => {
     const root = tempRoot();
-    const ALIVE_PID = 111;
-    const DEAD_PID = 222;
     try {
       await patchHandoffSession(root, "provider-a", "dead-stale", { next_action: "x" });
-      await writeOwnerFields(root, "dead-stale", { updatedAt: "2026-01-01T00:00:00.000Z", pid: DEAD_PID });
+      await writeUpdatedAt(root, "dead-stale", "2026-01-01T00:00:00.000Z");
 
       await patchHandoffSession(root, "provider-a", "dead-fresh", { next_action: "y" });
-      await writeOwnerFields(root, "dead-fresh", { updatedAt: "2026-01-07T12:00:00.000Z", pid: DEAD_PID });
+      await writeUpdatedAt(root, "dead-fresh", "2026-01-07T12:00:00.000Z");
 
       await patchHandoffSession(root, "provider-a", "alive-stale", { next_action: "z" });
-      await writeOwnerFields(root, "alive-stale", { updatedAt: "2026-01-01T00:00:00.000Z", pid: ALIVE_PID });
+      await writeUpdatedAt(root, "alive-stale", "2026-01-01T00:00:00.000Z");
 
       const pruned = pruneDeadHandoffSessions(root, {
         now: FAR_FUTURE,
         staleMs: 24 * 60 * 60 * 1000,
-        probe: (pid) => {
-          if (pid === ALIVE_PID) {
-            return;
-          }
-          throw Object.assign(new Error("ESRCH"), { code: "ESRCH" });
-        },
+        isLive: (_provider, sessionKey) => sessionKey === "alive-stale",
       });
 
       assert.equal(
         pruned,
         1,
-        "only dead-stale qualifies: dead-fresh is inside the window, alive-stale is alive",
+        "only dead-stale qualifies: dead-fresh is inside the window, alive-stale is live",
       );
       assert.equal(readHandoffSessionFile(root, "dead-stale"), null);
       assert.notEqual(readHandoffSessionFile(root, "dead-fresh"), null);
@@ -298,6 +299,25 @@ describe("pruneDeadHandoffSessions", () => {
     const root = tempRoot();
     try {
       assert.equal(pruneDeadHandoffSessions(root), 0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** AD-122/F3 — an orphaned seal sidecar is otherwise never cleaned up. */
+  test("prunes the seal sidecar alongside a deleted session file", async () => {
+    const root = tempRoot();
+    try {
+      await patchHandoffSession(root, "provider-a", "session-old", { next_action: "gone" });
+      await writeUpdatedAt(root, "session-old", "2026-01-01T00:00:00.000Z");
+
+      const { sealPath } = await import("../../integrity/state-seal.ts");
+      const { existsSync } = await import("node:fs");
+      const path = handoffSessionPath(root, "session-old");
+      assert.equal(existsSync(sealPath(path)), true, "the write path already seals on every patch");
+
+      pruneDeadHandoffSessions(root, { now: FAR_FUTURE, staleMs: 24 * 60 * 60 * 1000, isLive: NOT_LIVE });
+      assert.equal(existsSync(sealPath(path)), false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

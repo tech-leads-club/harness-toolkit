@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
-import { hostname, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
@@ -16,27 +16,16 @@ function tempRoot(): string {
   return mkdtempSync(join(tmpdir(), "tlc-handoff-service-"));
 }
 
-/** A pid this high is not a real process on any platform this suite runs on — the deterministic "dead" fixture
- * for tests that do not need a genuinely spawned process (that guarantee is proven separately, with a real
- * subprocess, in `handoff.concurrency.test.ts`). */
-const DEAD_PID = 999_999_999;
-
-async function writeDeadPredecessor(
-  root: string,
-  provider: string,
-  sessionKey: string,
-  slice: Record<string, unknown>,
-): Promise<void> {
-  await patchHandoffSession(root, provider, sessionKey, slice);
-  // why: overwrite only the owner, after the real write, so the fixture still exercises the real write path
-  // and only the liveness-relevant fact is fabricated.
-  const { handoffSessionPath } = await import("../handoff.session-store.ts");
-  const { readFileSync, writeFileSync } = await import("node:fs");
-  const path = handoffSessionPath(root, sessionKey);
-  const file = JSON.parse(readFileSync(path, "utf8"));
-  file.owner.pid = DEAD_PID;
-  file.owner.host = hostname();
-  writeFileSync(path, JSON.stringify(file));
+/**
+ * why no fabrication for "not live": `isSessionLive`'s own reading is "not live" whenever no presence record
+ * exists at all, which is the ordinary state for a session that simply ended — nothing needs simulating for
+ * that case. Only "live" needs a real presence record, since that is the state a quiet session does not have
+ * ([/decisions/ad-122.md](/decisions/ad-122.md)).
+ */
+async function markLive(root: string, provider: string, sessionKey: string): Promise<void> {
+  const { register } = await import("../../presence/presence.service.ts");
+  const session = sessionKey.startsWith(`${provider}-`) ? sessionKey.slice(provider.length + 1) : sessionKey;
+  register(root, { provider, session, pid: process.pid, branch: "main" });
 }
 
 test("readHandoff merges the provider's own slice over the shared fields", async () => {
@@ -65,13 +54,21 @@ test("readHandoff for a session with no prior slice returns shared fields withou
   }
 });
 
-test("AD-122 readHandoff never surfaces a live session's fields, even under the same provider", async () => {
+/**
+ * why a real presence record and not an injected stub: this is the exact case a discrimination sensor found
+ * unreachable in the first version of this fix — a "live" fixture modeled as a process that never exits, which
+ * this harness's one-shot hook processes can never be. A real, freshly-heartbeated presence record is the one
+ * fixture that cannot pass by accident ([/decisions/ad-122.md](/decisions/ad-122.md)).
+ */
+test("AD-122 readHandoff never surfaces a genuinely live session's fields, even under the same provider", async () => {
   const root = tempRoot();
   try {
     await patchHandoffSession(root, "provider-a", "session-live", {
       blockers: "session-live is stuck",
       next_action: "do not surface",
     });
+    await markLive(root, "provider-a", "session-live");
+
     const resolved = readHandoff(root, "provider-a", "session-new");
     assert.equal(resolved.blockers, undefined);
     assert.equal(resolved.next_action, undefined);
@@ -80,10 +77,10 @@ test("AD-122 readHandoff never surfaces a live session's fields, even under the 
   }
 });
 
-test("AD-122 readHandoff inherits a confirmed-dead predecessor's fields under the same provider", async () => {
+test("AD-122 readHandoff inherits a not-live predecessor's fields under the same provider", async () => {
   const root = tempRoot();
   try {
-    await writeDeadPredecessor(root, "provider-a", "session-dead", {
+    await patchHandoffSession(root, "provider-a", "session-dead", {
       blockers: "session-dead left this",
       next_action: "pick this up",
     });
@@ -95,10 +92,10 @@ test("AD-122 readHandoff inherits a confirmed-dead predecessor's fields under th
   }
 });
 
-test("AD-122 a dead predecessor of a different provider is never inherited", async () => {
+test("AD-122 a not-live predecessor of a different provider is never inherited", async () => {
   const root = tempRoot();
   try {
-    await writeDeadPredecessor(root, "provider-b", "session-dead", { blockers: "provider-b's own problem" });
+    await patchHandoffSession(root, "provider-b", "session-dead", { blockers: "provider-b's own problem" });
     const resolved = readHandoff(root, "provider-a", "session-new");
     assert.equal(resolved.blockers, undefined);
   } finally {
@@ -109,10 +106,31 @@ test("AD-122 a dead predecessor of a different provider is never inherited", asy
 test("AD-122 the session's own field always wins over an inherited predecessor's", async () => {
   const root = tempRoot();
   try {
-    await writeDeadPredecessor(root, "provider-a", "session-dead", { next_action: "stale" });
+    await patchHandoffSession(root, "provider-a", "session-dead", { next_action: "stale" });
     await patchHandoffSession(root, "provider-a", "session-new", { next_action: "fresh" });
     const resolved = readHandoff(root, "provider-a", "session-new");
     assert.equal(resolved.next_action, "fresh");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/** AD-122/F2 — a predecessor whose own file diverged outside a harness write is never inherited. */
+test("AD-122 readHandoff withholds a tampered predecessor's slice", async () => {
+  const root = tempRoot();
+  try {
+    await patchHandoffSession(root, "provider-a", "session-dead", {
+      blockers: "session-dead left this",
+    });
+    const { handoffSessionPath } = await import("../handoff.session-store.ts");
+    const { readFileSync, writeFileSync } = await import("node:fs");
+    const path = handoffSessionPath(root, "session-dead");
+    const file = JSON.parse(readFileSync(path, "utf8"));
+    file.slice.blockers = "INJECTED BY A NON-HARNESS WRITER";
+    writeFileSync(path, JSON.stringify(file));
+
+    const resolved = readHandoff(root, "provider-a", "session-new");
+    assert.equal(resolved.blockers, undefined, "a diverged predecessor is withheld, not inherited");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -164,6 +182,27 @@ test("readForeignSlices omits a foreign provider that set neither next_action no
     await patchHandoff(root, "provider-b", "session-1", { slice: { session_narrative: "quiet session" } });
     const foreign = readForeignSlices(root, "provider-a");
     assert.equal(foreign.length, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/** AD-122/F2 — a foreign slice whose own file diverged outside a harness write is never surfaced. */
+test("AD-122 readForeignSlices withholds a tampered foreign session's slice", async () => {
+  const root = tempRoot();
+  try {
+    await patchHandoff(root, "provider-b", "session-1", {
+      slice: { next_action: "finish migration", blockers: "waiting on ci" },
+    });
+    const { handoffSessionPath } = await import("../handoff.session-store.ts");
+    const { readFileSync, writeFileSync } = await import("node:fs");
+    const path = handoffSessionPath(root, "session-1");
+    const file = JSON.parse(readFileSync(path, "utf8"));
+    file.slice.next_action = "INJECTED BY A NON-HARNESS WRITER";
+    writeFileSync(path, JSON.stringify(file));
+
+    const foreign = readForeignSlices(root, "provider-a");
+    assert.equal(foreign.length, 0, "a diverged foreign file is withheld, not surfaced");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
