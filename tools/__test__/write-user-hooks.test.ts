@@ -6,8 +6,10 @@ import { afterEach, describe, test } from "node:test";
 import type { CursorHookDef, CursorHooksDocument } from "../../bin/write-user-hooks.d.mts";
 import {
   applyCursorWiring,
+  applyOpencodePluginWiring,
   applyProviderWiring,
   isProviderHomePresent,
+  providerHomeDir,
   renderCursorHooksDocument,
 } from "../../bin/write-user-hooks.mjs";
 import type { ProviderWiring, WiringEntry } from "../../src/contracts/index.ts";
@@ -250,10 +252,12 @@ describe("applyProviderWiring", () => {
   // It has to fail loudly at runtime instead of falling through to whichever writer happens to be last.
   test("refuses a wiring kind it has no writer for, and writes nothing", () => {
     const root = newRoot();
-    const wiring = { ...cursorWiringFixture(root), kind: "opencode-plugin" } as unknown as ProviderWiring;
+    // why not "opencode-plugin" as this stand-in any more: that kind now has a writer, so it would be written
+    // rather than refused. The subject here is the default branch, which needs a kind no writer handles.
+    const wiring = { ...cursorWiringFixture(root), kind: "future-format-json" } as unknown as ProviderWiring;
     const result = applyProviderWiring(wiring);
     assert.equal(result.status, "failed");
-    assert.ok("reason" in result && result.reason.includes("opencode-plugin"));
+    assert.ok("reason" in result && result.reason.includes("future-format-json"));
     assert.equal(existsSync(wiring.target), false, "a refused kind must not write the target");
   });
 
@@ -324,5 +328,114 @@ describe("provider dispatch loop (skip-when-absent, independent-failure semantic
     assert.equal(nth(results, 1).status, "failed");
     assert.equal(anyFailed, true);
     assert.ok(existsSync(cursor.target));
+  });
+});
+
+function opencodeWiringFixture(root: string, kind: "opencode-plugin" | "opencode-plugin-ns"): ProviderWiring {
+  const launcherPath = join(root, "harness", "bin", "tlc-exec.mjs");
+  const plugins = join(root, ".config", "opencode", "plugins");
+  const provider = kind === "opencode-plugin" ? "opencode-legacy" : "opencode-namespaced";
+  const target =
+    kind === "opencode-plugin" ? join(plugins, "tlc-harness.js") : join(plugins, "tlc-harness", "index.ts");
+  return {
+    target,
+    kind,
+    strategy: "replace",
+    entries: [
+      {
+        hookEvent: "tool.execute.before",
+        handler: "tool-before",
+        command: "node",
+        args: [launcherPath, "--provider", provider, "tool-before"],
+        timeoutSeconds: 10,
+      },
+    ],
+  };
+}
+
+describe("applyOpencodePluginWiring", () => {
+  test("writes the bridge for both generations, creating the plugin directory", () => {
+    const root = newRoot();
+    for (const kind of ["opencode-plugin", "opencode-plugin-ns"] as const) {
+      const wiring = opencodeWiringFixture(root, kind);
+      const result = applyOpencodePluginWiring(wiring);
+      assert.equal(result.status, "written", kind);
+      assert.ok(readFileSync(wiring.target, "utf8").includes("@tlc-harness managed"), kind);
+    }
+  });
+
+  test("rewriting its own bridge with no change reports unchanged", () => {
+    const root = newRoot();
+    const wiring = opencodeWiringFixture(root, "opencode-plugin");
+    applyOpencodePluginWiring(wiring);
+    assert.equal(applyOpencodePluginWiring(wiring).status, "unchanged");
+  });
+
+  // invariant: the marker answers "is this ours to replace". Absence means a human wrote it.
+  test("refuses to overwrite a file it did not write, and leaves it byte-identical", () => {
+    const root = newRoot();
+    const wiring = opencodeWiringFixture(root, "opencode-plugin");
+    mkdirSync(dirname(wiring.target), { recursive: true });
+    const handwritten = "export const MyPlugin = async () => ({});\n";
+    writeFileSync(wiring.target, handwritten);
+
+    const result = applyOpencodePluginWiring(wiring);
+    assert.equal(result.status, "refused");
+    assert.ok("reason" in result && result.reason.includes("--force"));
+    assert.equal(readFileSync(wiring.target, "utf8"), handwritten);
+  });
+
+  test("--force overwrites the hand-written file", () => {
+    const root = newRoot();
+    const wiring = opencodeWiringFixture(root, "opencode-plugin");
+    mkdirSync(dirname(wiring.target), { recursive: true });
+    writeFileSync(wiring.target, "export const MyPlugin = async () => ({});\n");
+
+    assert.equal(applyOpencodePluginWiring(wiring, { force: true }).status, "written");
+    assert.ok(readFileSync(wiring.target, "utf8").includes("@tlc-harness managed"));
+  });
+
+  test("a stale bridge of ours is rewritten rather than refused", () => {
+    const root = newRoot();
+    const wiring = opencodeWiringFixture(root, "opencode-plugin");
+    mkdirSync(dirname(wiring.target), { recursive: true });
+    writeFileSync(wiring.target, "// @tlc-harness managed — an older shape\n");
+
+    assert.equal(applyOpencodePluginWiring(wiring).status, "written");
+    assert.ok(readFileSync(wiring.target, "utf8").includes("HANDLER_BY_HOOK"));
+  });
+
+  test("applyProviderWiring dispatches both opencode kinds to this writer", () => {
+    const root = newRoot();
+    for (const kind of ["opencode-plugin", "opencode-plugin-ns"] as const) {
+      const wiring = opencodeWiringFixture(root, kind);
+      assert.equal(applyProviderWiring(wiring).status, "written", kind);
+    }
+  });
+});
+
+/**
+ * hazard: the namespaced plugin lives in a directory named after the plugin, which only this writer creates. If
+ * "is the host installed" asked about that directory, the answer would be "no" on every machine for ever.
+ */
+describe("providerHomeDir", () => {
+  test("the namespaced opencode home is the plugins directory, not the plugin's own", () => {
+    const root = newRoot();
+    const wiring = opencodeWiringFixture(root, "opencode-plugin-ns");
+    assert.equal(providerHomeDir(wiring), dirname(dirname(wiring.target)));
+
+    mkdirSync(providerHomeDir(wiring), { recursive: true });
+    assert.equal(
+      isProviderHomePresent(wiring),
+      true,
+      "opencode is installed once its plugins directory exists",
+    );
+  });
+
+  test("every other kind still answers with the target's own directory", () => {
+    const root = newRoot();
+    for (const wiring of [cursorWiringFixture(root), opencodeWiringFixture(root, "opencode-plugin")]) {
+      assert.equal(providerHomeDir(wiring), dirname(wiring.target));
+    }
   });
 });

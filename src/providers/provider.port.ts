@@ -19,7 +19,11 @@ import type {
  * why here and not in `src/contracts`: every member is a vendor identifier, and `check-boundaries` keeps those out
  * of core. This is the innermost layer allowed to name a host.
  */
-export type ProviderWiringKind = "claude-settings-json" | "cursor-hooks-json";
+export type ProviderWiringKind =
+  | "claude-settings-json"
+  | "cursor-hooks-json"
+  | "opencode-plugin"
+  | "opencode-plugin-ns";
 
 /** Core never imports this type — it receives a HarnessEvent and ProviderCapabilities as plain arguments instead. */
 export type ProviderPort = {

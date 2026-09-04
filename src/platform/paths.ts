@@ -149,6 +149,21 @@ export function cursorConfigDir(): string {
 }
 
 /**
+ * why a plugins directory and not a config file: opencode is wired by a plugin module this harness emits, and its
+ * plugin reference names `~/.config/opencode/plugins/` as the global location (read 2026-09-04). The env override
+ * is this harness's own, matching the two above — opencode documents no environment of its own
+ * ([/decisions/ad-124.md](/decisions/ad-124.md)).
+ */
+export function opencodeConfigDir(): string {
+  const custom = process.env.OPENCODE_CONFIG_DIR?.trim();
+  if (custom && custom.length > 0) {
+    return custom;
+  }
+  const xdg = process.env.XDG_CONFIG_HOME?.trim();
+  return join(xdg && xdg.length > 0 ? xdg : join(homedir(), ".config"), "opencode");
+}
+
+/**
  * The user-level hook documents, in the order the shim reads them.
  *
  * why: the project shim is told a handler and nothing else — it does not know which provider invoked it. So it

@@ -1,5 +1,6 @@
 import { claudeProvider } from "./claude/index.ts";
 import { cursorProvider } from "./cursor/index.ts";
+import { opencodeLegacyProvider, opencodeNamespacedProvider } from "./opencode/index.ts";
 import type { ProviderPort } from "./provider.port.ts";
 
 export type ResolveResult = {
@@ -8,8 +9,19 @@ export type ResolveResult = {
   matchedNames: readonly string[];
 };
 
-// invariant: detection order is registry order — deterministic, never re-sorted.
-export const providers: ProviderPort[] = [cursorProvider, claudeProvider];
+/**
+ * invariant: detection order is registry order — deterministic, never re-sorted.
+ *
+ * why the two opencode adapters can sit anywhere in it: both match on a marker their own bridge stamps, and the
+ * generation stamp makes them mutually exclusive, so neither can shadow the other or claim a foreign payload
+ * ([/decisions/ad-124.md](/decisions/ad-124.md)). Order matters only for the hosts that share a payload shape.
+ */
+export const providers: ProviderPort[] = [
+  cursorProvider,
+  opencodeLegacyProvider,
+  opencodeNamespacedProvider,
+  claudeProvider,
+];
 
 export function resolveFromRegistry(raw: unknown, registry: readonly ProviderPort[]): ResolveResult {
   const matched = registry.filter((provider) => provider.detect(raw));

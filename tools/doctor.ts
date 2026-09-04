@@ -1,10 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { homedir, platform as osPlatform } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, join } from "node:path";
 import { runtimePathKind, runtimeVersion } from "../bin/tlc-cli.ts";
 import { findBunOnPath, writeRuntimeCache } from "../bin/tlc-exec.mjs";
-import { isCursorWired } from "../bin/write-user-hooks.mjs";
+import { isCursorWired, providerHomeDir } from "../bin/write-user-hooks.mjs";
 import type { ProviderWiring } from "../src/contracts/index.ts";
 import { coreFacade } from "../src/core/index.ts";
 import { emitJson, takeJsonFlag } from "../src/platform/cli-output.ts";
@@ -25,6 +25,7 @@ import {
   type WiringProblem,
 } from "../src/providers/cursor/cursor.wiring.ts";
 import { providers } from "../src/providers/index.ts";
+import { isOpencodeManaged, renderOpencodePlugin } from "../src/providers/opencode/opencode.wiring.ts";
 import type { ProviderPort, ProviderWiringKind } from "../src/providers/provider.port.ts";
 
 export type CheckLevel = "ok" | "warn" | "fail";
@@ -382,7 +383,10 @@ function launcherPathOf(wiring: ProviderWiring): string {
  * is held closed.
  */
 export function providerWiringStatus(wiring: ProviderWiring<ProviderWiringKind>): ProviderWiringStatus {
-  if (!existsSync(dirname(wiring.target))) {
+  // why not `dirname` directly: the namespaced opencode plugin's own directory is one this writer creates, so its
+  // absence says nothing about whether opencode is installed. `providerHomeDir` is the one definition of that
+  // question, shared with the writer so the two cannot drift.
+  if (!existsSync(providerHomeDir(wiring))) {
     return "not-installed";
   }
   switch (wiring.kind) {
@@ -397,6 +401,23 @@ export function providerWiringStatus(wiring: ProviderWiring<ProviderWiringKind>)
       const existingText = existsSync(wiring.target) ? readFileSync(wiring.target, "utf8") : null;
       const result = mergeClaudeSettings(existingText, wiring.entries);
       return result.ok && !result.changed ? "wired" : "detected-but-unwired";
+    }
+    /**
+     * why byte-equality and not marker presence: the bridge is generated wholesale from the wiring, so the only
+     * file that behaves is the one this build would write. A stale bridge still carries the marker and still
+     * names a launcher — and would report `wired` while calling a handler set that has since changed
+     * ([/decisions/ad-032.md](/decisions/ad-032.md) is the same failure on the Cursor branch).
+     */
+    case "opencode-plugin":
+    case "opencode-plugin-ns": {
+      if (!existsSync(wiring.target)) {
+        return "detected-but-unwired";
+      }
+      const existing = readFileSync(wiring.target, "utf8");
+      if (!isOpencodeManaged(existing)) {
+        return "detected-but-unwired";
+      }
+      return existing === renderOpencodePlugin(wiring) ? "wired" : "detected-but-unwired";
     }
     default:
       return unreachableWiringKind(wiring.kind);

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { applyClaudeWiring } from "../src/providers/claude/claude.wiring.ts";
+import { isOpencodeManaged, renderOpencodePlugin } from "../src/providers/opencode/opencode.wiring.ts";
 import { providers } from "../src/providers/index.ts";
 
 const CURSOR_MARKER = "tlc-exec.mjs";
@@ -59,6 +60,38 @@ export function applyCursorWiring(wiring, { force = false } = {}) {
 }
 
 /**
+ * The bridge opencode loads. Both generations are written the same way — a whole module, replaced wholesale —
+ * and differ only in the text `renderOpencodePlugin` produces for the kind.
+ *
+ * invariant: a file without the managed marker was written by a human, and is refused rather than overwritten.
+ * That is the same rule `applyCursorWiring` applies to a hooks file one function above, and it is the reason the
+ * marker is a comment the host ignores rather than a field in the module's exports.
+ */
+export function applyOpencodePluginWiring(wiring, { force = false } = {}) {
+  const targetPath = wiring.target;
+  const rendered = renderOpencodePlugin(wiring);
+  if (rendered === null) {
+    return { status: "failed", target: targetPath, reason: `no plugin renderer for kind "${wiring.kind}"` };
+  }
+  if (existsSync(targetPath) && !force) {
+    const existing = readFileSync(targetPath, "utf8");
+    if (!isOpencodeManaged(existing)) {
+      return {
+        status: "refused",
+        target: targetPath,
+        reason: `${targetPath} exists and was not written by the harness — rerun with --force to overwrite, or move it aside.`,
+      };
+    }
+    if (existing === rendered) {
+      return { status: "unchanged", target: targetPath };
+    }
+  }
+  mkdirSync(dirname(targetPath), { recursive: true });
+  writeFileSync(targetPath, rendered);
+  return { status: "written", target: targetPath };
+}
+
+/**
  * why it dispatches on `kind` and not on `strategy`: `strategy` answers replace-or-merge, which is not the same
  * question as which writer to call. A flat hooks JSON and an ES-module plugin are both `replace` and need
  * different writers, so a `strategy` branch would silently hand the second one to the first one's writer.
@@ -71,6 +104,9 @@ export function applyProviderWiring(wiring, { force = false } = {}) {
   switch (wiring.kind) {
     case "cursor-hooks-json":
       return applyCursorWiring(wiring, { force });
+    case "opencode-plugin":
+    case "opencode-plugin-ns":
+      return applyOpencodePluginWiring(wiring, { force });
     case "claude-settings-json": {
       const result = applyClaudeWiring(wiring.target, wiring.entries);
       if (!result.ok) {
@@ -87,8 +123,21 @@ export function applyProviderWiring(wiring, { force = false } = {}) {
   }
 }
 
+/**
+ * Whether the host this wiring belongs to is installed at all.
+ *
+ * hazard: the answer is the target's parent directory for every kind but one. The namespaced opencode plugin
+ * lives in a directory *named after the plugin*, which only this writer ever creates — so asking whether it
+ * exists would answer "host not installed" on every machine, for ever, and the wiring would never be written.
+ * For that kind the question is one level up: does opencode's plugins directory exist
+ * ([/decisions/ad-124.md](/decisions/ad-124.md)).
+ */
+export function providerHomeDir(wiring) {
+  return wiring.kind === "opencode-plugin-ns" ? dirname(dirname(wiring.target)) : dirname(wiring.target);
+}
+
 export function isProviderHomePresent(wiring) {
-  return existsSync(dirname(wiring.target));
+  return existsSync(providerHomeDir(wiring));
 }
 
 function report(result) {
@@ -125,7 +174,7 @@ export function main() {
   for (const provider of providers) {
     const wiring = provider.wiring({ launcherPath });
     if (!isProviderHomePresent(wiring)) {
-      console.log(`hooks: ${provider.name} not installed — skipping (${dirname(wiring.target)} not found)`);
+      console.log(`hooks: ${provider.name} not installed — skipping (${providerHomeDir(wiring)} not found)`);
       continue;
     }
     if (!report(applyProviderWiring(wiring, { force }))) {

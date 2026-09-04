@@ -7,7 +7,7 @@ import { sanitizeSegment } from "../../platform/sanitize.ts";
  * and identical across them ([/decisions/ad-124.md](/decisions/ad-124.md)), so a second parser would be two
  * copies of one fan-out drifting apart.
  */
-export const OPENCODE_PROVIDER_BY_API: Record<string, string> = {
+const OPENCODE_PROVIDER_BY_API: Record<string, string> = {
   legacy: "opencode-legacy",
   namespaced: "opencode-namespaced",
 };
@@ -145,9 +145,10 @@ function kindFor(hook: string, tool: string | undefined): HarnessEventKind | nul
       return "shell.before";
     /**
      * hazard: `permission.evaluate` is the ask channel, and a rule can only answer it if it knows what is being
-     * asked about. The documented payload carries `effect` and `message` and no tool, so a bridge that does not
-     * stamp `tool` leaves this unmapped rather than raising a `tool.before` no rule can match on
-     * ([/decisions/ad-124.md](/decisions/ad-124.md)). T8's namespaced bridge stamps it.
+     * asked about. The documented payload carries `sessionID`, `action`, `resources`, `effect` and `message` — no
+     * tool — so this stays unmapped rather than raising a `tool.before` no rule can match on
+     * ([/decisions/ad-124.md](/decisions/ad-124.md)). The namespaced bridge forwards `action` and `resources`
+     * verbatim; whether either resolves to a tool identity is undocumented, and one live session settles it.
      */
     case "permission.evaluate":
       return tool === undefined ? null : toolKind(tool, "before");

@@ -10,6 +10,11 @@ import { DEFAULTS } from "../../src/core/policy/policy.defaults.ts";
 import { executableOnPath, projectConfigPath } from "../../src/platform/paths.ts";
 import { mergeClaudeSettings } from "../../src/providers/claude/claude.wiring.ts";
 import { cursorWiring, formatWiringProblems } from "../../src/providers/cursor/cursor.wiring.ts";
+import {
+  opencodeLegacyWiring,
+  opencodeNamespacedWiring,
+  renderOpencodePlugin,
+} from "../../src/providers/opencode/opencode.wiring.ts";
 import type { ProviderPort, ProviderWiringKind } from "../../src/providers/provider.port.ts";
 import {
   type Check,
@@ -130,6 +135,54 @@ describe("providerWiringStatus", () => {
       entries: [],
     };
     assert.equal(providerWiringStatus(wiring), "detected-but-unwired");
+  });
+
+  /**
+   * why byte-equality and not marker presence: the opencode bridge is generated wholesale from the wiring, so a
+   * bridge from an older build still carries the marker, still names a launcher, and calls a handler set that has
+   * since changed. Only the file this build would write actually behaves.
+   */
+  test("opencode: wired only when the bridge on disk is the one this wiring renders", () => {
+    const root = newRoot();
+    const plugins = join(root, "opencode", "plugins");
+    mkdirSync(plugins, { recursive: true });
+    const wiring = opencodeLegacyWiring({ launcherPath: join(root, "bin", "tlc-exec.mjs") });
+    const target = join(plugins, "tlc-harness.js");
+    const local: ProviderWiring<ProviderWiringKind> = { ...wiring, target };
+
+    assert.equal(providerWiringStatus(local), "detected-but-unwired", "no bridge written yet");
+
+    writeFileSync(target, "export const Mine = async () => ({});\n");
+    assert.equal(providerWiringStatus(local), "detected-but-unwired", "someone else's file is never ours");
+
+    writeFileSync(target, "// @tlc-harness managed — an older shape\n");
+    assert.equal(providerWiringStatus(local), "detected-but-unwired", "a stale bridge of ours is not wired");
+
+    writeFileSync(target, renderOpencodePlugin(local) ?? "");
+    assert.equal(providerWiringStatus(local), "wired");
+  });
+
+  test("opencode namespaced: the plugins directory decides installed, not the plugin's own directory", () => {
+    const root = newRoot();
+    const plugins = join(root, "opencode", "plugins");
+    const wiring = opencodeNamespacedWiring({ launcherPath: join(root, "bin", "tlc-exec.mjs") });
+    const local: ProviderWiring<ProviderWiringKind> = {
+      ...wiring,
+      target: join(plugins, "tlc-harness", "index.ts"),
+    };
+
+    assert.equal(providerWiringStatus(local), "not-installed", "opencode itself is absent");
+
+    mkdirSync(plugins, { recursive: true });
+    assert.equal(
+      providerWiringStatus(local),
+      "detected-but-unwired",
+      "installed, but this writer has not created the plugin directory yet",
+    );
+
+    mkdirSync(join(plugins, "tlc-harness"), { recursive: true });
+    writeFileSync(local.target, renderOpencodePlugin(local) ?? "");
+    assert.equal(providerWiringStatus(local), "wired");
   });
 
   test("detected-but-unwired for a merge-strategy target missing the desired entries", () => {

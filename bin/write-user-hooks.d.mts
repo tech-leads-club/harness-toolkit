@@ -33,7 +33,14 @@ export type ClaudeApplyResult =
 
 export type ApplyResult = CursorApplyResult | ClaudeApplyResult;
 
+export function applyOpencodePluginWiring(
+  wiring: ProviderWiring,
+  options?: ApplyOptions,
+): CursorApplyResult | { status: "failed"; target: string; reason: string };
+
 export function applyProviderWiring(wiring: ProviderWiring, options?: ApplyOptions): ApplyResult;
+
+export function providerHomeDir(wiring: ProviderWiring): string;
 
 export function isProviderHomePresent(wiring: ProviderWiring): boolean;
 
