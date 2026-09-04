@@ -555,3 +555,69 @@ describe("childEnv", () => {
     assert.equal(env.TLC_PROVIDER_HINT, "cursor");
   });
 });
+
+/**
+ * The composition, not the pieces.
+ *
+ * hazard: `takeProviderHint` and `childEnv` were each unit-tested and `main()` could still drop the hint on the
+ * floor between them — dropping the argument at the `run(...)` call site, or never calling the parser at all, both
+ * left the whole suite green. The launcher half of the hint channel could be disconnected and ship. Only spawning
+ * the real launcher and reading what the child actually received defends that seam.
+ *
+ * why a `dist/` stub and not a real entrypoint: `decideRuntime` prefers `dist/<entry>.mjs` when the home has no
+ * matching source, so a throwaway home is enough. Adding an entrypoint under `src/entrypoints/` instead would make
+ * the hook-list gate count it as a hook.
+ */
+describe("the launcher carries the hint into the child process", () => {
+  function probeHome(): string {
+    const home = newRoot();
+    mkdirSync(join(home, "dist"), { recursive: true });
+    writeFileSync(
+      join(home, "dist", "hint-probe.mjs"),
+      "process.stdout.write(JSON.stringify({" +
+        " hint: process.env.TLC_PROVIDER_HINT ?? null," +
+        " argv: process.argv.slice(2) }));\n",
+    );
+    return home;
+  }
+
+  function launch(home: string, args: string[], inherited?: string) {
+    const env: NodeJS.ProcessEnv = { ...process.env, TLC_HOME: home };
+    if (inherited === undefined) {
+      delete env.TLC_PROVIDER_HINT;
+    } else {
+      env.TLC_PROVIDER_HINT = inherited;
+    }
+    const result = spawnSync(process.execPath, [join(repoRoot, "bin", "tlc-exec.mjs"), ...args], {
+      encoding: "utf8",
+      env,
+    });
+    assert.equal(result.status, 0, `launcher exited ${result.status}: ${result.stderr}`);
+    return JSON.parse(result.stdout) as { hint: string | null; argv: string[] };
+  }
+
+  test("--provider reaches the child as TLC_PROVIDER_HINT and never reaches its argv", () => {
+    const seen = launch(probeHome(), ["--provider", "vscode", "hint-probe", "extra"]);
+    assert.equal(seen.hint, "vscode");
+    assert.deepEqual(seen.argv, ["extra"]);
+  });
+
+  test("the --provider=<name> spelling arrives the same way", () => {
+    assert.equal(launch(probeHome(), ["--provider=codex", "hint-probe"]).hint, "codex");
+  });
+
+  test("without --provider the child sees no hint at all", () => {
+    const seen = launch(probeHome(), ["hint-probe"]);
+    assert.equal(seen.hint, null);
+    assert.deepEqual(seen.argv, []);
+  });
+
+  // hazard: the inherited-hint leak, proven end to end rather than at the helper.
+  test("an inherited hint does not survive an un-hinted launch", () => {
+    assert.equal(launch(probeHome(), ["hint-probe"], "codex").hint, null);
+  });
+
+  test("this invocation's hint beats an inherited one", () => {
+    assert.equal(launch(probeHome(), ["--provider", "cursor", "hint-probe"], "codex").hint, "cursor");
+  });
+});

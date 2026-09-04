@@ -164,3 +164,18 @@ test("an empty hint is treated as no hint, not as a hint matching nothing", asyn
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// why separately from the empty case: this is what pins the `.trim()`. A whitespace-only value is what a wiring
+// line with a stray space exports, and without the trim it is a non-empty hint that names no provider — which
+// refuses every payload on that host rather than falling through to detection.
+test("a whitespace-only hint is treated as no hint", async () => {
+  const root = tempRoot();
+  try {
+    const outcome = await withHint("   ", () =>
+      withCwd(root, () => runHandler(() => ({ kind: "allow" }), stdinOf(claudePayload(root)))),
+    );
+    assert.equal(outcome.event?.provider, "claude");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
