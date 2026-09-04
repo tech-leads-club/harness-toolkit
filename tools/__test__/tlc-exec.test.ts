@@ -14,6 +14,7 @@ import { delimiter, join } from "node:path";
 import { afterEach, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  childEnv,
   decideRuntime,
   entrySourceCandidates,
   findBunOnPath,
@@ -24,6 +25,7 @@ import {
   resolveEntrySource,
   resolveHarnessHome,
   runtimeCachePath,
+  takeProviderHint,
   writeRuntimeCache,
 } from "../../bin/tlc-exec.mjs";
 
@@ -482,5 +484,74 @@ describe("a runtime that cannot run", () => {
       .sort();
 
     assert.deepEqual([...HOOK_ENTRIES].sort(), programs);
+  });
+});
+
+/**
+ * The launcher half of the provider-hint channel: a wiring entry writes `--provider <name>` ahead of the handler,
+ * and it has to leave the argument list before anything reads the handler out of a position.
+ */
+describe("takeProviderHint", () => {
+  test("lifts --provider out and leaves the handler first in the rest", () => {
+    const { hint, rest } = takeProviderHint(["--provider", "vscode", "tool-before"]);
+    assert.equal(hint, "vscode");
+    assert.deepEqual(rest, ["tool-before"]);
+  });
+
+  test("accepts the --provider=<name> spelling", () => {
+    const { hint, rest } = takeProviderHint(["--provider=codex", "stop", "--json"]);
+    assert.equal(hint, "codex");
+    assert.deepEqual(rest, ["stop", "--json"]);
+  });
+
+  // why: a wiring entry could place it after the handler, and the flag must not then be forwarded as a handler
+  // argument — an entrypoint reading its own argv would see a flag it does not know.
+  test("removes the flag wherever it appears, never forwarding it", () => {
+    const { hint, rest } = takeProviderHint(["session-start", "--provider", "opencode"]);
+    assert.equal(hint, "opencode");
+    assert.deepEqual(rest, ["session-start"]);
+    assert.equal(rest.includes("--provider"), false);
+  });
+
+  test("no flag means no hint, and the arguments are untouched", () => {
+    const { hint, rest } = takeProviderHint(["tool-before", "extra"]);
+    assert.equal(hint, null);
+    assert.deepEqual(rest, ["tool-before", "extra"]);
+  });
+
+  // hazard: a trailing --provider with no value must not become an empty hint. An empty hint names no provider and
+  // would refuse every payload on that host — a whole host silently unsteered from one malformed wiring line.
+  test("a valueless --provider yields no hint rather than an empty one", () => {
+    assert.equal(takeProviderHint(["--provider"]).hint, null);
+    assert.equal(takeProviderHint(["--provider", "--json", "stop"]).hint, null);
+    assert.equal(takeProviderHint(["--provider="]).hint, null);
+    assert.deepEqual(takeProviderHint(["--provider", "--json", "stop"]).rest, ["--json", "stop"]);
+  });
+});
+
+describe("childEnv", () => {
+  const HOME = join("/opt", "tlc-home");
+
+  test("a hint becomes TLC_PROVIDER_HINT in the child environment", () => {
+    const env = childEnv(HOME, "/origin", "vscode", {});
+    assert.equal(env.TLC_PROVIDER_HINT, "vscode");
+    assert.equal(env.TLC_HOME, HOME);
+    assert.equal(env.TLC_ORIGIN, "/origin");
+  });
+
+  test("no hint leaves TLC_PROVIDER_HINT unset", () => {
+    assert.equal(childEnv(HOME, "/origin", null, {}).TLC_PROVIDER_HINT, undefined);
+  });
+
+  // hazard: an inherited hint surviving into an un-hinted hook would short-circuit detection to whatever the last
+  // hinted host was, and look like it worked.
+  test("an inherited hint is cleared when this invocation has none", () => {
+    const env = childEnv(HOME, "/origin", null, { TLC_PROVIDER_HINT: "codex" });
+    assert.equal(env.TLC_PROVIDER_HINT, undefined);
+  });
+
+  test("a hint on this invocation overrides an inherited one", () => {
+    const env = childEnv(HOME, "/origin", "cursor", { TLC_PROVIDER_HINT: "codex" });
+    assert.equal(env.TLC_PROVIDER_HINT, "cursor");
   });
 });

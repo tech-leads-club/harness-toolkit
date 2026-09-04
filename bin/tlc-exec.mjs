@@ -234,22 +234,74 @@ export function decideRuntime({ harnessHome, entry, bunPath, nodeMajor, distExis
   };
 }
 
-function run(harnessHome, command, commandArgs, origin = harnessHome, entry = "") {
+/**
+ * Lifts `--provider <name>` (or `--provider=<name>`) out of the argument list and returns it separately.
+ *
+ * why it is removed rather than passed through: a wiring entry writes it ahead of the handler, and `main` reads the
+ * handler positionally. Left in place it would be read as the entry name, and every hook on that host would fail
+ * with a usage error instead of running.
+ *
+ * hazard: a trailing `--provider` with no value is dropped and reported as no hint, not carried as the empty
+ * string. An empty hint that reached resolution would name no provider and refuse every payload — a whole host
+ * silently unsteered, from one malformed wiring line.
+ */
+export function takeProviderHint(argv) {
+  const rest = [];
+  let hint = null;
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--provider") {
+      const value = argv[i + 1];
+      if (value !== undefined && !value.startsWith("--")) {
+        hint = value;
+        i += 1;
+      }
+      continue;
+    }
+    if (typeof arg === "string" && arg.startsWith("--provider=")) {
+      const value = arg.slice("--provider=".length);
+      if (value !== "") {
+        hint = value;
+      }
+      continue;
+    }
+    rest.push(arg);
+  }
+  return { hint, rest };
+}
+
+/**
+ * The environment the entrypoint runs under.
+ *
+ * why: `TLC_ORIGIN` is where this copy physically lives, which is not `TLC_HOME` once an npm-installed shim is
+ * driving the runtime installed under the conventional path. `tlc harness install` needs the former as its source
+ * and the latter as its destination, and nothing else in the runtime reads it.
+ *
+ * why a function and not an inline object: it is the whole of what the launcher hands the child, and spawning a
+ * process to read it back needs an entrypoint that exists only to be read — which the entrypoint gate would then
+ * count as a hook.
+ */
+export function childEnv(harnessHome, origin, providerHint = null, env = process.env) {
+  return {
+    ...env,
+    TLC_HOME: harnessHome,
+    TLC_ORIGIN: origin,
+    // hazard: derived once, by the outermost launcher, and inherited after that. `tlc harness install` reaches
+    // the tool through the CLI, so the launcher runs twice — and the second one saw the `TLC_HOME` the first
+    // one had just set, concluded the operator had chosen it, and installed the runtime on top of itself.
+    // Measured against the packed tarball: "runtime already at <package> — nothing to copy".
+    TLC_HOME_FROM_ENV: env.TLC_HOME_FROM_ENV ?? (env.TLC_HOME?.trim() ? "1" : "0"),
+    // hazard: set only when the wiring asked for it, and an inherited one is cleared otherwise. Leaving a stale
+    // `TLC_PROVIDER_HINT` in place would make an un-hinted hook resolve to whatever the last hinted one named,
+    // skipping detection entirely — the worst version of this failure, because it looks like it works.
+    ...(providerHint ? { TLC_PROVIDER_HINT: providerHint } : { TLC_PROVIDER_HINT: undefined }),
+  };
+}
+
+function run(harnessHome, command, commandArgs, origin = harnessHome, entry = "", providerHint = null) {
   const result = spawnSync(command, commandArgs, {
     stdio: "inherit",
-    // why: `TLC_ORIGIN` is where this copy physically lives, which is not `TLC_HOME` once an npm-installed shim
-    // is driving the runtime installed under the conventional path. `tlc harness install` needs the former as
-    // its source and the latter as its destination, and nothing else in the runtime reads it.
-    env: {
-      ...process.env,
-      TLC_HOME: harnessHome,
-      TLC_ORIGIN: origin,
-      // hazard: derived once, by the outermost launcher, and inherited after that. `tlc harness install` reaches
-      // the tool through the CLI, so the launcher runs twice — and the second one saw the `TLC_HOME` the first
-      // one had just set, concluded the operator had chosen it, and installed the runtime on top of itself.
-      // Measured against the packed tarball: "runtime already at <package> — nothing to copy".
-      TLC_HOME_FROM_ENV: process.env.TLC_HOME_FROM_ENV ?? (process.env.TLC_HOME?.trim() ? "1" : "0"),
-    },
+    env: childEnv(harnessHome, origin, providerHint),
     shell: false,
   });
   if (result.error) {
@@ -266,13 +318,17 @@ export function main(argv = process.argv) {
   const binDir = dirname(fileURLToPath(import.meta.url));
   const harnessHome = resolveHarnessHome(binDir);
 
-  const entry = argv[2];
+  // why before the entry is read: a wiring entry writes `--provider <name>` ahead of the handler, so the flag has
+  // to leave the list before anything reads a position out of it.
+  const { hint: providerHint, rest } = takeProviderHint(argv.slice(2));
+
+  const entry = rest[0];
   if (!entry) {
-    console.error("usage: tlc-exec <entry> [args...]");
+    console.error("usage: tlc-exec [--provider <name>] <entry> [args...]");
     console.error("  entry: session-start | tool-before | stop | doctor | ...");
     process.exit(2);
   }
-  const args = argv.slice(3);
+  const args = rest.slice(1);
 
   const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
   const distExists = existsSync(join(harnessHome, "dist", `${entry}.mjs`));
@@ -288,7 +344,7 @@ export function main(argv = process.argv) {
     }
     process.exit(decision.status);
   }
-  run(harnessHome, decision.command, [...decision.args, ...args], join(binDir, ".."), entry);
+  run(harnessHome, decision.command, [...decision.args, ...args], join(binDir, ".."), entry, providerHint);
 }
 
 if (import.meta.main) {

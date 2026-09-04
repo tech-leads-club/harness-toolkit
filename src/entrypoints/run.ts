@@ -9,6 +9,7 @@ import {
   degrade,
   type ProviderPort,
   providers as providerRegistry,
+  resolveByHint,
   resolveFromRegistry,
 } from "../providers/index.ts";
 import { effectiveBlockedPatterns, obsConfigFor, sessionIdFromKey } from "./support.ts";
@@ -133,9 +134,24 @@ export async function runHandler(handler: Handler, io: RunIo = {}): Promise<RunO
     return { event: null, decision: { kind: "abstain" }, rendered: abstainRendered };
   }
 
-  const resolved = resolveFromRegistry(parsed, providerRegistry);
+  /**
+   * hazard: the hint short-circuits detection rather than biasing it. Running the detectors first and preferring
+   * the hinted match would leave a hinted payload able to lose to a provider earlier in the registry, which is the
+   * exact case the hint exists for — a host that emits another host's shape byte for byte.
+   */
+  const hint = process.env.TLC_PROVIDER_HINT?.trim();
+  const resolved =
+    hint === undefined || hint === ""
+      ? resolveFromRegistry(parsed, providerRegistry)
+      : resolveByHint(hint, providerRegistry);
   if (!resolved.provider) {
-    recordAdapterEvent(process.cwd(), "adapter.unrecognized", { reason: "no-provider-match" });
+    recordAdapterEvent(
+      process.cwd(),
+      "adapter.unrecognized",
+      // why: an unmatched hint is a wiring fault, not an unrecognised payload, and the record has to say so or the
+      // operator debugs the wrong thing. It is never retried against the detectors.
+      hint ? { reason: "unknown-provider-hint", hint } : { reason: "no-provider-match" },
+    );
     return { event: null, decision: { kind: "abstain" }, rendered: abstainRendered };
   }
   if (resolved.ambiguous) {

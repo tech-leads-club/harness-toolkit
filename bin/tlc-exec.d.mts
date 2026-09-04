@@ -57,5 +57,16 @@ export type RuntimeDecision =
 
 export function decideRuntime(input: RuntimeDecisionInput): RuntimeDecision;
 
+export type ProviderHintSplit = { hint: string | null; rest: string[] };
+
+export function takeProviderHint(argv: readonly string[]): ProviderHintSplit;
+
+export function childEnv(
+  harnessHome: string,
+  origin: string,
+  providerHint?: string | null,
+  env?: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv;
+
 export function main(argv?: string[]): void;
 export const HOOK_ENTRIES: Set<string>;
