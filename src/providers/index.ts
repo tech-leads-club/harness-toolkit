@@ -3,6 +3,7 @@ export type { TranscriptUsage } from "./claude/claude.transcript.ts";
 export { readClaudeUsage } from "./claude/claude.transcript.ts";
 export { claudeWiring, mergeClaudeSettings } from "./claude/claude.wiring.ts";
 export { renderCursorLessonsView } from "./cursor/cursor.lessons-view.ts";
+export { renderOpencodeLessonsView } from "./opencode/opencode.lessons-view.ts";
 export type { DegradeOptions } from "./provider.degrade.ts";
 export { degrade, truncateContext } from "./provider.degrade.ts";
 export type { ProviderPort } from "./provider.port.ts";

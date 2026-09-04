@@ -11,7 +11,12 @@ import {
 } from "../core/index.ts";
 import { filterCodeTargets, filterTestTargets, listChangedRepoFiles } from "../platform/git.ts";
 import { runProcess } from "../platform/process.ts";
-import { type ProviderPort, renderClaudeLessonsView, renderCursorLessonsView } from "../providers/index.ts";
+import {
+  type ProviderPort,
+  renderClaudeLessonsView,
+  renderCursorLessonsView,
+  renderOpencodeLessonsView,
+} from "../providers/index.ts";
 
 // invariant: one definition, taken from core rather than restated.
 export const OBS_CONFIG = coreFacade.observability.DEFAULT_OBS;
@@ -245,6 +250,12 @@ export function renderProviderLessonsView(providerName: string, root: string): s
   }
   if (providerName === "claude") {
     return renderClaudeLessonsView(root);
+  }
+  // why both generations share one view: they are one host reading one `opencode.json`, and the durable carrier is
+  // a fact about the host rather than about the plugin API a session happens to be running
+  // ([/decisions/ad-124.md](/decisions/ad-124.md)).
+  if (providerName === "opencode-legacy" || providerName === "opencode-namespaced") {
+    return renderOpencodeLessonsView(root);
   }
   return null;
 }
