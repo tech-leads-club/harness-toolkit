@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { ProviderWiring, RuntimePaths, WiringEntry } from "../../contracts/index.ts";
 import { cursorConfigDir } from "../../platform/paths.ts";
+import type { ProviderWiringKind } from "../provider.port.ts";
 
 type EntrySpec = {
   hookEvent: string;
@@ -42,7 +43,7 @@ const ENTRY_SPECS: readonly EntrySpec[] = [
  * invariant: `node` is resolved by the host's own process spawn, which appends the executable extension on the
  * platform that needs one. If a Windows session ever proves otherwise, this is the one line to change.
  */
-export function cursorWiring(runtime: RuntimePaths): ProviderWiring {
+export function cursorWiring(runtime: RuntimePaths): ProviderWiring<ProviderWiringKind> {
   const command = "node";
   const argsPrefix = [runtime.launcherPath];
   const entries: WiringEntry[] = ENTRY_SPECS.map((spec) => ({
@@ -58,6 +59,7 @@ export function cursorWiring(runtime: RuntimePaths): ProviderWiring {
 
   return {
     target: join(cursorConfigDir(), "hooks.json"),
+    kind: "cursor-hooks-json",
     strategy: "replace",
     entries,
   };

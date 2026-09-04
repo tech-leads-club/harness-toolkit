@@ -10,7 +10,7 @@ import { DEFAULTS } from "../../src/core/policy/policy.defaults.ts";
 import { executableOnPath, projectConfigPath } from "../../src/platform/paths.ts";
 import { mergeClaudeSettings } from "../../src/providers/claude/claude.wiring.ts";
 import { cursorWiring, formatWiringProblems } from "../../src/providers/cursor/cursor.wiring.ts";
-import type { ProviderPort } from "../../src/providers/provider.port.ts";
+import type { ProviderPort, ProviderWiringKind } from "../../src/providers/provider.port.ts";
 import {
   type Check,
   checkCapabilities,
@@ -92,8 +92,9 @@ describe("checkHookRuntime", () => {
 describe("providerWiringStatus", () => {
   test("not-installed when the provider home dir is absent", () => {
     const root = newRoot();
-    const wiring: ProviderWiring = {
+    const wiring: ProviderWiring<ProviderWiringKind> = {
       target: join(root, "no-such-home", "hooks.json"),
+      kind: "cursor-hooks-json",
       strategy: "replace",
       entries: [],
     };
@@ -104,7 +105,12 @@ describe("providerWiringStatus", () => {
     const root = newRoot();
     const home = join(root, "cursor-home");
     mkdirSync(home, { recursive: true });
-    const wiring: ProviderWiring = { target: join(home, "hooks.json"), strategy: "replace", entries: [] };
+    const wiring: ProviderWiring<ProviderWiringKind> = {
+      target: join(home, "hooks.json"),
+      kind: "cursor-hooks-json",
+      strategy: "replace",
+      entries: [],
+    };
     assert.equal(providerWiringStatus(wiring), "detected-but-unwired");
   });
 
@@ -117,7 +123,12 @@ describe("providerWiringStatus", () => {
     mkdirSync(home, { recursive: true });
     const target = join(home, "hooks.json");
     writeFileSync(target, JSON.stringify({ hooks: { stop: [{ command: "node tlc-exec.mjs shim stop" }] } }));
-    const wiring: ProviderWiring = { target, strategy: "replace", entries: [] };
+    const wiring: ProviderWiring<ProviderWiringKind> = {
+      target,
+      kind: "cursor-hooks-json",
+      strategy: "replace",
+      entries: [],
+    };
     assert.equal(providerWiringStatus(wiring), "detected-but-unwired");
   });
 
@@ -125,8 +136,9 @@ describe("providerWiringStatus", () => {
     const root = newRoot();
     const home = join(root, "claude-home");
     mkdirSync(home, { recursive: true });
-    const wiring: ProviderWiring = {
+    const wiring: ProviderWiring<ProviderWiringKind> = {
       target: join(home, "settings.json"),
+      kind: "claude-settings-json",
       strategy: "merge",
       entries: [
         { hookEvent: "Stop", handler: "stop", command: "node", args: ["/x", "stop"], timeoutSeconds: 5 },
@@ -150,7 +162,10 @@ describe("providerWiringStatus", () => {
         hooks: { Stop: [{ hooks: [{ type: "command", command: "node", args: [launcher, "stop"] }] }] },
       }),
     );
-    assert.equal(providerWiringStatus({ target, strategy: "merge", entries }), "wired");
+    assert.equal(
+      providerWiringStatus({ target, kind: "claude-settings-json", strategy: "merge", entries }),
+      "wired",
+    );
   });
 
   test("a stale harness entry from an older launcher path is replaced, not duplicated", () => {
@@ -178,7 +193,10 @@ describe("providerWiringStatus", () => {
         },
       }),
     );
-    assert.equal(providerWiringStatus({ target, strategy: "merge", entries }), "detected-but-unwired");
+    assert.equal(
+      providerWiringStatus({ target, kind: "claude-settings-json", strategy: "merge", entries }),
+      "detected-but-unwired",
+    );
     const merged = mergeClaudeSettings(readFileSync(target, "utf8"), entries);
     assert.ok(merged.ok);
     if (merged.ok) {
@@ -459,7 +477,7 @@ describe("checkPolicyDivergence", () => {
 
 describe("wiring health", () => {
   /** why: a realistic document — every declared event wired — so a single broken entry is what the test isolates. */
-  function cursorLike(root: string, breakEvent?: string): ProviderWiring {
+  function cursorLike(root: string, breakEvent?: string): ProviderWiring<ProviderWiringKind> {
     const launcher = join(root, "bin", "tlc-exec.mjs");
     mkdirSync(dirname(launcher), { recursive: true });
     writeFileSync(launcher, "// launcher\n");

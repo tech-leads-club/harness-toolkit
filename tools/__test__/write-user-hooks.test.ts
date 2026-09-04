@@ -93,6 +93,7 @@ function cursorWiringFixture(root: string): ProviderWiring {
   mkdirSync(cursorHome, { recursive: true });
   return {
     target: join(cursorHome, "hooks.json"),
+    kind: "cursor-hooks-json",
     strategy: "replace",
     entries: cursorEntries(join(root, "launcher", "tlc-exec.mjs")),
   };
@@ -115,6 +116,7 @@ function claudeWiringFixture(root: string): ProviderWiring {
   mkdirSync(claudeHome, { recursive: true });
   return {
     target: join(claudeHome, "settings.json"),
+    kind: "claude-settings-json",
     strategy: "merge",
     entries: claudeEntries(join(root, "launcher", "tlc-exec.mjs")),
   };
@@ -229,6 +231,32 @@ describe("applyProviderWiring", () => {
     assert.equal(result.status, "unchanged");
   });
 
+  // why: the discriminating case. `strategy` is deliberately the wrong one here — if dispatch still read
+  // `strategy`, this would be written as a flat Cursor hooks document. Routing on `kind` is what sends it to the
+  // merger, and a foreign key surviving is the proof it went there.
+  test("routes on kind, not strategy, when the two disagree", () => {
+    const root = newRoot();
+    const wiring: ProviderWiring = { ...claudeWiringFixture(root), strategy: "replace" };
+    writeFileSync(wiring.target, `${JSON.stringify({ someOtherKey: "keep-me" }, null, 2)}\n`);
+    const result = applyProviderWiring(wiring);
+    assert.equal(result.status, "merged");
+    const parsed = JSON.parse(readFileSync(wiring.target, "utf8"));
+    assert.equal(parsed.someOtherKey, "keep-me");
+    assert.ok(parsed.hooks.SessionStart);
+    assert.equal("version" in parsed, false, "a Cursor hooks document would have stamped version: 1");
+  });
+
+  // hazard: this file is .mjs and tsconfig does not cover it, so an unhandled kind cannot be a compile error here.
+  // It has to fail loudly at runtime instead of falling through to whichever writer happens to be last.
+  test("refuses a wiring kind it has no writer for, and writes nothing", () => {
+    const root = newRoot();
+    const wiring = { ...cursorWiringFixture(root), kind: "opencode-plugin" } as unknown as ProviderWiring;
+    const result = applyProviderWiring(wiring);
+    assert.equal(result.status, "failed");
+    assert.ok("reason" in result && result.reason.includes("opencode-plugin"));
+    assert.equal(existsSync(wiring.target), false, "a refused kind must not write the target");
+  });
+
   test("reports a failure for malformed Claude settings.json without throwing", () => {
     const root = newRoot();
     const wiring = claudeWiringFixture(root);
@@ -252,6 +280,7 @@ describe("isProviderHomePresent", () => {
     const root = newRoot();
     const wiring: ProviderWiring = {
       target: join(root, "nonexistent-home", "hooks.json"),
+      kind: "cursor-hooks-json",
       strategy: "replace",
       entries: [],
     };
@@ -265,6 +294,7 @@ describe("provider dispatch loop (skip-when-absent, independent-failure semantic
     const installed = cursorWiringFixture(root);
     const notInstalled: ProviderWiring = {
       target: join(root, "absent-home", "hooks.json"),
+      kind: "cursor-hooks-json",
       strategy: "replace",
       entries: [],
     };

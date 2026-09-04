@@ -58,15 +58,33 @@ export function applyCursorWiring(wiring, { force = false } = {}) {
   return { status: "written", target: targetPath };
 }
 
+/**
+ * why it dispatches on `kind` and not on `strategy`: `strategy` answers replace-or-merge, which is not the same
+ * question as which writer to call. A flat hooks JSON and an ES-module plugin are both `replace` and need
+ * different writers, so a `strategy` branch would silently hand the second one to the first one's writer.
+ *
+ * hazard: this file is `.mjs`, so `tsconfig.json` does not typecheck it and an unhandled `kind` cannot be caught
+ * here at build time. The compile-time gate lives in `tools/doctor.ts`, whose switch over the same union is
+ * exhaustive; this refuses at runtime so an unhandled kind fails loudly instead of writing the wrong format.
+ */
 export function applyProviderWiring(wiring, { force = false } = {}) {
-  if (wiring.strategy === "replace") {
-    return applyCursorWiring(wiring, { force });
+  switch (wiring.kind) {
+    case "cursor-hooks-json":
+      return applyCursorWiring(wiring, { force });
+    case "claude-settings-json": {
+      const result = applyClaudeWiring(wiring.target, wiring.entries);
+      if (!result.ok) {
+        return { status: "failed", target: wiring.target, reason: result.error };
+      }
+      return { status: result.changed ? "merged" : "unchanged", target: wiring.target };
+    }
+    default:
+      return {
+        status: "failed",
+        target: wiring.target,
+        reason: `no writer for wiring kind "${wiring.kind}"`,
+      };
   }
-  const result = applyClaudeWiring(wiring.target, wiring.entries);
-  if (!result.ok) {
-    return { status: "failed", target: wiring.target, reason: result.error };
-  }
-  return { status: result.changed ? "merged" : "unchanged", target: wiring.target };
 }
 
 export function isProviderHomePresent(wiring) {

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { dirname, join } from "node:path";
 import type { ProviderWiring, RuntimePaths, WiringEntry } from "../../contracts/index.ts";
 import { claudeConfigDir } from "../../platform/paths.ts";
+import type { ProviderWiringKind } from "../provider.port.ts";
 
 type EntrySpec = {
   hookEvent: string;
@@ -32,7 +33,7 @@ export function claudeSettingsPath(): string {
 }
 
 // why: exec form only, on every platform — it bypasses shell tokenization, so there is no quoting variant to get wrong.
-export function claudeWiring(runtime: RuntimePaths): ProviderWiring {
+export function claudeWiring(runtime: RuntimePaths): ProviderWiring<ProviderWiringKind> {
   const entries: WiringEntry[] = ENTRY_SPECS.map((spec) => ({
     hookEvent: spec.hookEvent,
     handler: spec.handler,
@@ -45,6 +46,7 @@ export function claudeWiring(runtime: RuntimePaths): ProviderWiring {
 
   return {
     target: claudeSettingsPath(),
+    kind: "claude-settings-json",
     strategy: "merge",
     entries,
   };

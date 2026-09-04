@@ -25,7 +25,7 @@ import {
   type WiringProblem,
 } from "../src/providers/cursor/cursor.wiring.ts";
 import { providers } from "../src/providers/index.ts";
-import type { ProviderPort } from "../src/providers/provider.port.ts";
+import type { ProviderPort, ProviderWiringKind } from "../src/providers/provider.port.ts";
 
 export type CheckLevel = "ok" | "warn" | "fail";
 
@@ -350,12 +350,16 @@ export function checkHookRuntime(
 export type ProviderWiringStatus = "wired" | "detected-but-unwired" | "not-installed";
 
 /**
- * hazard: the replace-strategy branch decided health by marker presence alone, so a file carrying the marker in one
- * entry and a broken command in another reported `wired`. A colleague's session was blocked by exactly that shape
+ * hazard: this branch decided health by marker presence alone, so a file carrying the marker in one entry and a
+ * broken command in another reported `wired`. A colleague's session was blocked by exactly that shape
  * ([/decisions/ad-032.md](/decisions/ad-032.md)).
+ *
+ * why `kind` and not `strategy`: the parser below reads Cursor's hooks document. `strategy === "replace"` does not
+ * mean the target holds one — it means the writer overwrites whatever is there. Asking for the format by name is
+ * the only version of this question that stays right when a second replace-strategy format exists.
  */
-export function wiringProblems(wiring: ProviderWiring): WiringProblem[] {
-  if (wiring.strategy !== "replace") {
+export function wiringProblems(wiring: ProviderWiring<ProviderWiringKind>): WiringProblem[] {
+  if (wiring.kind !== "cursor-hooks-json") {
     return [];
   }
   const text = existsSync(wiring.target) ? readFileSync(wiring.target, "utf8") : null;
@@ -371,20 +375,36 @@ function launcherPathOf(wiring: ProviderWiring): string {
   return first?.args.find((arg) => arg.endsWith(".mjs")) ?? "";
 }
 
-export function providerWiringStatus(wiring: ProviderWiring): ProviderWiringStatus {
+/**
+ * invariant: this switch is the compile-time gate on `ProviderWiringKind`. `unreachable` takes `never`, so adding
+ * a member to the union fails `tsc --noEmit` here until a reader for that format exists. The installer's own
+ * dispatch lives in `bin/write-user-hooks.mjs`, which `tsconfig.json` does not cover, so this is where the union
+ * is held closed.
+ */
+export function providerWiringStatus(wiring: ProviderWiring<ProviderWiringKind>): ProviderWiringStatus {
   if (!existsSync(dirname(wiring.target))) {
     return "not-installed";
   }
-  if (wiring.strategy === "replace") {
-    if (!isCursorWired(wiring.target)) {
-      return "detected-but-unwired";
+  switch (wiring.kind) {
+    case "cursor-hooks-json": {
+      if (!isCursorWired(wiring.target)) {
+        return "detected-but-unwired";
+      }
+      // invariant: the marker says the file is ours; the problems say whether it works. Both must pass.
+      return wiringProblems(wiring).length === 0 ? "wired" : "detected-but-unwired";
     }
-    // invariant: the marker says the file is ours; the problems say whether it works. Both must pass.
-    return wiringProblems(wiring).length === 0 ? "wired" : "detected-but-unwired";
+    case "claude-settings-json": {
+      const existingText = existsSync(wiring.target) ? readFileSync(wiring.target, "utf8") : null;
+      const result = mergeClaudeSettings(existingText, wiring.entries);
+      return result.ok && !result.changed ? "wired" : "detected-but-unwired";
+    }
+    default:
+      return unreachableWiringKind(wiring.kind);
   }
-  const existingText = existsSync(wiring.target) ? readFileSync(wiring.target, "utf8") : null;
-  const result = mergeClaudeSettings(existingText, wiring.entries);
-  return result.ok && !result.changed ? "wired" : "detected-but-unwired";
+}
+
+function unreachableWiringKind(kind: never): never {
+  throw new Error(`no wiring reader for kind "${String(kind)}"`);
 }
 
 export function checkProviders(registry: readonly ProviderPort[], home: string): Check[] {

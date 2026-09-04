@@ -282,6 +282,7 @@ export function applyPlan(
         const result = applyCursorWiring(
           {
             target: join(root, ".cursor", "hooks.json"),
+            kind: "cursor-hooks-json",
             strategy: "replace",
             entries: cursorShimEntries(launcher),
           },

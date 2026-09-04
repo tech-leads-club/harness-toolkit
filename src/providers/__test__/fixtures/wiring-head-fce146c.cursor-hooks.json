@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs session-start",
+        "timeout": 10
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs session-end",
+        "timeout": 10
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs prompt-submit",
+        "timeout": 5
+      }
+    ],
+    "afterAgentThought": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs tool-after",
+        "timeout": 5
+      }
+    ],
+    "preCompact": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs compact-before",
+        "timeout": 5
+      }
+    ],
+    "subagentStart": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs subagent-start",
+        "timeout": 5,
+        "failClosed": true
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs subagent-stop",
+        "timeout": 5
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs tool-before",
+        "timeout": 5,
+        "failClosed": true
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs tool-after",
+        "timeout": 5
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs tool-failure",
+        "timeout": 5
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs tool-before",
+        "timeout": 10,
+        "failClosed": true
+      }
+    ],
+    "afterShellExecution": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs tool-after",
+        "timeout": 10
+      }
+    ],
+    "beforeMCPExecution": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs tool-before",
+        "timeout": 10
+      }
+    ],
+    "afterMCPExecution": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs tool-after",
+        "timeout": 5
+      }
+    ],
+    "beforeReadFile": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs tool-before",
+        "timeout": 5
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs tool-after",
+        "timeout": 30,
+        "matcher": "Write"
+      }
+    ],
+    "stop": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs stop",
+        "timeout": 120,
+        "loop_limit": 5
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "node /opt/tlc/bin/tlc-exec.mjs response-after",
+        "timeout": 5,
+        "matcher": "AgentResponse"
+      }
+    ]
+  }
+}

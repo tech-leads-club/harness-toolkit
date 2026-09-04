@@ -153,7 +153,12 @@ function makeFixtureProvider(): ProviderPort {
       return { stdout: decision.kind === "abstain" ? null : JSON.stringify(decision), exitCode: 0 };
     },
     wiring() {
-      return { target: "/tmp/fixture.json", strategy: "replace" as const, entries: [] };
+      return {
+        target: "/tmp/fixture.json",
+        kind: "cursor-hooks-json" as const,
+        strategy: "replace" as const,
+        entries: [],
+      };
     },
   };
 }
