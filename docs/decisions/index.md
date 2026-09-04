@@ -130,6 +130,9 @@ Handoff section and a link back to this index.
 | [AD-120](/decisions/ad-120.md) | A rule denial names the directory and sha it actually checked | active |
 | [AD-121](/decisions/ad-121.md) | command(<pattern>) matches a bare word against a path ending in it, not only an exact word | active |
 | [AD-122](/decisions/ad-122.md) | Handoff continuity is scoped per session, and a live neighbour is never a source | active |
+| [AD-123](/decisions/ad-123.md) | Codex capability flags are read off the vendor's hook reference, and the four it cannot settle fail safe | active |
+| [AD-124](/decisions/ad-124.md) | opencode's two plugin API generations get two capability tables, and the rows they disagree on are not the ones the design predicted | active |
+| [AD-125](/decisions/ad-125.md) | VS Code capability flags come from the VS Code hooks page for what a hook returns, and from the Copilot reference only for what a hook receives | active |
 
 ## Archived
 

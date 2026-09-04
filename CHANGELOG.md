@@ -9,6 +9,8 @@ doctor reports against your own configuration.
 ## Unreleased
 
 - **AD-123** — Codex capability flags are read off the vendor's hook reference, and the four it cannot settle fail safe
+- **AD-124** — opencode's two plugin API generations get two capability tables, and the rows they disagree on are not the ones the design predicted
+- **AD-125** — VS Code capability flags come from the VS Code hooks page for what a hook returns, and from the Copilot reference only for what a hook receives
 
 ## v0.10.6
 

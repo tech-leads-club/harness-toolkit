@@ -16,6 +16,8 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 ## 2026-09-04
 
 - **AD-123** — Codex capability flags are read off the vendor's hook reference, and the four it cannot settle fail safe ([/decisions/ad-123.md](/decisions/ad-123.md))
+- **AD-124** — opencode's two plugin API generations get two capability tables, and the rows they disagree on are not the ones the design predicted ([/decisions/ad-124.md](/decisions/ad-124.md))
+- **AD-125** — VS Code capability flags come from the VS Code hooks page for what a hook returns, and from the Copilot reference only for what a hook receives ([/decisions/ad-125.md](/decisions/ad-125.md))
 
 ## 2026-09-01
 
