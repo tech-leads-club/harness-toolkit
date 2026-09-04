@@ -1,0 +1,11 @@
+{
+  "provider": "opencode",
+  "pluginApi": "namespaced",
+  "hook": "shell.create.before",
+  "sessionID": "ses_7f3a2b",
+  "command": "rm -rf /",
+  "cwd": "/repo",
+  "timeout": 120000,
+  "shell": "/bin/zsh",
+  "env": {}
+}

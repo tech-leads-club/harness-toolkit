@@ -1,0 +1,12 @@
+{
+  "hook_event_name": "SubagentStop",
+  "session_id": "01JCODEXSESSION0000000000",
+  "cwd": "/repo",
+  "turn_id": "turn_01",
+  "agent_id": "agent_01",
+  "agent_type": "explore",
+  "agent_transcript_path": "/Users/dev/.codex/sessions/agent_01.jsonl",
+  "stop_hook_active": false,
+  "last_assistant_message": "explored src/providers",
+  "permission_mode": "on-request"
+}

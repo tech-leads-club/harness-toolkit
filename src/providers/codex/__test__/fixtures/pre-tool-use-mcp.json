@@ -1,0 +1,10 @@
+{
+  "hook_event_name": "PreToolUse",
+  "session_id": "01JCODEXSESSION0000000000",
+  "cwd": "/repo",
+  "turn_id": "turn_01",
+  "tool_name": "mcp__github__create_issue",
+  "tool_use_id": "call_mcp_01",
+  "tool_input": { "title": "flaky test", "repo": "acme/app" },
+  "permission_mode": "on-request"
+}

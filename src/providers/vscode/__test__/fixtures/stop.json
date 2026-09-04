@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "Stop",
+  "session_id": "vscode-session-0001",
+  "timestamp": "2026-09-04T10:15:30.000Z",
+  "cwd": "/repo",
+  "transcript_path": "/Users/dev/.copilot/sessions/vscode-session-0001.jsonl",
+  "stop_reason": "end_turn",
+  "stop_hook_active": false
+}

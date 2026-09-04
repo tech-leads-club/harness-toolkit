@@ -1,0 +1,14 @@
+{
+  "hook_event_name": "PostToolUse",
+  "session_id": "vscode-session-0001",
+  "timestamp": "2026-09-04T10:15:30.000Z",
+  "cwd": "/repo",
+  "tool_name": "createFile",
+  "tool_input": {
+    "filePath": "/repo/src/new.ts"
+  },
+  "tool_result": {
+    "result_type": "success",
+    "text_result_for_llm": "created src/new.ts"
+  }
+}

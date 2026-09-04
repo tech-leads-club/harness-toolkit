@@ -1,0 +1,18 @@
+{
+  "hook_event_name": "PostToolUse",
+  "session_id": "01JCODEXSESSION0000000000",
+  "cwd": "/repo",
+  "turn_id": "turn_01",
+  "tool_name": "apply_patch",
+  "tool_use_id": "call_patch_01",
+  "tool_input": {
+    "command": "*** Begin Patch\n*** Update File: src/index.ts\n@@\n-const a = 1\n+const a = 2\n*** End Patch"
+  },
+  "tool_response": {
+    "status": "applied",
+    "files": [
+      "src/index.ts"
+    ]
+  },
+  "permission_mode": "on-request"
+}

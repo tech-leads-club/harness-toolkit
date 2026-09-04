@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "session_id": "01JCODEXSESSION0000000000",
+  "cwd": "/repo",
+  "turn_id": "turn_01",
+  "prompt": "refactor the provider registry",
+  "permission_mode": "on-request"
+}

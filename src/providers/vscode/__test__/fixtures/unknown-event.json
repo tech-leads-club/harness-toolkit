@@ -1,0 +1,6 @@
+{
+  "hook_event_name": "SomethingVSCodeAddedLater",
+  "session_id": "vscode-session-0001",
+  "timestamp": "2026-09-04T10:15:30.000Z",
+  "cwd": "/repo"
+}

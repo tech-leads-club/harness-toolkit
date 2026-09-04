@@ -1,0 +1,10 @@
+{
+  "hook_event_name": "SubagentStart",
+  "session_id": "vscode-session-0001",
+  "timestamp": "2026-09-04T10:15:30.000Z",
+  "cwd": "/repo",
+  "transcript_path": "/Users/dev/.copilot/sessions/vscode-session-0001.jsonl",
+  "agent_name": "explore",
+  "agent_display_name": "Explore",
+  "agent_description": "read-only search agent"
+}

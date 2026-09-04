@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "PermissionRequest",
+  "session_id": "01JCODEXSESSION0000000000",
+  "cwd": "/repo",
+  "turn_id": "turn_01",
+  "tool_name": "Bash",
+  "tool_input": { "command": "npm publish", "description": "publish the package" },
+  "permission_mode": "on-request"
+}

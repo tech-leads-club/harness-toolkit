@@ -1,0 +1,13 @@
+{
+  "hook_event_name": "SubagentStop",
+  "session_id": "vscode-session-0001",
+  "timestamp": "2026-09-04T10:15:30.000Z",
+  "cwd": "/repo",
+  "transcript_path": "/Users/dev/.copilot/sessions/vscode-session-0001.jsonl",
+  "agent_id": "agent_01",
+  "agent_type": "explore",
+  "agent_name": "explore",
+  "agent_display_name": "Explore",
+  "last_assistant_message": "explored src/providers",
+  "stop_reason": "end_turn"
+}

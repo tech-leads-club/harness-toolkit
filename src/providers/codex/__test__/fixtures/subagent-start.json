@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "SubagentStart",
+  "session_id": "01JCODEXSESSION0000000000",
+  "cwd": "/repo",
+  "turn_id": "turn_01",
+  "agent_id": "agent_01",
+  "agent_type": "explore",
+  "permission_mode": "on-request"
+}

@@ -1,0 +1,14 @@
+{
+  "hook_event_name": "PostToolUse",
+  "session_id": "vscode-session-0001",
+  "timestamp": "2026-09-04T10:15:30.000Z",
+  "cwd": "/repo",
+  "tool_name": "replace_string_in_file",
+  "tool_input": {
+    "filePath": "/repo/src/index.ts"
+  },
+  "tool_result": {
+    "result_type": "success",
+    "text_result_for_llm": "edited src/index.ts"
+  }
+}

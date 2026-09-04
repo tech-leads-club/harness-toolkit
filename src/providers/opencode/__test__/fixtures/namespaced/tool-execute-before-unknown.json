@@ -1,0 +1,10 @@
+{
+  "provider": "opencode",
+  "pluginApi": "namespaced",
+  "hook": "tool.execute.before",
+  "sessionID": "ses_7f3a2b",
+  "tool": "todowrite",
+  "args": {
+    "todos": []
+  }
+}

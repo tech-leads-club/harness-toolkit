@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "SessionStart",
+  "session_id": "01JCODEXSESSION0000000000",
+  "transcript_path": "/Users/dev/.codex/sessions/01JCODEXSESSION0000000000.jsonl",
+  "cwd": "/repo",
+  "model": "gpt-5.1-codex",
+  "permission_mode": "on-request",
+  "source": "startup"
+}

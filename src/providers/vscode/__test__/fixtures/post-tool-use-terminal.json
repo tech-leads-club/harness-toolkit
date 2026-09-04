@@ -1,0 +1,14 @@
+{
+  "hook_event_name": "PostToolUse",
+  "session_id": "vscode-session-0001",
+  "timestamp": "2026-09-04T10:15:30.000Z",
+  "cwd": "/repo",
+  "tool_name": "runTerminalCommand",
+  "tool_input": {
+    "command": "npm test"
+  },
+  "tool_result": {
+    "result_type": "success",
+    "text_result_for_llm": "2527 passing"
+  }
+}

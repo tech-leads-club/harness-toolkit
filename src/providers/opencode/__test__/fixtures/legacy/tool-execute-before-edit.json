@@ -1,0 +1,10 @@
+{
+  "provider": "opencode",
+  "pluginApi": "legacy",
+  "hook": "tool.execute.before",
+  "sessionID": "ses_7f3a2b",
+  "tool": "edit",
+  "args": {
+    "filePath": "/repo/src/index.ts"
+  }
+}

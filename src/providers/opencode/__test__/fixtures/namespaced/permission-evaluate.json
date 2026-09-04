@@ -1,0 +1,8 @@
+{
+  "provider": "opencode",
+  "pluginApi": "namespaced",
+  "hook": "permission.evaluate",
+  "sessionID": "ses_7f3a2b",
+  "effect": "ask",
+  "message": ""
+}

@@ -1,0 +1,17 @@
+{
+  "hook_event_name": "PostToolUse",
+  "session_id": "01JCODEXSESSION0000000000",
+  "cwd": "/repo",
+  "turn_id": "turn_01",
+  "tool_name": "Bash",
+  "tool_use_id": "call_bash_01",
+  "tool_input": {
+    "command": "npm test"
+  },
+  "tool_response": {
+    "exit_code": 0,
+    "stdout": "2527 passing\n",
+    "stderr": ""
+  },
+  "permission_mode": "on-request"
+}

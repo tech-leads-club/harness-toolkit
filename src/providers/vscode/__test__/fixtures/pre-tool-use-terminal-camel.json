@@ -1,0 +1,10 @@
+{
+  "hookEventName": "PreToolUse",
+  "sessionId": "vscode-session-0001",
+  "timestamp": "2026-09-04T10:15:30.000Z",
+  "cwd": "/repo",
+  "toolName": "runTerminalCommand",
+  "toolArgs": {
+    "command": "rm -rf /"
+  }
+}

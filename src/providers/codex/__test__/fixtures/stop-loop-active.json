@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "Stop",
+  "session_id": "01JCODEXSESSION0000000000",
+  "cwd": "/repo",
+  "turn_id": "turn_01",
+  "stop_hook_active": true,
+  "last_assistant_message": "done",
+  "permission_mode": "on-request"
+}
