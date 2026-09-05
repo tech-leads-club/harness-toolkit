@@ -158,11 +158,10 @@ export function applyProviderWiring(wiring, { force = false } = {}) {
  */
 export function providerHomeDir(wiring) {
   switch (wiring.kind) {
-    // why three levels: the namespaced target is `<config>/plugins/tlc-harness/index.ts`.
-    case "opencode-plugin-ns":
-      return dirname(dirname(dirname(wiring.target)));
-    // why two: `<config>/plugins/tlc-harness.js` and `~/.copilot/hooks/tlc-harness.json`.
+    // why two levels: both opencode kinds share `<config>/plugins/tlc-harness.js`, and the VS Code hook file is
+    // `~/.copilot/hooks/tlc-harness.json`.
     case "opencode-plugin":
+    case "opencode-plugin-ns":
     case "vscode-hooks-json":
       return dirname(dirname(wiring.target));
     default:

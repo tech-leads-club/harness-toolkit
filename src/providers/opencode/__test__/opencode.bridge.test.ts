@@ -40,51 +40,50 @@ function withDecision<T>(decision: string, run: () => T): T {
   }
 }
 
-async function loadLegacyHooks(launcher: string, dir: string): Promise<Record<string, LegacyHook>> {
-  const wiring = opencodeLegacyWiring({ launcherPath: launcher });
-  const file = join(dir, "tlc-harness.js");
-  writeFileSync(file, renderOpencodePlugin(wiring) ?? "");
-  const module = (await import(pathToFileURL(file).href)) as {
-    TlcHarness: () => Promise<Record<string, LegacyHook>>;
-  };
-  return await module.TlcHarness();
-}
-
 type LegacyHook = (input: Record<string, unknown>, output: Record<string, unknown>) => Promise<void> | void;
 type NamespacedHook = (event: Record<string, unknown>) => Promise<void> | void;
+type Bridge = (input: unknown) => Promise<Record<string, LegacyHook>>;
 
 /**
- * why a stub package rather than a rewritten module: the namespaced bridge is only correct if the file opencode
- * loads is the file this test runs, import statement included. Resolving `@opencode-ai/plugin` from a node_modules
- * beside the emitted module runs the emitted text verbatim.
+ * invariant: one emitted file serves both generations, so both loaders below start from the same bytes. What
+ * differs is only the plugin input the host hands it — which is the thing the bridge selects on.
+ */
+async function loadBridge(launcher: string, dir: string, seed: string): Promise<Bridge> {
+  const wiring = opencodeLegacyWiring({ launcherPath: launcher });
+  const file = join(dir, seed, "tlc-harness.js");
+  mkdirSync(join(dir, seed), { recursive: true });
+  writeFileSync(file, renderOpencodePlugin(wiring) ?? "");
+  assert.equal(
+    renderOpencodePlugin(opencodeNamespacedWiring({ launcherPath: launcher })),
+    renderOpencodePlugin(wiring),
+    "both generations render one file",
+  );
+  return ((await import(pathToFileURL(file).href)) as { default: Bridge }).default;
+}
+
+/** why a bare input: a host with no `hook` on its plugin input is the legacy generation. */
+async function loadLegacyHooks(launcher: string, dir: string): Promise<Record<string, LegacyHook>> {
+  const bridge = await loadBridge(launcher, dir, "legacy");
+  return await bridge({ directory: dir, worktree: dir });
+}
+
+/**
+ * why the registration surface and not a flag: the namespaced generation is distinguishable only by the `hook`
+ * functions it hands the plugin, so handing them over is what puts the bridge on that path.
  */
 async function loadNamespacedHooks(launcher: string, dir: string): Promise<Record<string, NamespacedHook>> {
-  const pluginDir = join(dir, "tlc-harness");
-  const stubDir = join(pluginDir, "node_modules", "@opencode-ai", "plugin");
-  mkdirSync(stubDir, { recursive: true });
-  writeFileSync(
-    join(stubDir, "package.json"),
-    JSON.stringify({ name: "@opencode-ai/plugin", version: "0.0.0", type: "module", main: "index.js" }),
-  );
-  writeFileSync(join(stubDir, "index.js"), "export const Plugin = { define: (definition) => definition };\n");
-
-  const wiring = opencodeNamespacedWiring({ launcherPath: launcher });
-  const file = join(pluginDir, "index.ts");
-  writeFileSync(file, renderOpencodePlugin(wiring) ?? "");
-
-  const module = (await import(pathToFileURL(file).href)) as {
-    default: { id: string; setup: (ctx: unknown) => Promise<void> };
-  };
   const hooks: Record<string, NamespacedHook> = {};
   const register = (domain: string) => (name: string, handler: NamespacedHook) => {
     hooks[`${domain}.${name}`] = handler;
   };
-  await module.default.setup({
+  const bridge = await loadBridge(launcher, dir, "namespaced");
+  const registered = await bridge({
     tool: { hook: register("tool") },
     shell: { hook: register("shell") },
     permission: { hook: register("permission") },
   });
-  assert.equal(module.default.id, "tlc-harness");
+  // invariant: nothing is returned on this path, or the host would register the legacy hooks a second time.
+  assert.deepEqual(registered, {});
   return hooks;
 }
 

@@ -166,25 +166,29 @@ describe("providerWiringStatus", () => {
     assert.equal(providerWiringStatus(local), "wired");
   });
 
-  test("opencode namespaced: the plugins directory decides installed, not the plugin's own directory", () => {
+  /**
+   * hazard: a clean opencode install has no `plugins/` directory — it appears only once somebody adds a plugin.
+   * If installed were read off that directory, doctor would report `not-installed` on a machine running opencode.
+   */
+  test("opencode namespaced: the config directory decides installed, not the plugins directory", () => {
     const root = newRoot();
-    const plugins = join(root, "opencode", "plugins");
+    const configDir = join(root, "opencode");
     const wiring = opencodeNamespacedWiring({ launcherPath: join(root, "bin", "tlc-exec.mjs") });
     const local: ProviderWiring<ProviderWiringKind> = {
       ...wiring,
-      target: join(plugins, "tlc-harness", "index.ts"),
+      target: join(configDir, "plugins", "tlc-harness.js"),
     };
 
     assert.equal(providerWiringStatus(local), "not-installed", "opencode itself is absent");
 
-    mkdirSync(plugins, { recursive: true });
+    mkdirSync(configDir, { recursive: true });
     assert.equal(
       providerWiringStatus(local),
       "detected-but-unwired",
-      "installed, but this writer has not created the plugin directory yet",
+      "installed, but this writer has not created the plugins directory yet",
     );
 
-    mkdirSync(join(plugins, "tlc-harness"), { recursive: true });
+    mkdirSync(join(configDir, "plugins"), { recursive: true });
     writeFileSync(local.target, renderOpencodePlugin(local) ?? "");
     assert.equal(providerWiringStatus(local), "wired");
   });

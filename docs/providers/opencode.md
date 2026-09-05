@@ -116,24 +116,27 @@ rather than degrading — which is the behaviour its descriptor promises.
 | Adapter | kind | target |
 | --- | --- | --- |
 | `opencode-legacy` | `opencode-plugin` | `~/.config/opencode/plugins/tlc-harness.js` |
-| `opencode-namespaced` | `opencode-plugin-ns` | `~/.config/opencode/plugins/tlc-harness/index.ts` |
+| `opencode-namespaced` | `opencode-plugin-ns` | `~/.config/opencode/plugins/tlc-harness.js` |
 
-Both are `strategy: "replace"`: the module is generated wholesale, so the only file that behaves is the one this
-build would write. Each carries a managed-file marker in a header comment, and a file without it was written by a
-human and is refused rather than overwritten unless `--force` is given.
+One file, not two. Both are `strategy: "replace"`: the module is generated wholesale, so the only file that
+behaves is the one this build would write. It carries a managed-file marker in a header comment, and a file
+without it was written by a human and is refused rather than overwritten unless `--force` is given. Both kinds
+render the same text, so whichever is written second reports `unchanged`.
 
 Four details worth knowing:
 
-- **The legacy bridge is `.js`, not `.mjs`.** The plugin reference documents JavaScript and TypeScript plugin
-  files; `.mjs` is documented nowhere, and this file is loaded by the host.
-- **The namespaced bridge is `.ts`.** Its documented entry point is TypeScript, and whether a plain `.mjs` module
-  is accepted at that path is not documented either way.
-- **Both targets are user-global.** The namespaced generation documents only a *project* path and no global one;
-  `wiring()` is handed a launcher path and no project root, which is why every host here is wired user-level.
-  Recorded as the weak point of this writer.
-- **Host presence is the plugins directory, not the plugin's own.** The namespaced plugin lives in a directory
-  only this writer creates, so asking whether *it* exists would answer "opencode is not installed" on every
-  machine for ever.
+- **The discovery glob is flat.** `{plugin,plugins}/*.{ts,js}`, one level, read out of the opencode 1.18.29
+  binary. Both spellings of the directory are accepted; nothing nested below it is ever loaded, and every sibling
+  it does find is loaded — which is why two bridges would fire every hook twice
+  ([/decisions/ad-124.md](/decisions/ad-124.md)).
+- **The bridge is `.js`, not `.mjs`.** The glob accepts `.ts` and `.js` and nothing else.
+- **The module imports nothing but `node:child_process`.** `@opencode-ai/plugin` exports only `tool` at runtime,
+  so importing a `Plugin` from it is a link-time error that takes the whole bridge down.
+- **The target is user-global.** `wiring()` is handed a launcher path and no project root, which is why every host
+  here is wired user-level.
+- **Host presence is the config directory, not the plugins directory.** A clean opencode install has no
+  `plugins/` directory at all, so asking whether *it* exists would answer "opencode is not installed" on a machine
+  where opencode is running.
 
 Doctor reads the bridge by **byte-equality**, not by marker presence: a bridge from an older build still carries
 the marker and still names a launcher while calling a handler set that has since changed.

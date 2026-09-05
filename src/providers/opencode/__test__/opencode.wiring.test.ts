@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { basename, dirname } from "node:path";
 import { test } from "node:test";
 import type { RuntimePaths } from "../../../contracts/index.ts";
 import {
@@ -21,10 +22,14 @@ test("each generation declares its own kind, and both replace the whole module",
   assert.equal(namespaced.strategy, "replace");
 });
 
-test("the two targets are distinct files, so one generation never overwrites the other", () => {
-  assert.notEqual(legacy.target, namespaced.target);
+/**
+ * hazard: opencode's discovery glob is `{plugin,plugins}/*.{ts,js}` — flat, one level. A nested target is never
+ * loaded at all, and two sibling targets are both loaded, which fires every hook twice.
+ */
+test("both generations name one flat file, so nothing is nested and nothing is loaded twice", () => {
+  assert.equal(legacy.target, namespaced.target);
   assert.ok(legacy.target.endsWith("tlc-harness.js"), legacy.target);
-  assert.ok(namespaced.target.endsWith(`tlc-harness${"/"}index.ts`), namespaced.target);
+  assert.equal(basename(dirname(legacy.target)), "plugins", legacy.target);
 });
 
 test("each module registers its generation's hooks and no others", () => {
@@ -61,30 +66,55 @@ test("both emitted modules carry the managed marker and their own generation sta
   assert.ok(isOpencodeManaged(legacyText));
   assert.ok(isOpencodeManaged(namespacedText));
   assert.ok(legacyText.includes(OPENCODE_MANAGED_MARKER));
-  assert.ok(legacyText.includes("// pluginApi: legacy"));
-  assert.ok(namespacedText.includes("// pluginApi: namespaced"));
+  assert.equal(legacyText, namespacedText, "one target may only ever hold one text");
+  assert.ok(legacyText.includes("both pluginApi generations — legacy and namespaced"));
   assert.ok(!isOpencodeManaged("export const Mine = async () => ({});"));
   assert.equal(isOpencodeManaged(null), false);
 });
 
-test("the legacy module registers flat hook keys, the namespaced one registers through ctx", () => {
-  const legacyText = renderOpencodePlugin(legacy) ?? "";
-  const namespacedText = renderOpencodePlugin(namespaced) ?? "";
+test("the one module carries both register paths and picks between them at load time", () => {
+  const text = renderOpencodePlugin(legacy) ?? "";
 
-  assert.ok(legacyText.includes('"tool.execute.before": async (input, output)'));
-  assert.ok(!legacyText.includes("ctx."), "the legacy API has no plugin context to register through");
-  assert.ok(!legacyText.includes("permission"), "the legacy API has no permission hook to register");
-  assert.ok(!legacyText.includes("@opencode-ai/plugin"), "the legacy API has no SDK import");
-
-  assert.ok(namespacedText.includes('import { Plugin } from "@opencode-ai/plugin";'));
-  assert.ok(namespacedText.includes('ctx.tool.hook("execute.before"'));
-  assert.ok(namespacedText.includes('ctx.shell.hook("create.before"'));
-  assert.ok(namespacedText.includes('ctx.permission.hook("evaluate"'));
+  assert.ok(text.includes('"tool.execute.before": async (input, output)'), "the legacy flat hook keys");
+  assert.ok(text.includes('ctx.tool.hook("execute.before"'));
+  assert.ok(text.includes('ctx.shell.hook("create.before"'));
+  assert.ok(text.includes('ctx.permission.hook("evaluate"'));
+  assert.ok(text.includes("isNamespacedHost(input)"), "the runtime selection between the two");
 });
 
-test("each module stamps the envelope its own detector matches on", () => {
-  assert.ok((renderOpencodePlugin(legacy) ?? "").includes('pluginApi: "legacy"'));
-  assert.ok((renderOpencodePlugin(namespaced) ?? "").includes('pluginApi: "namespaced"'));
+/**
+ * hazard: `@opencode-ai/plugin` 1.17.9 has no runtime `Plugin` export — `dist/index.js` re-exports `tool` alone —
+ * so importing one is a link-time error that takes the whole bridge down, on every install.
+ */
+test("the module imports nothing but node's own child_process", () => {
+  const text = renderOpencodePlugin(legacy) ?? "";
+  assert.deepEqual(
+    [...text.matchAll(/^import .* from "(.+)";$/gm)].map((match) => match[1]),
+    ["node:child_process"],
+  );
+});
+
+/**
+ * invariant: opencode's legacy plugin host iterates every export and throws on the first that is not a function.
+ * A single exported constant would take the whole bridge down.
+ */
+test("the module exports exactly one thing, and it is a function", () => {
+  const text = renderOpencodePlugin(legacy) ?? "";
+  assert.deepEqual(
+    [...text.matchAll(/^export .*$/gm)].map((match) => match[0]),
+    ["export default async function TlcHarness(input) {"],
+  );
+});
+
+test("each generation's hint routes to its own adapter, and the envelope carries its own stamp", () => {
+  const text = renderOpencodePlugin(legacy) ?? "";
+  const launcher = JSON.stringify(RUNTIME.launcherPath);
+  assert.ok(text.includes(`"legacy": ["node",${launcher},"--provider","opencode-legacy"]`), text);
+  assert.ok(text.includes(`"namespaced": ["node",${launcher},"--provider","opencode-namespaced"]`), text);
+  // invariant: the stamp is `decide`'s own argument, so it is whichever generation actually called it.
+  assert.ok(text.includes('provider: "opencode", pluginApi, hook, ...payload'));
+  assert.ok(text.includes('decide("legacy", "tool.execute.before"'));
+  assert.ok(text.includes('decide("namespaced", "permission.evaluate"'));
 });
 
 test("no plugin text exists for a kind that is not opencode's", () => {

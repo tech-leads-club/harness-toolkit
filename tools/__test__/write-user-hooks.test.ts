@@ -335,10 +335,10 @@ function opencodeWiringFixture(root: string, kind: "opencode-plugin" | "opencode
   const launcherPath = join(root, "harness", "bin", "tlc-exec.mjs");
   const plugins = join(root, ".config", "opencode", "plugins");
   const provider = kind === "opencode-plugin" ? "opencode-legacy" : "opencode-namespaced";
-  const target =
-    kind === "opencode-plugin" ? join(plugins, "tlc-harness.js") : join(plugins, "tlc-harness", "index.ts");
   return {
-    target,
+    // invariant: one flat file for both generations — the discovery glob is one level deep and loads every
+    // sibling it finds, so a nested target is dead and a second target fires every hook twice.
+    target: join(plugins, "tlc-harness.js"),
     kind,
     strategy: "replace",
     entries: [
@@ -355,13 +355,23 @@ function opencodeWiringFixture(root: string, kind: "opencode-plugin" | "opencode
 
 describe("applyOpencodePluginWiring", () => {
   test("writes the bridge for both generations, creating the plugin directory", () => {
-    const root = newRoot();
     for (const kind of ["opencode-plugin", "opencode-plugin-ns"] as const) {
-      const wiring = opencodeWiringFixture(root, kind);
+      const wiring = opencodeWiringFixture(newRoot(), kind);
       const result = applyOpencodePluginWiring(wiring);
       assert.equal(result.status, "written", kind);
       assert.ok(readFileSync(wiring.target, "utf8").includes("@tlc-harness managed"), kind);
     }
+  });
+
+  // invariant: both generations share one target, so the second write finds the file already correct. Anything
+  // else would mean the two kinds render different text into one file and overwrite each other every update.
+  test("the second generation into the same target changes nothing", () => {
+    const root = newRoot();
+    assert.equal(applyOpencodePluginWiring(opencodeWiringFixture(root, "opencode-plugin")).status, "written");
+    assert.equal(
+      applyOpencodePluginWiring(opencodeWiringFixture(root, "opencode-plugin-ns")).status,
+      "unchanged",
+    );
   });
 
   test("rewriting its own bridge with no change reports unchanged", () => {
@@ -406,9 +416,8 @@ describe("applyOpencodePluginWiring", () => {
   });
 
   test("applyProviderWiring dispatches both opencode kinds to this writer", () => {
-    const root = newRoot();
     for (const kind of ["opencode-plugin", "opencode-plugin-ns"] as const) {
-      const wiring = opencodeWiringFixture(root, kind);
+      const wiring = opencodeWiringFixture(newRoot(), kind);
       assert.equal(applyProviderWiring(wiring).status, "written", kind);
     }
   });

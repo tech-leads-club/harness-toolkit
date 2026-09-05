@@ -95,9 +95,14 @@ fails `tsc --noEmit` until a reader handles it.
 | `cursor-hooks-json` | replace | `~/.cursor/hooks.json` |
 | `claude-settings-json` | merge | `~/.claude/settings.json` |
 | `opencode-plugin` | replace | `~/.config/opencode/plugins/tlc-harness.js` |
-| `opencode-plugin-ns` | replace | `~/.config/opencode/plugins/tlc-harness/index.ts` |
+| `opencode-plugin-ns` | replace | `~/.config/opencode/plugins/tlc-harness.js` — the same file; see below |
 | `codex-hooks-json` | merge | `$CODEX_HOME/hooks.json`, default `~/.codex/hooks.json` |
 | `vscode-hooks-json` | replace | `~/.copilot/hooks/tlc-harness.json` — **never written**; see below |
+
+**The two opencode kinds share one file.** opencode auto-discovers plugins with the flat glob
+`{plugin,plugins}/*.{ts,js}`, so a nested target is never loaded and two sibling targets are both loaded, firing
+every hook twice. The emitted module carries both register paths and selects the generation from the plugin input
+the host hands it ([/decisions/ad-124.md](/decisions/ad-124.md)).
 
 **VS Code wiring is deferred, not missing.** The writer exists and is tested against a golden file, and
 `install`, `doctor` and `init` each take an explicit deferral branch while Agent Hooks are Preview
