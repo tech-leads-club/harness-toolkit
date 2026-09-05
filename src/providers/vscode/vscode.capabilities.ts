@@ -6,6 +6,11 @@ import type { ProviderCapabilities } from "../../contracts/index.ts";
  * comes from VS Code's own Agent Hooks page. The Copilot reference's `modifiedArgs`, `modifiedResult` and
  * `additionalContext`-at-`postToolUse` belong to GitHub's CLI and cloud agent, so they settle nothing here.
  *
+ * why three of them changed: VS Code has since published its own per-event hooks reference
+ * (<https://code.visualstudio.com/docs/agents/reference/hooks-reference>, read 2026-09-05), which documents
+ * `updatedInput` on `PreToolUse` and `additionalContext` on `PreToolUse` and `PostToolUse`. The rule above did
+ * not change — the VS Code page simply now carries the fields (AD-125's correction section).
+ *
  * invariant: no value is carried across from Claude. This host reuses Claude's payload shape, which makes Claude's
  * descriptor the one most likely to be copied and the copy hardest to notice.
  */
@@ -14,9 +19,10 @@ export function vscodeCapabilities(): ProviderCapabilities {
     // why: hooks run synchronously and their stdout is read back; exit code 2 is a blocking error.
     enforcesHooks: true,
     /**
-     * why exactly these four: `PreToolUse` is the only event documented as returning
-     * `hookSpecificOutput.permissionDecision`, and it accepts `"allow" | "deny" | "ask"`. Those four kinds are
-     * exactly what `PreToolUse` fans out to in `HarnessEventKind` (spec P4 AC2).
+     * why exactly these four and no others: `permissionDecision` is exclusive to `PreToolUse` in the published
+     * reference, and it accepts `"allow" | "deny" | "ask"`. These four kinds are exactly the ones
+     * `vscode.inbound.ts` produces from `PreToolUse` and the ones `vscode.outbound.ts` maps back to it — every
+     * other kind maps to an event that ignores the field (spec P4 AC2).
      */
     askSupportedOn: ["shell.before", "mcp.before", "read.before", "tool.before"],
     // why: unmeasured. The VS Code page documents no environment given to a hook command; the Copilot reference's
@@ -31,20 +37,20 @@ export function vscodeCapabilities(): ProviderCapabilities {
     // why: there is no shell event. Terminal execution arrives as `PreToolUse` with `tool_name:
     // "runTerminalCommand"`.
     dedicatedShellEvent: false,
-    // why: unmeasured. The VS Code page documents a permission decision on `PreToolUse` and no argument
-    // substitution. `modifiedArgs` is the Copilot CLI's.
-    toolInputRewrite: false,
+    // why: the published hooks reference documents `hookSpecificOutput.updatedInput` as an optional object on
+    // `PreToolUse`. This is VS Code's own page, not the Copilot CLI's `modifiedArgs`.
+    toolInputRewrite: true,
     // why: unmeasured, same split — the VS Code page documents no result replacement on `PostToolUse`.
     // `modifiedResult` is the Copilot CLI's.
     toolOutputRewrite: false,
-    // why not merely conservative: both sources agree. The VS Code page documents `PreToolUse` output as a
-    // permission decision, and the Copilot reference states outright that `preToolUse` does not return
-    // `additionalContext`.
-    contextAtToolBefore: false,
-    // why: unmeasured. `additionalContext` on `postToolUse` is the Copilot reference's alone.
-    contextAtToolAfter: false,
-    // why: no context channel at `Stop`. The documented outputs are `continue`, `stopReason` and `systemMessage`,
-    // and an operator-visible warning is not context to the model.
+    // why: the published hooks reference lists `PreToolUse` among the four events that accept
+    // `additionalContext`. That overrides the Copilot reference's claim that `preToolUse` does not return it.
+    contextAtToolBefore: true,
+    // why: `PostToolUse` is the second of the four events the published reference lists for `additionalContext`.
+    contextAtToolAfter: true,
+    // why still false: `Stop` is not in that list of four. Its documented outputs are `decision` with a `reason`
+    // plus the common `continue`, `stopReason` and `systemMessage` — an operator-visible warning is not context
+    // to the model.
     contextAtStop: false,
     // why: the VS Code page documents `hookSpecificOutput.additionalContext` on `SessionStart`, so this is the
     // host's own output contract rather than a transfer. It is also why this host needs no durable lessons file.

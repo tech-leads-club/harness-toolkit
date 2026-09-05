@@ -30,9 +30,13 @@ The hint reaches the detector from the wiring: every entry launches
 
 `vscode.capabilities.ts`. Every value is cited in [/decisions/ad-125.md](/decisions/ad-125.md), which draws one
 line and holds it: **what a hook receives** comes from GitHub's Copilot hooks reference, **what a hook may return
-and have honoured** comes from VS Code's own Agent Hooks page. The Copilot reference's `modifiedArgs`,
-`modifiedResult` and `additionalContext`-at-`postToolUse` belong to GitHub's CLI and cloud agent, so they settle
-nothing here.
+and have honoured** comes from VS Code's own pages. The Copilot reference's `modifiedArgs` and `modifiedResult`
+belong to GitHub's CLI and cloud agent, so they settle nothing here.
+
+VS Code has since published a per-event hooks reference
+(<https://code.visualstudio.com/docs/agents/reference/hooks-reference>, read 2026-09-05). It documents
+`updatedInput` on `PreToolUse` and `additionalContext` on `PreToolUse`, `PostToolUse`, `SessionStart` and
+`SubagentStart`, which raises three flags that were `false` on the vendor's silence.
 
 | Capability | Value |
 | --- | --- |
@@ -41,11 +45,11 @@ nothing here.
 | `sessionEnv` | `false` — unmeasured; no environment is documented for a hook command |
 | `nativeLoopCounter` | `false` — `stop_hook_active` is a boolean and the flag claims a count |
 | `dedicatedShellEvent` | `false` — terminal execution is `PreToolUse` with `tool_name: "runTerminalCommand"` |
-| `toolInputRewrite` | `false` — unmeasured; `modifiedArgs` is the Copilot CLI's |
+| `toolInputRewrite` | `true` — the published hooks reference documents `hookSpecificOutput.updatedInput` on `PreToolUse` |
 | `toolOutputRewrite` | `false` — unmeasured; `modifiedResult` is the Copilot CLI's |
-| `contextAtToolBefore` | `false` — the Copilot reference states outright that `preToolUse` does not return `additionalContext` |
-| `contextAtToolAfter` | `false` — unmeasured |
-| `contextAtStop` | `false` — no context channel at `Stop` |
+| `contextAtToolBefore` | `true` — `PreToolUse` is one of the four events the reference lists for `additionalContext` |
+| `contextAtToolAfter` | `true` — `PostToolUse` is the second of those four |
+| `contextAtStop` | `false` — `Stop` is not among them; its output is `decision` with a `reason` |
 | `sessionStartContextReliable` | `true` — the VS Code page documents `hookSpecificOutput.additionalContext` on `SessionStart` |
 | `toolOutputAtAfter` | `true` — `PostToolUse` carries `tool_result` |
 | `usageInPayload` | `false` |

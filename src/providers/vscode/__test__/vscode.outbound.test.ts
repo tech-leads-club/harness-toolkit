@@ -95,12 +95,19 @@ test("context anywhere but SessionStart renders nothing rather than a field this
   }
 });
 
-test("the context channels AD-125 removed are stripped by degrade before the renderer runs", () => {
+/**
+ * `Stop` is the one context channel this host refuses: the published reference lists `additionalContext` on
+ * `PreToolUse`, `PostToolUse`, `SessionStart` and `SubagentStart` and on no other event
+ * ([/decisions/ad-125.md](/decisions/ad-125.md)).
+ */
+test("context at stop is stripped by degrade, and context at the two tool events survives it", () => {
   const capabilities = vscodeCapabilities();
   const toolAfter: HarnessEvent = { ...eventFrom("post-tool-use-terminal.json"), event: "tool.after" };
-  for (const event of [eventFrom("pre-tool-use-unknown.json"), toolAfter, eventFrom("stop.json")]) {
-    const degraded = degrade({ kind: "context", text: "stripped" }, event, capabilities);
-    assert.deepEqual(degraded, { kind: "abstain" }, event.event);
+  const stripped = degrade({ kind: "context", text: "stripped" }, eventFrom("stop.json"), capabilities);
+  assert.deepEqual(stripped, { kind: "abstain" });
+  for (const event of [eventFrom("pre-tool-use-unknown.json"), toolAfter]) {
+    const degraded = degrade({ kind: "context", text: "kept" }, event, capabilities);
+    assert.deepEqual(degraded, { kind: "context", text: "kept" }, event.event);
   }
 });
 
@@ -133,17 +140,14 @@ test("abstain renders silence", () => {
 });
 
 /**
- * `toolInputRewrite` is false, so `degrade()` turns a rewrite into an ask — which this host does support on the
- * four before-kinds. The renderer's own branch is what a caller that skipped `degrade()` falls to: silence, never
- * an `updatedInput` the descriptor says the host does not read.
+ * `toolInputRewrite` is true — `hookSpecificOutput.updatedInput` is documented on `PreToolUse`
+ * ([/decisions/ad-125.md](/decisions/ad-125.md)) — so `degrade()` carries a rewrite through untouched instead of
+ * converting it to an ask.
  */
-test("a rewrite is degraded to an ask, and renders as silence if it reaches the renderer anyway", () => {
+test("a rewrite survives degrade, because updatedInput is documented on PreToolUse", () => {
   const rewrite: Decision = { kind: "rewriteInput", input: { command: "ls" }, reason: "safer" };
   const degraded = degrade(rewrite, toolBefore, vscodeCapabilities());
-  assert.equal(degraded.kind, "ask");
-  const rendered = vscodeRender(rewrite, toolBefore);
-  assert.equal(rendered.stdout, null);
-  assert.equal(rendered.exitCode, 0);
+  assert.deepEqual(degraded, rewrite);
 });
 
 test("a continue hands its text back through the stop channel", () => {

@@ -22,10 +22,10 @@ test("every flag matches the value AD-125 cites", () => {
     sessionEnv: false,
     nativeLoopCounter: false,
     dedicatedShellEvent: false,
-    toolInputRewrite: false,
+    toolInputRewrite: true,
     toolOutputRewrite: false,
-    contextAtToolBefore: false,
-    contextAtToolAfter: false,
+    contextAtToolBefore: true,
+    contextAtToolAfter: true,
     contextAtStop: false,
     sessionStartContextReliable: true,
     toolOutputAtAfter: true,
@@ -56,14 +56,19 @@ test("the three flags spec P4 AC2 names directly carry the values it names", () 
 });
 
 /**
- * AD-125 correction: the design carried `additionalContext` at before, after, and stop from the transcription.
- * The VS Code page documents it on `SessionStart` alone, so all three are false and `degrade()` strips a context
- * decision at those points before the renderer sees it (T17 depends on this).
+ * AD-125's correction: the published hooks reference lists `additionalContext` on exactly four events —
+ * `PreToolUse`, `PostToolUse`, `SessionStart` and `SubagentStart`. `Stop` is not one of them, so that flag alone
+ * stays false and `degrade()` still strips a context decision at `stop`.
  */
-test("no context channel is claimed outside SessionStart", () => {
-  assert.equal(vscode.contextAtToolBefore, false);
-  assert.equal(vscode.contextAtToolAfter, false);
+test("context is claimed at the tool events the reference lists, and refused at Stop", () => {
+  assert.equal(vscode.contextAtToolBefore, true);
+  assert.equal(vscode.contextAtToolAfter, true);
   assert.equal(vscode.contextAtStop, false);
+});
+
+/** AD-125's correction: `hookSpecificOutput.updatedInput` is documented on `PreToolUse`. */
+test("an input rewrite is claimed, because updatedInput is documented on PreToolUse", () => {
+  assert.equal(vscode.toolInputRewrite, true);
 });
 
 test("no turn counter is claimed, because stop_hook_active is a boolean and the flag claims a count", () => {
@@ -85,19 +90,12 @@ test("the descriptor is none of Claude's, Cursor's, or Codex's", () => {
  * it. `askSupportedOn` is compared as a set, because the two hosts list the same four kinds in a different order
  * and an ordering difference is not a capability difference.
  */
-test("the six rows VS Code differs from Claude on are the six AD-125 settles against the VS Code page", () => {
+test("the three rows VS Code differs from Claude on are the three AD-125 settles against the VS Code page", () => {
   const claude = claudeCapabilities();
   const canonical = (value: unknown): string =>
     JSON.stringify(Array.isArray(value) ? [...value].sort() : value);
   const differing = (Object.keys(vscode) as (keyof typeof vscode)[])
     .filter((key) => canonical(vscode[key]) !== canonical(claude[key]))
     .sort();
-  assert.deepEqual(differing, [
-    "contextAtStop",
-    "contextAtToolAfter",
-    "contextAtToolBefore",
-    "effortSignal",
-    "toolInputRewrite",
-    "toolOutputRewrite",
-  ]);
+  assert.deepEqual(differing, ["contextAtStop", "effortSignal", "toolOutputRewrite"]);
 });
