@@ -436,26 +436,60 @@ function unreachableWiringKind(kind: never): never {
   throw new Error(`no wiring reader for kind "${String(kind)}"`);
 }
 
+/**
+ * The reminder that a Codex hook file is not a Codex hook until the operator trusts it.
+ *
+ * hazard: Codex silently skips hooks it does not trust. A `hooks.json` this harness wrote and Codex ignores looks
+ * identical, from here, to one that is running — `doctor` cannot read Codex's trust store, so it must say so
+ * rather than let a `wired` row imply the hooks fire (spec P3 AC7, design §10).
+ *
+ * why `ok` and not `warn`: a warning that can never be cleared by anything doctor can observe is a warning an
+ * operator learns to scroll past, and it would fire on every run of a correctly configured machine
+ * ([/decisions/ad-034.md](/decisions/ad-034.md)). This row carries the action and says plainly it is unverified.
+ */
+export function codexTrustReminder(
+  wiring: ProviderWiring<ProviderWiringKind>,
+  status: ProviderWiringStatus,
+): Check[] {
+  if (wiring.kind !== "codex-hooks-json" || status === "not-installed") {
+    return [];
+  }
+  return [
+    {
+      level: "ok",
+      name: "codex hook trust",
+      detail: `not verified — Codex silently skips untrusted hooks. Run /hooks inside Codex to trust ${wiring.target}. This harness cannot read Codex's trust store, so it cannot tell a trusted file from an ignored one.`,
+    },
+  ];
+}
+
 export function checkProviders(registry: readonly ProviderPort[], home: string): Check[] {
   const launcherPath = join(home, "bin", "tlc-exec.mjs");
-  return registry.map((provider) => {
+  return registry.flatMap((provider) => {
     const wiring = provider.wiring({ launcherPath });
     const status = providerWiringStatus(wiring);
+    const reminders = codexTrustReminder(wiring, status);
     if (status === "not-installed") {
-      return { level: "ok", name: `${provider.name} wiring`, detail: "not installed" };
+      return [{ level: "ok", name: `${provider.name} wiring`, detail: "not installed" }, ...reminders];
     }
     if (status === "wired") {
-      return { level: "ok", name: `${provider.name} wiring`, detail: `wired (${wiring.target})` };
+      return [
+        { level: "ok", name: `${provider.name} wiring`, detail: `wired (${wiring.target})` },
+        ...reminders,
+      ];
     }
     // why: names the event and the reason. "detected but not wired" told an operator that something was wrong and
     // nothing else, which is one step above silence.
     const problems = wiringProblems(wiring);
     const why = problems.length > 0 ? ` — ${formatWiringProblems(problems)}` : "";
-    return {
-      level: "warn",
-      name: `${provider.name} wiring`,
-      detail: `detected but not wired${why} — run: tlc harness update (${wiring.target})`,
-    };
+    return [
+      {
+        level: "warn" as const,
+        name: `${provider.name} wiring`,
+        detail: `detected but not wired${why} — run: tlc harness update (${wiring.target})`,
+      },
+      ...reminders,
+    ];
   });
 }
 

@@ -28,6 +28,7 @@ import {
   checkRules,
   checkRuntimePaths,
   checkShadowedPolicy,
+  codexTrustReminder,
   exitCodeFor,
   formatReport,
   measureRuntimeStart,
@@ -279,6 +280,74 @@ describe("checkProviders", () => {
     assert.equal(checks[0]?.name, "fixture wiring");
     assert.equal(checks[0]?.level, "ok");
     assert.match(checks[0]?.detail ?? "", /not installed/);
+  });
+});
+
+/**
+ * spec P3 AC7. Codex silently skips hooks it does not trust, so a `hooks.json` this harness wrote and Codex
+ * ignores looks, from here, exactly like one that is running. The row has to carry the action and say outright
+ * that trust was not checked (design §10).
+ */
+describe("codexTrustReminder", () => {
+  const codexWiring = {
+    target: "/home/dev/.codex/hooks.json",
+    kind: "codex-hooks-json" as const,
+    strategy: "merge" as const,
+    entries: [],
+  };
+
+  test("a reported Codex wiring carries the /hooks reminder", () => {
+    const [reminder] = codexTrustReminder(codexWiring, "wired");
+    assert.ok(reminder);
+    assert.equal(reminder.name, "codex hook trust");
+    assert.match(reminder.detail, /\/hooks/);
+    assert.match(reminder.detail, /\/home\/dev\/\.codex\/hooks\.json/);
+  });
+
+  // invariant: it must never read as a verified state. The harness cannot see Codex's trust store at all.
+  test("the wording says trust was not verified and why it cannot be", () => {
+    const [reminder] = codexTrustReminder(codexWiring, "wired");
+    assert.ok(reminder);
+    assert.match(reminder.detail, /not verified/);
+    assert.match(reminder.detail, /cannot read Codex's trust store/);
+    assert.doesNotMatch(reminder.detail, /trusted and running|trust verified|verified trust/);
+  });
+
+  test("an unwired Codex install still gets the reminder, because the trust step is separate", () => {
+    assert.equal(codexTrustReminder(codexWiring, "detected-but-unwired").length, 1);
+  });
+
+  // why: nothing to trust and nothing to say. A reminder on a machine with no Codex is noise.
+  test("no reminder when Codex is not installed, and none for any other host", () => {
+    assert.deepEqual(codexTrustReminder(codexWiring, "not-installed"), []);
+    assert.deepEqual(
+      codexTrustReminder({ ...codexWiring, kind: "claude-settings-json" as const }, "wired"),
+      [],
+    );
+  });
+
+  /**
+   * why `ok` and not `warn`: doctor can never clear this row by observation, so a warning would fire on every run
+   * of a correctly configured machine and be scrolled past ([/decisions/ad-034.md](/decisions/ad-034.md)).
+   */
+  test("the reminder is an ok row, not a warning that can never be cleared", () => {
+    assert.equal(codexTrustReminder(codexWiring, "wired")[0]?.level, "ok");
+  });
+
+  test("checkProviders emits the reminder alongside the codex wiring row", () => {
+    const root = newRoot();
+    const home = join(root, "runtime-home");
+    mkdirSync(home, { recursive: true });
+    const codexHome = join(root, "codex-home");
+    mkdirSync(codexHome, { recursive: true });
+    const provider = {
+      name: "codex",
+      wiring: () => ({ ...codexWiring, target: join(codexHome, "hooks.json") }),
+    } as unknown as ProviderPort;
+    const checks = checkProviders([provider], home);
+    assert.equal(checks.length, 2);
+    assert.equal(checks[0]?.name, "codex wiring");
+    assert.equal(checks[1]?.name, "codex hook trust");
   });
 });
 

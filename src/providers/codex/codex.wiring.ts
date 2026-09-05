@@ -41,7 +41,7 @@ const ENTRY_SPECS: readonly EntrySpec[] = [
   { hookEvent: "PreCompact", handler: "compact-before", timeoutSeconds: 5 },
 ];
 
-export function codexHooksPath(): string {
+function codexHooksPath(): string {
   return join(codexConfigDir(), "hooks.json");
 }
 
@@ -69,12 +69,12 @@ export function codexWiring(runtime: RuntimePaths): ProviderWiring<ProviderWirin
   };
 }
 
-export type CodexHookCommand = { type: "command"; command: string; timeout: number };
-export type CodexHookGroup = { matcher?: string; hooks: CodexHookCommand[] };
-export type CodexHooks = Record<string, CodexHookGroup[]>;
+type CodexHookCommand = { type: "command"; command: string; timeout: number };
+type CodexHookGroup = { matcher?: string; hooks: CodexHookCommand[] };
+type CodexHooks = Record<string, CodexHookGroup[]>;
 
-export type CodexMergeSuccess = { ok: true; hooksText: string; changed: boolean };
-export type CodexMergeFailure = { ok: false; error: string; block: string };
+type CodexMergeSuccess = { ok: true; hooksText: string; changed: boolean };
+type CodexMergeFailure = { ok: false; error: string; block: string };
 export type CodexMergeResult = CodexMergeSuccess | CodexMergeFailure;
 
 const LAUNCHER_MARKER = "tlc-exec.mjs";
@@ -94,7 +94,7 @@ export function codexCommandString(entry: WiringEntry): string {
     .join(" ");
 }
 
-export function isHarnessGroup(group: unknown): boolean {
+function isHarnessGroup(group: unknown): boolean {
   return JSON.stringify(group ?? null).includes(LAUNCHER_MARKER);
 }
 
