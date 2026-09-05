@@ -14,8 +14,10 @@ import { runProcess } from "../platform/process.ts";
 import {
   type ProviderPort,
   renderClaudeLessonsView,
+  renderCodexLessonsView,
   renderCursorLessonsView,
   renderOpencodeLessonsView,
+  renderVSCodeLessonsView,
 } from "../providers/index.ts";
 
 // invariant: one definition, taken from core rather than restated.
@@ -256,6 +258,18 @@ export function renderProviderLessonsView(providerName: string, root: string): s
   // ([/decisions/ad-124.md](/decisions/ad-124.md)).
   if (providerName === "opencode-legacy" || providerName === "opencode-namespaced") {
     return renderOpencodeLessonsView(root);
+  }
+  /**
+   * why these two are here at all, when both deliver context from their session-start hook: `durableViewVerdict`
+   * decides whether this function is called, and under `syncRulesFile: "always"` an operator has asked for the
+   * file whatever the hook does. Returning null for them made that setting silently do nothing on two hosts
+   * (spec P4 AC7).
+   */
+  if (providerName === "codex") {
+    return renderCodexLessonsView(root);
+  }
+  if (providerName === "vscode") {
+    return renderVSCodeLessonsView(root);
   }
   return null;
 }
