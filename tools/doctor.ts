@@ -18,7 +18,7 @@ import {
 } from "../src/platform/paths.ts";
 import { catalogueMeta, planeMeta } from "../src/platform/pricing.ts";
 import { type ColorName, createStyle, PLAIN, type Style, SYMBOLS } from "../src/platform/style.ts";
-import { mergeClaudeSettings } from "../src/providers/claude/claude.wiring.ts";
+import { claudeSettingsPath, mergeClaudeSettings } from "../src/providers/claude/claude.wiring.ts";
 import { mergeCodexHooks } from "../src/providers/codex/codex.wiring.ts";
 import {
   cursorWiringProblems,
@@ -472,12 +472,81 @@ export function codexTrustReminder(
   ];
 }
 
-export function checkProviders(registry: readonly ProviderPort[], home: string): Check[] {
+/**
+ * Where VS Code would read hooks that were never written for it.
+ *
+ * why both files: VS Code loads `.claude/settings.json` from the workspace and from the user's home, and this
+ * harness writes hooks into both — `init` writes the project one, `update` the user one.
+ */
+export function claudeSettingsCandidates(root: string): string[] {
+  return [claudeSettingsPath(), join(root, ".claude", "settings.json")];
+}
+
+function hasClaudeHooks(path: string): boolean {
+  if (!existsSync(path)) {
+    return false;
+  }
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return false;
+    }
+    const hooks = (parsed as Record<string, unknown>).hooks;
+    return hooks !== null && typeof hooks === "object" && Object.keys(hooks).length > 0;
+  } catch {
+    // why silent: an unparseable settings.json is somebody else's check to report, and a hazard row that fires on
+    // a broken file would say the wrong thing about the right file.
+    return false;
+  }
+}
+
+/**
+ * The silent mismatch: VS Code reads `.claude/settings.json` by default, so hooks written for Claude are loaded
+ * and run against VS Code's payloads — where `tool_name` is `runTerminalCommand`, not `Bash`.
+ *
+ * hazard: nothing errors. The Claude inbound parser reads the payload, finds no tool name it knows, and produces
+ * a generic `tool.before`. Every shell rule an operator wrote goes quiet, and the only visible sign is that
+ * nothing is ever refused (spec P4 AC6, design §10).
+ *
+ * why `warn` where the Codex trust reminder is `ok`: this one is both observable and clearable. Doctor can read
+ * the file, and the operator can act — point VS Code away from it, or accept that those hooks are Claude's. A
+ * warning nobody can clear is the [/decisions/ad-034.md](/decisions/ad-034.md) defect; this is not that.
+ */
+export function vscodeMismatchHazard(
+  wiring: ProviderWiring<ProviderWiringKind>,
+  status: ProviderWiringStatus,
+  settingsPaths: readonly string[],
+): Check[] {
+  if (wiring.kind !== "vscode-hooks-json" || status === "not-installed") {
+    return [];
+  }
+  const found = settingsPaths.filter(hasClaudeHooks);
+  if (found.length === 0) {
+    return [];
+  }
+  return [
+    {
+      level: "warn",
+      name: "vscode settings mismatch",
+      detail: `VS Code reads .claude/settings.json by default, and hooks are configured there (${found.join(", ")}). Those hooks were written for Claude Code: VS Code sends its own tool names — runTerminalCommand rather than Bash — so the Claude parser sees no tool it knows and every shell rule goes quiet with no error. Remove the hooks from that file for VS Code, or accept that they steer Claude only.`,
+    },
+  ];
+}
+
+export function checkProviders(
+  registry: readonly ProviderPort[],
+  home: string,
+  root: string = process.cwd(),
+): Check[] {
   const launcherPath = join(home, "bin", "tlc-exec.mjs");
+  const settingsPaths = claudeSettingsCandidates(root);
   return registry.flatMap((provider) => {
     const wiring = provider.wiring({ launcherPath });
     const status = providerWiringStatus(wiring);
-    const reminders = codexTrustReminder(wiring, status);
+    const reminders = [
+      ...codexTrustReminder(wiring, status),
+      ...vscodeMismatchHazard(wiring, status, settingsPaths),
+    ];
     if (status === "not-installed") {
       return [{ level: "ok", name: `${provider.name} wiring`, detail: "not installed" }, ...reminders];
     }
@@ -939,7 +1008,7 @@ export function runChecks(ctx: DoctorContext): Check[] {
     ...checkRuntimePaths(ctx.runtimeHome, ctx.platform),
     ...checkSkillLinks(ctx.runtimeHome),
     checkHookRuntime(ctx.runtimeHome, ctx.bunPath),
-    ...checkProviders(ctx.registry, ctx.runtimeHome),
+    ...checkProviders(ctx.registry, ctx.runtimeHome, ctx.root),
     ...checkProjectPolicy(ctx.root),
     ...checkCapabilities(ctx.root, ctx.runtimeHome),
     ...checkPrices(),

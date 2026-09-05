@@ -29,6 +29,7 @@ import {
   checkRules,
   checkRuntimePaths,
   checkShadowedPolicy,
+  claudeSettingsCandidates,
   codexTrustReminder,
   exitCodeFor,
   formatReport,
@@ -37,6 +38,7 @@ import {
   providerWiringStatus,
   runChecks,
   toReport,
+  vscodeMismatchHazard,
   wiringProblems,
 } from "../doctor.ts";
 import { withEnv } from "../test-env.scope.mjs";
@@ -326,6 +328,113 @@ describe("checkProviders", () => {
     assert.equal(checks[0]?.name, "fixture wiring");
     assert.equal(checks[0]?.level, "ok");
     assert.match(checks[0]?.detail ?? "", /not installed/);
+  });
+});
+
+/**
+ * spec P4 AC6. VS Code reads `.claude/settings.json` by default, so hooks written for Claude are loaded and run
+ * against VS Code's payloads — where the tool name is `runTerminalCommand`, not `Bash`. Nothing errors: the Claude
+ * parser produces a generic `tool.before` and every shell rule goes quiet (design §10).
+ */
+describe("vscodeMismatchHazard", () => {
+  function vscodeWiringAt(target: string): ProviderWiring<ProviderWiringKind> {
+    return { ...vscodeWiring({ launcherPath: "/x/bin/tlc-exec.mjs" }), target };
+  }
+
+  function writeClaudeHooks(root: string): string {
+    const path = join(root, ".claude", "settings.json");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(
+      path,
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            { hooks: [{ type: "command", command: "node", args: ["/x/tlc-exec.mjs", "tool-before"] }] },
+          ],
+        },
+      }),
+    );
+    return path;
+  }
+
+  test("reports the hazard when Claude hooks are present and VS Code is installed", () => {
+    const root = newRoot();
+    const settings = writeClaudeHooks(root);
+    const checks = vscodeMismatchHazard(vscodeWiringAt(join(root, "hooks", "x.json")), "deferred", [
+      settings,
+    ]);
+    assert.equal(checks.length, 1);
+    assert.equal(checks[0]?.level, "warn");
+    assert.equal(checks[0]?.name, "vscode settings mismatch");
+    assert.match(checks[0]?.detail ?? "", /\.claude\/settings\.json/);
+    assert.match(checks[0]?.detail ?? "", /runTerminalCommand/);
+    assert.ok(checks[0]?.detail.includes(settings), "the file it found is named");
+  });
+
+  test("says nothing when no Claude hooks are configured", () => {
+    const root = newRoot();
+    const settings = join(root, ".claude", "settings.json");
+    assert.deepEqual(vscodeMismatchHazard(vscodeWiringAt("/x/y.json"), "deferred", [settings]), []);
+
+    // a settings.json with no hooks at all is not the hazard either
+    mkdirSync(dirname(settings), { recursive: true });
+    writeFileSync(settings, JSON.stringify({ permissions: { allow: [] } }));
+    assert.deepEqual(vscodeMismatchHazard(vscodeWiringAt("/x/y.json"), "deferred", [settings]), []);
+  });
+
+  test("says nothing when VS Code is not installed, however the settings file looks", () => {
+    const root = newRoot();
+    const settings = writeClaudeHooks(root);
+    assert.deepEqual(
+      vscodeMismatchHazard(vscodeWiringAt("/x/y.json"), "not-installed", [settings]),
+      [],
+      "no VS Code, no mismatch",
+    );
+  });
+
+  test("never fires for another host's wiring", () => {
+    const root = newRoot();
+    const settings = writeClaudeHooks(root);
+    const claudeish: ProviderWiring<ProviderWiringKind> = {
+      target: join(root, "settings.json"),
+      kind: "claude-settings-json",
+      strategy: "merge",
+      entries: [],
+    };
+    assert.deepEqual(vscodeMismatchHazard(claudeish, "wired", [settings]), []);
+  });
+
+  test("an unparseable settings.json is not reported as the mismatch", () => {
+    const root = newRoot();
+    const settings = join(root, ".claude", "settings.json");
+    mkdirSync(dirname(settings), { recursive: true });
+    writeFileSync(settings, "{ not json");
+    assert.deepEqual(vscodeMismatchHazard(vscodeWiringAt("/x/y.json"), "deferred", [settings]), []);
+  });
+
+  // both files, because VS Code reads the workspace one and the user one, and this harness writes to both.
+  test("the candidate list covers the user file and the project file", () => {
+    const candidates = claudeSettingsCandidates("/repo");
+    assert.equal(candidates.length, 2);
+    assert.ok(candidates.includes(join("/repo", ".claude", "settings.json")));
+    assert.ok(candidates.some((path) => path.endsWith(join(".claude", "settings.json"))));
+  });
+
+  test("checkProviders carries the hazard beside the VS Code row", () => {
+    const root = newRoot();
+    const copilot = join(root, "copilot-home");
+    mkdirSync(copilot, { recursive: true });
+    writeClaudeHooks(root);
+    const provider = {
+      name: "vscode",
+      wiring: () => vscodeWiringAt(join(copilot, "hooks", "tlc-harness.json")),
+    } as unknown as ProviderPort;
+
+    const checks = checkProviders([provider], join(root, "runtime-home"), root);
+    assert.equal(checks.length, 2);
+    assert.equal(checks[0]?.name, "vscode wiring");
+    assert.equal(checks[1]?.name, "vscode settings mismatch");
+    assert.equal(checks[1]?.level, "warn");
   });
 });
 
