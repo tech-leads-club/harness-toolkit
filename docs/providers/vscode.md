@@ -1,0 +1,158 @@
+---
+type: Provider
+title: "VS Code provider"
+description: "The VS Code Agent Hooks adapter — hint-only detection, its capability descriptor, dual-casing inbound parse, and the wiring that is written and deliberately never dispatched."
+tags: [provider, vscode]
+timestamp: "2026-09-05"
+---
+
+# VS Code provider
+
+Source: `src/providers/vscode/`. Registered as `vscode`.
+
+**This adapter is complete and its wiring is never written.** Agent Hooks are Preview, so `install`, `doctor` and
+`init` each take an explicit deferral branch ([/decisions/ad-126.md](/decisions/ad-126.md)). Everything below is
+implemented and tested; only the dispatch is withheld.
+
+## Detection
+
+`vscode.detect.ts` returns true when `TLC_PROVIDER_HINT` is `vscode`, and false otherwise. There is no content
+clause, and there cannot be one: VS Code emits Claude Code's payload byte for byte — same PascalCase
+`hook_event_name`, same `session_id`, same `cwd`, same `tool_name` / `tool_input` pair. Any content test that
+claimed a VS Code payload would claim every Claude payload too, and the registry would report ambiguity on all of
+them.
+
+The hint reaches the detector from the wiring: every entry launches
+`node <launcher> --provider vscode <handler>`, and `bin/tlc-exec.mjs` turns that flag into
+`TLC_PROVIDER_HINT` in the child environment. `resolveByHint` then resolves by name and runs no detector at all.
+
+## Capability descriptor
+
+`vscode.capabilities.ts`. Every value is cited in [/decisions/ad-125.md](/decisions/ad-125.md), which draws one
+line and holds it: **what a hook receives** comes from GitHub's Copilot hooks reference, **what a hook may return
+and have honoured** comes from VS Code's own Agent Hooks page. The Copilot reference's `modifiedArgs`,
+`modifiedResult` and `additionalContext`-at-`postToolUse` belong to GitHub's CLI and cloud agent, so they settle
+nothing here.
+
+| Capability | Value |
+| --- | --- |
+| `enforcesHooks` | `true` |
+| `askSupportedOn` | `["shell.before", "mcp.before", "read.before", "tool.before"]` — `PreToolUse` is the only event documented as returning `permissionDecision`, and those four are what it fans out to |
+| `sessionEnv` | `false` — unmeasured; no environment is documented for a hook command |
+| `nativeLoopCounter` | `false` — `stop_hook_active` is a boolean and the flag claims a count |
+| `dedicatedShellEvent` | `false` — terminal execution is `PreToolUse` with `tool_name: "runTerminalCommand"` |
+| `toolInputRewrite` | `false` — unmeasured; `modifiedArgs` is the Copilot CLI's |
+| `toolOutputRewrite` | `false` — unmeasured; `modifiedResult` is the Copilot CLI's |
+| `contextAtToolBefore` | `false` — the Copilot reference states outright that `preToolUse` does not return `additionalContext` |
+| `contextAtToolAfter` | `false` — unmeasured |
+| `contextAtStop` | `false` — no context channel at `Stop` |
+| `sessionStartContextReliable` | `true` — the VS Code page documents `hookSpecificOutput.additionalContext` on `SessionStart` |
+| `toolOutputAtAfter` | `true` — `PostToolUse` carries `tool_result` |
+| `usageInPayload` | `false` |
+| `effortSignal` | `false` |
+| `thoughtEvent` | `false` |
+
+## Policy defaults
+
+`vscode.policy-defaults.ts` names no untrusted tool and no blocked pattern. Neither source names a web tool in
+the VS Code vocabulary — `web_fetch` and `web_search` are the Copilot CLI's, and `WebFetch` / `Fetch` are other
+hosts' names for their own tools. A name invented here would match nothing, so the rail would look configured and
+gate nothing.
+
+## Event mapping
+
+`vscode.inbound.ts`. VS Code's documented event list is eight events, three fewer than Claude's: there is no
+`SessionEnd`, no `PostToolUseFailure` and no `MessageDisplay`.
+
+| VS Code hook | Condition | `HarnessEventKind` |
+| --- | --- | --- |
+| `SessionStart` | — | `session.start` |
+| `UserPromptSubmit` | — | `prompt.submit` |
+| `PreToolUse` | `tool_name === "runTerminalCommand"` | `shell.before` |
+| `PreToolUse` | `tool_name` matches `mcp_*` | `mcp.before` |
+| `PreToolUse` | `tool_name` is `readFile` / `read_file` | `read.before` |
+| `PreToolUse` | otherwise | `tool.before` |
+| `PostToolUse` | `tool_name === "runTerminalCommand"` | `shell.after` |
+| `PostToolUse` | `tool_name` matches `mcp_*` | `mcp.after` |
+| `PostToolUse` | `tool_name` is `editFiles` / `createFile` / `create_file` / `replace_string_in_file` | `edit.after` |
+| `PostToolUse` | otherwise | `tool.after` |
+| `SubagentStart` | — | `subagent.start` |
+| `SubagentStop` | — | `subagent.stop` |
+| `Stop` | — | `stop` |
+| `PreCompact` | — | `compact.before` |
+
+An event name neither source lists returns `null`, and the run records `adapter.unrecognized` — the visible
+failure rather than a near-enough kind delivered to rules written for another moment.
+
+### Both spellings, because the vendor publishes both
+
+GitHub's Copilot reference publishes every payload in two formats: a camelCase one, and one it labels
+VS Code-compatible ("PascalCase with snake_case fields"). The parser reads both spellings of every envelope
+field — `hook_event_name` / `hookEventName`, `session_id` / `sessionId`, `tool_name` / `toolName`,
+`tool_input` / `toolArgs` — and the two formats of one payload produce the same event. This is the vendor's own
+contract, not a hedge against Preview drift; the drift is the second reason, not the first.
+
+Two fields are deliberately not mapped. `stop_hook_active` never reaches `loopCount` — it is a boolean where the
+grind cap reads a count, so mapping it in would leave the cap unreachable. `stop_reason` never reaches `status` —
+it carries `"end_turn"`, which is not a member of the `completed | aborted | error` vocabulary.
+
+## Outbound
+
+`vscode.outbound.ts`:
+
+- `allow`, `deny` and `ask` render `hookSpecificOutput.permissionDecision` with a
+  `permissionDecisionReason`. `PreToolUse` is where VS Code honours it; a refusal is emitted on the other events
+  anyway, because the host offers no second channel for one and dropping it lets the refused action through.
+- `context` rides `hookSpecificOutput.additionalContext` at `SessionStart` **and nowhere else**. `degrade()`
+  strips context at `tool.before`, `tool.after` and `stop`; the renderer's own guard covers the rest, because
+  emitting into a field this host ignores would leave the caller believing it was delivered.
+- `continue` emits `{ decision: "block", reason }`. This is the one unverified field pair in the adapter — the
+  VS Code page's common stop outputs are `continue`, `stopReason` and `systemMessage`, and the Copilot reference
+  documents `decision` plus `reason`. If the name is wrong the advisory is dropped and the turn ends, which fails
+  visibly.
+- `rewriteInput` renders nothing. `toolInputRewrite` is `false`, so `degrade()` turns a rewrite into an ask,
+  which the four before-kinds do support.
+
+## Wiring target
+
+`vscode.wiring.ts` describes `~/.copilot/hooks/tlc-harness.json`, `strategy: "replace"`, one entry per documented
+event, each launching with `--provider vscode`. `renderVSCodeHooksText` produces the document and is asserted
+against a golden file.
+
+**Nothing writes it.** `applyProviderWiring` returns a `deferred` status, `providerWiringStatus` returns
+`deferred` and doctor prints it as an `ok` row, and `init` names the workspace path in
+`DEFERRED_PROJECT_SHIMS` without creating it. Two facts hold the deferral: Agent Hooks are Preview, so the
+payload format is not frozen, and neither vendor page publishes the hook *file's* schema — the emitted document is
+the shape of the host whose payloads VS Code reuses, which is the best-supported guess and still a guess
+([/decisions/ad-126.md](/decisions/ad-126.md)).
+
+## Lessons view
+
+`vscode.lessons-view.ts` appends a plain markdown pointer to `.github/copilot-instructions.md` naming
+`.tlc/harness/lessons.md`. It is written under `intelligence.lessons.syncRulesFile: "always"` and **not** under
+the default `"auto"`, because `sessionStartContextReliable` is `true` here.
+
+The pointer is a sentence, not an `@path` import. Nothing in VS Code's or GitHub's documentation describes an
+import syntax for that file, so an `@` line would be inert text dressed as a mechanism. Append-only and
+idempotent: a second run is byte-identical, and a pointer the operator wrote in their own words is left alone.
+
+## Known limitations
+
+Three ways a rail on this host goes quiet, recorded in [/decisions/ad-125.md](/decisions/ad-125.md):
+
+1. **VS Code reads `.claude/settings.json` by default.** With Claude hooks wired there — this harness writes
+   them — VS Code loads them and runs them against its own payloads, where the tool name is
+   `runTerminalCommand` rather than `Bash`. The Claude parser finds no tool it knows and produces a generic
+   `tool.before`; every shell rule stops matching and nothing errors. `tlc harness doctor` reports this as a
+   `warn` beside the VS Code row.
+2. **A `!`-prefixed terminal input bypasses the tool hook**, so `shell.before` never sees it.
+3. **A sandboxed auto-approve bypasses it too.**
+
+Neither bypass is a capability flag: `enforcesHooks` describes what happens when a hook runs, and these are the
+cases where none does.
+
+## See also
+
+- [/providers/index.md](/providers/index.md)
+- [/providers/claude-code.md](/providers/claude-code.md) — the payload shape this host reuses
+- [/decisions/ad-125.md](/decisions/ad-125.md), [/decisions/ad-126.md](/decisions/ad-126.md)
