@@ -1,4 +1,5 @@
 import { claudeProvider } from "./claude/index.ts";
+import { codexProvider } from "./codex/index.ts";
 import { cursorProvider } from "./cursor/index.ts";
 import { opencodeLegacyProvider, opencodeNamespacedProvider } from "./opencode/index.ts";
 import type { ProviderPort } from "./provider.port.ts";
@@ -15,11 +16,16 @@ export type ResolveResult = {
  * why the two opencode adapters can sit anywhere in it: both match on a marker their own bridge stamps, and the
  * generation stamp makes them mutually exclusive, so neither can shadow the other or claim a foreign payload
  * ([/decisions/ad-124.md](/decisions/ad-124.md)). Order matters only for the hosts that share a payload shape.
+ *
+ * why Codex sits ahead of Claude: its payloads are a superset-shaped sibling of Claude's, so ordered after Claude
+ * a Codex `PreToolUse` would be claimed by Claude's detector first (design §4). Claude also declines a
+ * Codex-fingerprinted payload outright, so the two never both match and the order is belt to that brace.
  */
 export const providers: ProviderPort[] = [
   cursorProvider,
   opencodeLegacyProvider,
   opencodeNamespacedProvider,
+  codexProvider,
   claudeProvider,
 ];
 

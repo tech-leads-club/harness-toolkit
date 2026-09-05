@@ -209,21 +209,14 @@ function stubPort(name: string, detect: (raw: unknown) => boolean): ProviderPort
 }
 
 /**
- * The registry Phase 3 is building toward: Codex ahead of Claude (design §4). Codex's own port is assembled in
- * T13, so the sweep runs the real detector inside a stub at the position it will occupy.
+ * why the real registry and not a stub: T13 registered `codexProvider`, so the order design §4 argues for is a
+ * fact of `providers` rather than something this test constructs.
  */
-function registryWithCodex(): ProviderPort[] {
-  const ordered: ProviderPort[] = [];
-  for (const provider of providers) {
-    if (provider.name === "claude") {
-      ordered.push(stubPort("codex", detectCodex));
-    }
-    ordered.push(provider);
-  }
-  return ordered;
+function registryWithCodex(): readonly ProviderPort[] {
+  return providers;
 }
 
-test("Codex sits ahead of Claude in the order this phase builds toward", () => {
+test("Codex sits ahead of Claude in the registry, which is the only tiebreak", () => {
   const names = registryWithCodex().map((provider) => provider.name);
   assert.ok(names.indexOf("codex") < names.indexOf("claude"), names.join(","));
 });

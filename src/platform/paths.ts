@@ -149,6 +149,16 @@ export function cursorConfigDir(): string {
 }
 
 /**
+ * why `CODEX_HOME` and not an env of this harness's own: Codex documents that variable as the location of its own
+ * configuration directory, defaulting to `~/.codex`, and `hooks.json` is read from there. The two directories
+ * above take a harness-defined override because neither host documents one.
+ */
+export function codexConfigDir(): string {
+  const custom = process.env.CODEX_HOME?.trim();
+  return custom && custom.length > 0 ? custom : join(homedir(), ".codex");
+}
+
+/**
  * why a plugins directory and not a config file: opencode is wired by a plugin module this harness emits, and its
  * plugin reference names `~/.config/opencode/plugins/` as the global location (read 2026-09-04). The env override
  * is this harness's own, matching the two above — opencode documents no environment of its own

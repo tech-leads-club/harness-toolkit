@@ -19,6 +19,7 @@ import {
 import { catalogueMeta, planeMeta } from "../src/platform/pricing.ts";
 import { type ColorName, createStyle, PLAIN, type Style, SYMBOLS } from "../src/platform/style.ts";
 import { mergeClaudeSettings } from "../src/providers/claude/claude.wiring.ts";
+import { mergeCodexHooks } from "../src/providers/codex/codex.wiring.ts";
 import {
   cursorWiringProblems,
   formatWiringProblems,
@@ -418,6 +419,13 @@ export function providerWiringStatus(wiring: ProviderWiring<ProviderWiringKind>)
         return "detected-but-unwired";
       }
       return existing === renderOpencodePlugin(wiring) ? "wired" : "detected-but-unwired";
+    }
+    // why the same shape as the Claude branch: both are merges into a file the operator also writes, so "wired"
+    // means a merge would change nothing — not that the file exists.
+    case "codex-hooks-json": {
+      const existingText = existsSync(wiring.target) ? readFileSync(wiring.target, "utf8") : null;
+      const result = mergeCodexHooks(existingText, wiring.entries);
+      return result.ok && !result.changed ? "wired" : "detected-but-unwired";
     }
     default:
       return unreachableWiringKind(wiring.kind);

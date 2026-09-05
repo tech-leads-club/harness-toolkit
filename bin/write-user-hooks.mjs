@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { applyClaudeWiring } from "../src/providers/claude/claude.wiring.ts";
+import { applyCodexWiring } from "../src/providers/codex/codex.wiring.ts";
 import { isOpencodeManaged, renderOpencodePlugin } from "../src/providers/opencode/opencode.wiring.ts";
 import { providers } from "../src/providers/index.ts";
 
@@ -109,6 +110,15 @@ export function applyProviderWiring(wiring, { force = false } = {}) {
       return applyOpencodePluginWiring(wiring, { force });
     case "claude-settings-json": {
       const result = applyClaudeWiring(wiring.target, wiring.entries);
+      if (!result.ok) {
+        return { status: "failed", target: wiring.target, reason: result.error };
+      }
+      return { status: result.changed ? "merged" : "unchanged", target: wiring.target };
+    }
+    // why merge and not replace: `hooks.json` is a shared file. A group that does not name our launcher belongs to
+    // someone else's tooling, and survives byte-identical.
+    case "codex-hooks-json": {
+      const result = applyCodexWiring(wiring.target, wiring.entries);
       if (!result.ok) {
         return { status: "failed", target: wiring.target, reason: result.error };
       }

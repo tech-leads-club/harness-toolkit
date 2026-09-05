@@ -23,7 +23,8 @@ export type ProviderWiringKind =
   | "claude-settings-json"
   | "cursor-hooks-json"
   | "opencode-plugin"
-  | "opencode-plugin-ns";
+  | "opencode-plugin-ns"
+  | "codex-hooks-json";
 
 /** Core never imports this type — it receives a HarnessEvent and ProviderCapabilities as plain arguments instead. */
 export type ProviderPort = {
