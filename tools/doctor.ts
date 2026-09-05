@@ -28,6 +28,7 @@ import {
 import { providers } from "../src/providers/index.ts";
 import { isOpencodeManaged, renderOpencodePlugin } from "../src/providers/opencode/opencode.wiring.ts";
 import type { ProviderPort, ProviderWiringKind } from "../src/providers/provider.port.ts";
+import { VSCODE_DEFERRAL_REASON } from "../src/providers/vscode/vscode.wiring.ts";
 
 export type CheckLevel = "ok" | "warn" | "fail";
 
@@ -349,7 +350,7 @@ export function checkHookRuntime(
       };
 }
 
-export type ProviderWiringStatus = "wired" | "detected-but-unwired" | "not-installed";
+export type ProviderWiringStatus = "wired" | "detected-but-unwired" | "not-installed" | "deferred";
 
 /**
  * hazard: this branch decided health by marker presence alone, so a file carrying the marker in one entry and a
@@ -427,6 +428,14 @@ export function providerWiringStatus(wiring: ProviderWiring<ProviderWiringKind>)
       const result = mergeCodexHooks(existingText, wiring.entries);
       return result.ok && !result.changed ? "wired" : "detected-but-unwired";
     }
+    /**
+     * why a status of its own and not `detected-but-unwired`: that row tells the operator to run
+     * `tlc harness update`, and update would write nothing — the same command reports this kind as skipped. A
+     * warning nothing can clear is the [/decisions/ad-034.md](/decisions/ad-034.md) defect
+     * ([/decisions/ad-126.md](/decisions/ad-126.md), spec P4 AC5).
+     */
+    case "vscode-hooks-json":
+      return "deferred";
     default:
       return unreachableWiringKind(wiring.kind);
   }
@@ -471,6 +480,12 @@ export function checkProviders(registry: readonly ProviderPort[], home: string):
     const reminders = codexTrustReminder(wiring, status);
     if (status === "not-installed") {
       return [{ level: "ok", name: `${provider.name} wiring`, detail: "not installed" }, ...reminders];
+    }
+    if (status === "deferred") {
+      return [
+        { level: "ok" as const, name: `${provider.name} wiring`, detail: VSCODE_DEFERRAL_REASON },
+        ...reminders,
+      ];
     }
     if (status === "wired") {
       return [

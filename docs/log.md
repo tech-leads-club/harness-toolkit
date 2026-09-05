@@ -13,6 +13,10 @@ Generated from `docs/decisions/` — do not edit by hand. Run `node tools/render
 A reserved file of the [OKF v0.1](/decisions/ad-013.md) bundle: entries grouped under ISO 8601 headings,
 newest first. For what landed in which npm release, see `CHANGELOG.md` at the repository root.
 
+## 2026-09-05
+
+- **AD-126** — the VS Code writer ships complete and is never dispatched, because Agent Hooks are Preview and the hook file schema is unpublished ([/decisions/ad-126.md](/decisions/ad-126.md))
+
 ## 2026-09-04
 
 - **AD-123** — Codex capability flags are read off the vendor's hook reference, and the four it cannot settle fail safe ([/decisions/ad-123.md](/decisions/ad-123.md))

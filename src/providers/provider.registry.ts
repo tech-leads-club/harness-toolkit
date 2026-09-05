@@ -3,6 +3,7 @@ import { codexProvider } from "./codex/index.ts";
 import { cursorProvider } from "./cursor/index.ts";
 import { opencodeLegacyProvider, opencodeNamespacedProvider } from "./opencode/index.ts";
 import type { ProviderPort } from "./provider.port.ts";
+import { vscodeProvider } from "./vscode/index.ts";
 
 export type ResolveResult = {
   provider: ProviderPort | null;
@@ -20,12 +21,17 @@ export type ResolveResult = {
  * why Codex sits ahead of Claude: its payloads are a superset-shaped sibling of Claude's, so ordered after Claude
  * a Codex `PreToolUse` would be claimed by Claude's detector first (design §4). Claude also declines a
  * Codex-fingerprinted payload outright, so the two never both match and the order is belt to that brace.
+ *
+ * why VS Code's position is inert: its detector fires only on the hint, and a hint bypasses this list entirely
+ * (`resolveByHint`). It sits ahead of Claude for readability, and because that is where a content-based detector
+ * would have to go if one ever becomes possible (design §4).
  */
 export const providers: ProviderPort[] = [
   cursorProvider,
   opencodeLegacyProvider,
   opencodeNamespacedProvider,
   codexProvider,
+  vscodeProvider,
   claudeProvider,
 ];
 

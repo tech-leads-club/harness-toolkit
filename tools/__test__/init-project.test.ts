@@ -11,6 +11,7 @@ import {
   claudeShimEntries,
   configLine,
   cursorShimEntries,
+  DEFERRED_PROJECT_SHIMS,
   detectProviders,
   GITIGNORE_STATE,
   gitignoreEntries,
@@ -390,6 +391,28 @@ describe("applyPlan", () => {
     assert.deepEqual(outcome.claude, { skipped: true });
     assert.equal(existsSync(join(root, ".cursor", "hooks.json")), false);
     assert.equal(existsSync(join(root, ".claude", "settings.json")), false);
+  });
+
+  /**
+   * spec P4 AC5: `init` takes an explicit deferral branch for `vscode-hooks-json` and does not write the wiring
+   * file. The path is named rather than absent, so a later reader finds a decision instead of an omission
+   * ([/decisions/ad-126.md](/decisions/ad-126.md)).
+   */
+  test("vscode is reported as deferred and its project hook file is never created", () => {
+    const root = newRoot();
+    const outcome = applyPlan(root, parseFlags(["--minimal"]), { cursor: true, claude: true }, null);
+    assert.equal(outcome.vscode.deferred, true);
+    assert.equal(outcome.vscode.target, join(root, ".github", "hooks", "tlc-harness.json"));
+    assert.match(outcome.vscode.reason, /Preview/);
+    assert.equal(existsSync(join(root, ".github")), false);
+  });
+
+  test("the deferred shim is named but is neither written nor gitignored", () => {
+    assert.deepEqual(DEFERRED_PROJECT_SHIMS, [join(".github", "hooks", "tlc-harness.json")]);
+    for (const deferred of DEFERRED_PROJECT_SHIMS) {
+      assert.ok(!PROJECT_SHIMS.includes(deferred as never), deferred);
+      assert.ok(!gitignoreEntries().includes(deferred.split(sep).join("/")), deferred);
+    }
   });
 
   test("writes the cursor project hooks.json when cursor is present", () => {

@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { applyClaudeWiring } from "../src/providers/claude/claude.wiring.ts";
 import { applyCodexWiring } from "../src/providers/codex/codex.wiring.ts";
 import { isOpencodeManaged, renderOpencodePlugin } from "../src/providers/opencode/opencode.wiring.ts";
+import { VSCODE_DEFERRAL_REASON } from "../src/providers/vscode/vscode.wiring.ts";
 import { providers } from "../src/providers/index.ts";
 
 const CURSOR_MARKER = "tlc-exec.mjs";
@@ -124,6 +125,17 @@ export function applyProviderWiring(wiring, { force = false } = {}) {
       }
       return { status: result.changed ? "merged" : "unchanged", target: wiring.target };
     }
+    /**
+     * The deferral branch, not a missing writer. `vscode.wiring.ts` renders the document and is unit-tested
+     * against a golden file; what is withheld is the dispatch, while Agent Hooks are Preview and the hook file
+     * schema is unpublished ([/decisions/ad-126.md](/decisions/ad-126.md), spec P4 AC5).
+     *
+     * why a status of its own rather than `refused`: a refusal means the operator has something to fix. This one
+     * is the harness's own decision and nothing on the machine changes it, so it reports as skipped and does not
+     * fail the install.
+     */
+    case "vscode-hooks-json":
+      return { status: "deferred", target: wiring.target, reason: VSCODE_DEFERRAL_REASON };
     default:
       return {
         status: "failed",
@@ -136,14 +148,17 @@ export function applyProviderWiring(wiring, { force = false } = {}) {
 /**
  * Whether the host this wiring belongs to is installed at all.
  *
- * hazard: the answer is the target's parent directory for every kind but one. The namespaced opencode plugin
+ * hazard: the answer is the target's parent directory for every kind but two. The namespaced opencode plugin
  * lives in a directory *named after the plugin*, which only this writer ever creates — so asking whether it
  * exists would answer "host not installed" on every machine, for ever, and the wiring would never be written.
  * For that kind the question is one level up: does opencode's plugins directory exist
- * ([/decisions/ad-124.md](/decisions/ad-124.md)).
+ * ([/decisions/ad-124.md](/decisions/ad-124.md)). The VS Code hooks directory is the same shape: `~/.copilot`
+ * says the host is there, `~/.copilot/hooks` says somebody already wrote a hook file.
  */
 export function providerHomeDir(wiring) {
-  return wiring.kind === "opencode-plugin-ns" ? dirname(dirname(wiring.target)) : dirname(wiring.target);
+  return wiring.kind === "opencode-plugin-ns" || wiring.kind === "vscode-hooks-json"
+    ? dirname(dirname(wiring.target))
+    : dirname(wiring.target);
 }
 
 export function isProviderHomePresent(wiring) {
@@ -160,6 +175,9 @@ function report(result) {
       return true;
     case "unchanged":
       console.log(`hooks: unchanged (${result.target})`);
+      return true;
+    case "deferred":
+      console.log(`hooks: skipped ${result.target} — ${result.reason}`);
       return true;
     case "refused":
       console.error(`hooks: ${result.reason}`);

@@ -159,6 +159,16 @@ export function codexConfigDir(): string {
 }
 
 /**
+ * Where VS Code Agent Hooks read a user-level hook file from: `~/.copilot/hooks`
+ * ([/decisions/ad-125.md](/decisions/ad-125.md)). The override is this harness's own, matching the two above —
+ * neither VS Code nor GitHub documents an environment variable for this directory.
+ */
+export function copilotConfigDir(): string {
+  const custom = process.env.COPILOT_CONFIG_DIR?.trim();
+  return custom && custom.length > 0 ? custom : join(homedir(), ".copilot");
+}
+
+/**
  * why a plugins directory and not a config file: opencode is wired by a plugin module this harness emits, and its
  * plugin reference names `~/.config/opencode/plugins/` as the global location (read 2026-09-04). The env override
  * is this harness's own, matching the two above — opencode documents no environment of its own

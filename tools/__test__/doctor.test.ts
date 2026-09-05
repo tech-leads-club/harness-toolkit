@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { afterEach, describe, test } from "node:test";
@@ -16,6 +16,7 @@ import {
   renderOpencodePlugin,
 } from "../../src/providers/opencode/opencode.wiring.ts";
 import type { ProviderPort, ProviderWiringKind } from "../../src/providers/provider.port.ts";
+import { vscodeWiring } from "../../src/providers/vscode/vscode.wiring.ts";
 import {
   type Check,
   checkCapabilities,
@@ -184,6 +185,51 @@ describe("providerWiringStatus", () => {
     mkdirSync(join(plugins, "tlc-harness"), { recursive: true });
     writeFileSync(local.target, renderOpencodePlugin(local) ?? "");
     assert.equal(providerWiringStatus(local), "wired");
+  });
+
+  /**
+   * spec P4 AC5: doctor takes an explicit deferral branch for `vscode-hooks-json` while Agent Hooks are Preview.
+   *
+   * why not `detected-but-unwired`: that row tells the operator to run `tlc harness update`, and update writes
+   * nothing for this kind — a warning nothing can clear is the [/decisions/ad-034.md](/decisions/ad-034.md)
+   * defect ([/decisions/ad-126.md](/decisions/ad-126.md)).
+   */
+  test("vscode: deferred once the host is present, and never detected-but-unwired", () => {
+    const root = newRoot();
+    const copilot = join(root, "copilot-home");
+    const local: ProviderWiring<ProviderWiringKind> = {
+      ...vscodeWiring({ launcherPath: join(root, "bin", "tlc-exec.mjs") }),
+      target: join(copilot, "hooks", "tlc-harness.json"),
+    };
+
+    assert.equal(providerWiringStatus(local), "not-installed", "VS Code itself is absent");
+
+    mkdirSync(copilot, { recursive: true });
+    assert.equal(providerWiringStatus(local), "deferred");
+
+    // and it stays deferred with a hook file already at the target — nothing here is a wiring the harness wrote
+    mkdirSync(join(copilot, "hooks"), { recursive: true });
+    writeFileSync(local.target, "{}");
+    assert.equal(providerWiringStatus(local), "deferred");
+  });
+
+  test("vscode: the deferral reports as an ok row carrying the reason, and no file is written", () => {
+    const root = newRoot();
+    const copilot = join(root, "copilot-home");
+    mkdirSync(copilot, { recursive: true });
+    const target = join(copilot, "hooks", "tlc-harness.json");
+    const provider = {
+      name: "vscode",
+      wiring: () => ({ ...vscodeWiring({ launcherPath: "/x/bin/tlc-exec.mjs" }), target }),
+    } as unknown as ProviderPort;
+
+    const checks = checkProviders([provider], join(root, "runtime-home"));
+    assert.equal(checks.length, 1);
+    assert.equal(checks[0]?.level, "ok");
+    assert.equal(checks[0]?.name, "vscode wiring");
+    assert.match(checks[0]?.detail ?? "", /Preview/);
+    assert.doesNotMatch(checks[0]?.detail ?? "", /tlc harness update/);
+    assert.equal(existsSync(target), false, "doctor writes nothing");
   });
 
   test("detected-but-unwired for a merge-strategy target missing the desired entries", () => {

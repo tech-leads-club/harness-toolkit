@@ -9,6 +9,7 @@ import { claudeConfigDir, cursorConfigDir, projectConfigPath, runtimeHome } from
 import { render, type Screen } from "../src/platform/screen.ts";
 import { PLAIN, type Style } from "../src/platform/style.ts";
 import { applyClaudeWiring } from "../src/providers/claude/claude.wiring.ts";
+import { VSCODE_DEFERRAL_REASON } from "../src/providers/vscode/vscode.wiring.ts";
 
 export class UsageError extends Error {}
 
@@ -132,6 +133,20 @@ export function claudeShimEntries(launcher: string): WiringEntry[] {
  */
 export const PROJECT_SHIMS = [join(".cursor", "hooks.json"), join(".claude", "settings.json")] as const;
 
+/**
+ * The project shim VS Code would get, and does not.
+ *
+ * why it is named here rather than left absent: `PROJECT_SHIMS` is the list of paths `init` writes, and a host
+ * missing from it reads as one nobody has thought about. This one has been thought about — the writer exists and
+ * is tested (`src/providers/vscode/vscode.wiring.ts`), and the dispatch is withheld while Agent Hooks are Preview
+ * ([/decisions/ad-126.md](/decisions/ad-126.md), spec P4 AC5). Naming the path is what stops a later reader
+ * wiring it blind.
+ *
+ * invariant: this path is never created by `init`, and never appears in `PROJECT_SHIMS` or `.gitignore` while the
+ * deferral stands. Moving it into the first list is the whole of the change the day Agent Hooks reach GA.
+ */
+export const DEFERRED_PROJECT_SHIMS = [join(".github", "hooks", "tlc-harness.json")] as const;
+
 export const GITIGNORE_STATE = ".tlc/harness/state/";
 
 /** why: posix separators, because a `.gitignore` is read by git and not by the platform that wrote it. */
@@ -223,6 +238,8 @@ export type ApplyOutcome = {
   configKept: boolean;
   cursor: { skipped: true } | { skipped: false; status: string; target: string };
   claude: { skipped: true } | { skipped: false; status: string; target: string };
+  /** Always deferred while Agent Hooks are Preview — reported so the omission is visible rather than inferred. */
+  vscode: { deferred: true; target: string; reason: string };
 };
 
 /**
@@ -303,10 +320,20 @@ export function applyPlan(
       })()
     : { skipped: true as const };
 
+  /**
+   * The deferral branch. Nothing is detected and nothing is written: this host's project hook file stays absent
+   * for as long as Agent Hooks are Preview, and `init` says so rather than leaving an operator to notice.
+   */
+  const vscode = {
+    deferred: true as const,
+    target: join(root, ...DEFERRED_PROJECT_SHIMS[0].split(sep)),
+    reason: VSCODE_DEFERRAL_REASON,
+  };
+
   const gitignore = mergeGitignore(root);
   writeFileSync(join(root, ".gitignore"), gitignore.text);
 
-  return { configPath, configKept: kept, cursor, claude };
+  return { configPath, configKept: kept, cursor, claude, vscode };
 }
 
 async function readStdin(): Promise<string> {
@@ -345,6 +372,7 @@ export async function main(argv: string[]): Promise<void> {
   } else {
     console.log(`hooks: ${outcome.claude.status} ${outcome.claude.target}`);
   }
+  console.log(`init: vscode ${outcome.vscode.reason}`);
   console.log("updated .gitignore harness entries");
 }
 

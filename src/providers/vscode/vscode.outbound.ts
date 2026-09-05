@@ -108,8 +108,9 @@ export function vscodeRender(decision: Decision, event: HarnessEvent): Rendered 
     /**
      * why a rewrite renders as silence: `toolInputRewrite` is false — the VS Code page documents a permission
      * decision on `PreToolUse` and no argument substitution, and the `modifiedArgs` in the Copilot reference is
-     * the Copilot CLI's field ([/decisions/ad-125.md](/decisions/ad-125.md)). `degrade()` turns a rewrite into an ask on this host, which the four
-     * before-kinds do support, so this branch is what a caller that skipped `degrade()` falls to. Emitting an
+     * the Copilot CLI's field ([/decisions/ad-125.md](/decisions/ad-125.md)). `degrade()` turns a rewrite into
+     * an ask on this host, which the four before-kinds do support, so this branch is what a caller that skipped
+     * `degrade()` falls to. Emitting an
      * undocumented field would claim a channel the descriptor denies, and the tool would run its original input
      * either way.
      */

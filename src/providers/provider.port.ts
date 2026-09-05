@@ -24,7 +24,8 @@ export type ProviderWiringKind =
   | "cursor-hooks-json"
   | "opencode-plugin"
   | "opencode-plugin-ns"
-  | "codex-hooks-json";
+  | "codex-hooks-json"
+  | "vscode-hooks-json";
 
 /** Core never imports this type — it receives a HarnessEvent and ProviderCapabilities as plain arguments instead. */
 export type ProviderPort = {
