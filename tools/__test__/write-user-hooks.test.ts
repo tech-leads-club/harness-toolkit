@@ -415,27 +415,46 @@ describe("applyOpencodePluginWiring", () => {
 });
 
 /**
- * hazard: the namespaced plugin lives in a directory named after the plugin, which only this writer creates. If
- * "is the host installed" asked about that directory, the answer would be "no" on every machine for ever.
+ * hazard: every directory under opencode's config directory is created by whoever adds the first plugin. A clean
+ * install has no `plugins/`, so if "is the host installed" asked about that directory — or about the plugin's own
+ * directory below it — the answer would be "no" on a machine where opencode is running, and the bridge would
+ * never be written.
  */
 describe("providerHomeDir", () => {
-  test("the namespaced opencode home is the plugins directory, not the plugin's own", () => {
+  test("both opencode kinds answer with the config directory, not the plugins directory", () => {
     const root = newRoot();
-    const wiring = opencodeWiringFixture(root, "opencode-plugin-ns");
-    assert.equal(providerHomeDir(wiring), dirname(dirname(wiring.target)));
+    const configDir = join(root, ".config", "opencode");
+    for (const kind of ["opencode-plugin", "opencode-plugin-ns"] as const) {
+      const wiring = opencodeWiringFixture(root, kind);
+      assert.equal(providerHomeDir(wiring), configDir, kind);
+      assert.equal(isProviderHomePresent(wiring), false, `${kind}: nothing on disk yet`);
+    }
 
-    mkdirSync(providerHomeDir(wiring), { recursive: true });
-    assert.equal(
-      isProviderHomePresent(wiring),
-      true,
-      "opencode is installed once its plugins directory exists",
-    );
+    // invariant: the config directory alone — no plugins directory — is what a clean opencode install looks like.
+    mkdirSync(configDir, { recursive: true });
+    for (const kind of ["opencode-plugin", "opencode-plugin-ns"] as const) {
+      assert.equal(
+        isProviderHomePresent(opencodeWiringFixture(root, kind)),
+        true,
+        `${kind}: opencode is installed once its config directory exists`,
+      );
+    }
+  });
+
+  test("the VS Code hooks home stays one level above the hooks directory", () => {
+    const root = newRoot();
+    const wiring: ProviderWiring = {
+      target: join(root, ".copilot", "hooks", "tlc-harness.json"),
+      kind: "vscode-hooks-json",
+      strategy: "replace",
+      entries: [],
+    };
+    assert.equal(providerHomeDir(wiring), join(root, ".copilot"));
   });
 
   test("every other kind still answers with the target's own directory", () => {
     const root = newRoot();
-    for (const wiring of [cursorWiringFixture(root), opencodeWiringFixture(root, "opencode-plugin")]) {
-      assert.equal(providerHomeDir(wiring), dirname(wiring.target));
-    }
+    const wiring = cursorWiringFixture(root);
+    assert.equal(providerHomeDir(wiring), dirname(wiring.target));
   });
 });

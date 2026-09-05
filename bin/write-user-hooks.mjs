@@ -148,17 +148,26 @@ export function applyProviderWiring(wiring, { force = false } = {}) {
 /**
  * Whether the host this wiring belongs to is installed at all.
  *
- * hazard: the answer is the target's parent directory for every kind but two. The namespaced opencode plugin
- * lives in a directory *named after the plugin*, which only this writer ever creates — so asking whether it
- * exists would answer "host not installed" on every machine, for ever, and the wiring would never be written.
- * For that kind the question is one level up: does opencode's plugins directory exist
- * ([/decisions/ad-124.md](/decisions/ad-124.md)). The VS Code hooks directory is the same shape: `~/.copilot`
- * says the host is there, `~/.copilot/hooks` says somebody already wrote a hook file.
+ * hazard: the answer is the target's parent directory only where that parent is the host's own config directory.
+ * Every directory below `~/.config/opencode` is created by whoever adds the first plugin — a clean opencode
+ * install has no `plugins/` at all — so asking about any of them answers "host not installed" on a machine where
+ * opencode is running, and the bridge is never written ([/decisions/ad-124.md](/decisions/ad-124.md)). Both
+ * opencode kinds therefore ask about the config directory, which is one level above `plugins/`. The VS Code hooks
+ * directory is the same shape: `~/.copilot` says the host is there, `~/.copilot/hooks` says somebody already
+ * wrote a hook file.
  */
 export function providerHomeDir(wiring) {
-  return wiring.kind === "opencode-plugin-ns" || wiring.kind === "vscode-hooks-json"
-    ? dirname(dirname(wiring.target))
-    : dirname(wiring.target);
+  switch (wiring.kind) {
+    // why three levels: the namespaced target is `<config>/plugins/tlc-harness/index.ts`.
+    case "opencode-plugin-ns":
+      return dirname(dirname(dirname(wiring.target)));
+    // why two: `<config>/plugins/tlc-harness.js` and `~/.copilot/hooks/tlc-harness.json`.
+    case "opencode-plugin":
+    case "vscode-hooks-json":
+      return dirname(dirname(wiring.target));
+    default:
+      return dirname(wiring.target);
+  }
 }
 
 export function isProviderHomePresent(wiring) {
