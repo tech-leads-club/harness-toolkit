@@ -16,6 +16,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 ## 2026-09-05
 
 - **AD-126** — the VS Code writer ships complete and is never dispatched, because Agent Hooks are Preview and the hook file schema is unpublished ([/decisions/ad-126.md](/decisions/ad-126.md))
+- **AD-127** — A declared reason may name which reason it is, so the comment gate matches the code it polices ([/decisions/ad-127.md](/decisions/ad-127.md))
 
 ## 2026-09-04
 

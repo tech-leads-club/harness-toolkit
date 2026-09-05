@@ -48,7 +48,16 @@ const GENERATED_PRAGMA = /^@generated\b/i;
 const GENERATED_NEAR_START = /^.{0,20}?\bgenerat\w*\b/i;
 const GENERATED_DO_NOT_EDIT = /\bgenerat\w*\b.{0,20}\bdo[\s-]?not[\s-]?edit\b/i;
 const COMMENT_PREFIX = /^\s*(?:\/\/|\/\*|\*|#)\s*/;
-const DECLARED_REASON = /^\s*(?:\/\/|\/\*|\*|#)\s*(?:why|hazard|invariant):\s*\S/i;
+/**
+ * why the marker may carry a phrase before its colon: `why the length rule is skipped:` names which why it is
+ * about, and this codebase writes 245 of its reasons that way against 1820 bare ones. Refusing the form split
+ * the rule against the code it polices — the same comment passed attached to a function, where the doc branch
+ * judges informativeness, and failed attached to a `case` ([/decisions/ad-126.md](/decisions/ad-126.md)).
+ *
+ * hazard: three guards keep this from admitting narration. `\b` stops `whyever` and `hazardous`; the 60-char
+ * ceiling stops a sentence that happens to reach a colon; and `\S` after the colon still demands a reason.
+ */
+const DECLARED_REASON = /^\s*(?:\/\/|\/\*|\*|#)\s*(?:why|hazard|invariant)\b[^:\n]{0,60}:\s*\S/i;
 const CLOSER_OR_CONTINUATION = /^\s*(?:\*\/|\*|\/\/)/;
 // why: a comment opener carrying no text of its own — `/**` on its own line — holds no marker; the line
 // below it does.

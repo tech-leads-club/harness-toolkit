@@ -207,6 +207,47 @@ test("a fresh block over the budget is still refused — the skip needs a pre-ex
   assert.equal(hits[0]?.reason, "declared comment runs past 4 lines");
 });
 
+test("the prose marker form declares a reason, the way most of this codebase already writes one", () => {
+  const hits = findAddedComments([
+    {
+      file: "a.ts",
+      line: 1,
+      text: "// why a rewrite renders as silence: the host documents no substitution",
+    },
+    {
+      file: "a.ts",
+      line: 3,
+      text: "// hazard the answer is wrong here: the parent directory differs for two kinds",
+    },
+    { file: "a.ts", line: 5, text: "// invariant no codePaths param: taking one makes an import cycle" },
+  ]);
+  assert.deepEqual(hits, []);
+});
+
+test("widening the marker does not admit narration that merely starts with the word", () => {
+  const hits = findAddedComments([
+    { file: "a.ts", line: 1, text: "// why not just read it here, we load the user and cache it" },
+    { file: "a.ts", line: 3, text: "// whyever this is not a marker" },
+    { file: "a.ts", line: 5, text: "// hazardous chemicals are stored in the warehouse table" },
+    { file: "a.ts", line: 7, text: "// why a rewrite renders as silence:" },
+  ]);
+  assert.deepEqual(
+    hits.map((h) => h.line),
+    [1, 3, 5, 7],
+  );
+});
+
+test("a prose marker cannot run to any length before its colon", () => {
+  const hits = findAddedComments([
+    {
+      file: "a.ts",
+      line: 1,
+      text: `// why ${"the reason runs on and on ".repeat(4)}: the colon is too far to be a marker`,
+    },
+  ]);
+  assert.equal(hits.length, 1);
+});
+
 function repo(): string {
   const dir = mkdtempSync(join(tmpdir(), "comment-diff-"));
   const git = (...args: string[]) => execFileSync("git", ["-C", dir, ...args], { stdio: "ignore" });
