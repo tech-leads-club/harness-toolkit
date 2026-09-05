@@ -50,6 +50,9 @@ const GENERATED_DO_NOT_EDIT = /\bgenerat\w*\b.{0,20}\bdo[\s-]?not[\s-]?edit\b/i;
 const COMMENT_PREFIX = /^\s*(?:\/\/|\/\*|\*|#)\s*/;
 const DECLARED_REASON = /^\s*(?:\/\/|\/\*|\*|#)\s*(?:why|hazard|invariant):\s*\S/i;
 const CLOSER_OR_CONTINUATION = /^\s*(?:\*\/|\*|\/\/)/;
+// why: a comment opener carrying no text of its own — `/**` on its own line — holds no marker; the line
+// below it does.
+const OPENER_ONLY = /^\s*(?:\/\*+|\/\/+|#+|\*)\s*$/;
 
 export const COMMENT_MARKERS = ["why:", "hazard:", "invariant:"] as const;
 
@@ -209,11 +212,48 @@ function declarationAfter(file: string, tailLine: number, nextCodeLine: NextCode
   return undefined;
 }
 
+/**
+ * hazard: `groupCommentBlocks` sees only added lines, so editing one line inside a comment that already
+ * existed yields a block whose head is a continuation line — no marker on it, and the edit is reported as an
+ * undeclared new comment. The marker is on a line the diff never touched.
+ *
+ * why walking the file rather than the diff: the real head is by definition not in the diff. Returns the
+ * block's first line in the file, and whether that line sits above the added region.
+ */
+function realHead(
+  block: AddedLine[],
+  nextCodeLine?: NextCodeLine,
+): { opener: string; declaring: string; preExisting: boolean } {
+  const head = block[0] as AddedLine;
+  if (nextCodeLine === undefined) {
+    return { opener: head.text, declaring: head.text, preExisting: false };
+  }
+  let line = head.line;
+  while (line > 1) {
+    const above = nextCodeLine(head.file, line - 1);
+    if (above === undefined || !isCommentLine(above, head.file)) {
+      break;
+    }
+    line -= 1;
+  }
+  // why the added lines win over the reader: the reader is a disk view that a caller may stub, and every line
+  // in the block is already known here. Only lines above the added region have to come from the file.
+  const added = new Map(block.map((entry) => [entry.line, entry.text]));
+  const textAt = (at: number): string | undefined => added.get(at) ?? nextCodeLine(head.file, at);
+  const opener = textAt(line) ?? head.text;
+  // why the declaring line is not always the opener: a C-family block opens on a bare `/**`, so the marker
+  // sits on the line below it. Only an opener with no text of its own is skipped, which keeps a marker from
+  // counting when it is buried further down a block.
+  const declaring = OPENER_ONLY.test(opener) ? (textAt(line + 1) ?? opener) : opener;
+  return { opener, declaring, preExisting: line < head.line };
+}
+
 function judge(block: AddedLine[], mode: CommentMode, nextCodeLine?: NextCodeLine): Verdict {
   const head = block[0] as AddedLine;
   const tail = block.at(-1) as AddedLine;
+  const origin = realHead(block, nextCodeLine);
 
-  if (head.text.trimStart().startsWith("/**") && nextCodeLine) {
+  if (origin.opener.trimStart().startsWith("/**") && nextCodeLine) {
     const identifier = attachedIdentifier(declarationAfter(head.file, tail.line, nextCodeLine));
     if (identifier !== null) {
       const body = block.map((line) => line.text).join(" ");
@@ -234,10 +274,12 @@ function judge(block: AddedLine[], mode: CommentMode, nextCodeLine?: NextCodeLin
   if (mode === "strict") {
     return { violates: true, reason: "comment added this turn" };
   }
-  if (!declaresReason(head.text)) {
+  if (!declaresReason(origin.declaring)) {
     return { violates: true, reason: "undeclared comment added this turn" };
   }
-  if (block.length > MAX_DECLARED_LINES) {
+  // why the length rule is skipped on an edit inside an existing block: that block's length was judged when it
+  // was introduced. Re-counting it here would refuse a one-line fix for the size of the comment around it.
+  if (!origin.preExisting && block.length > MAX_DECLARED_LINES) {
     return { violates: true, reason: `declared comment runs past ${MAX_DECLARED_LINES} lines` };
   }
   // invariant: resolvability is asked last, and only of a comment that already earned its place. A comment with

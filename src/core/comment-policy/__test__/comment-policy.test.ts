@@ -137,6 +137,76 @@ test("a declared comment longer than the budget is blocked, so one marker cannot
   assert.equal(hits[0]?.line, 20);
 });
 
+test("editing one line inside a comment that already declares a reason is not a new comment", () => {
+  // why: the marker sits on a line the diff never touched, so only the reader reaches it.
+  const file = [
+    "  /**",
+    "   * why: the host documents no argument substitution.",
+    "   * the field named here belongs to a different CLI.",
+    "   */",
+    "  case 'rewriteInput':",
+  ];
+  const hits = findAddedComments(
+    [{ file: "a.ts", line: 3, text: file[2] as string }],
+    "declared",
+    (_file, line) => file[line - 1],
+  );
+  assert.deepEqual(hits, []);
+});
+
+test("editing inside an undeclared comment is still reported, at the line that was touched", () => {
+  const file = [
+    "  /**",
+    "   * loads the user record.",
+    "   * then it caches it.",
+    "   */",
+    "  function load() {}",
+  ];
+  const hits = findAddedComments(
+    [{ file: "a.ts", line: 3, text: file[2] as string }],
+    "declared",
+    (_file, line) => file[line - 1],
+  );
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0]?.line, 3);
+});
+
+test("a long pre-existing block is not refused for its length when one line inside it changes", () => {
+  const file = [
+    "// why: a real constraint",
+    "// continued one",
+    "// continued two",
+    "// continued three",
+    "// continued four",
+    "// continued five",
+    "const x = 1;",
+  ];
+  const hits = findAddedComments(
+    [{ file: "a.ts", line: 4, text: file[3] as string }],
+    "declared",
+    (_file, line) => file[line - 1],
+  );
+  assert.deepEqual(hits, []);
+});
+
+test("a fresh block over the budget is still refused — the skip needs a pre-existing head", () => {
+  const file = [
+    "// why: a real constraint",
+    "// narration one",
+    "// narration two",
+    "// narration three",
+    "// narration four",
+    "const x = 1;",
+  ];
+  const hits = findAddedComments(
+    file.slice(0, 5).map((text, offset) => ({ file: "a.ts", line: offset + 1, text })),
+    "declared",
+    (_file, line) => file[line - 1],
+  );
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0]?.reason, "declared comment runs past 4 lines");
+});
+
 function repo(): string {
   const dir = mkdtempSync(join(tmpdir(), "comment-diff-"));
   const git = (...args: string[]) => execFileSync("git", ["-C", dir, ...args], { stdio: "ignore" });
