@@ -67,27 +67,38 @@ test("an allow at PreToolUse renders permissionDecision allow and no reason", ()
 });
 
 /**
- * spec P4 AC4 as amended during T2: context rides `hookSpecificOutput.additionalContext` at `SessionStart` only.
- * The VS Code page documents the field on that event alone ([/decisions/ad-125.md](/decisions/ad-125.md)).
+ * spec P4 AC4, corrected against the published reference: context rides `hookSpecificOutput.additionalContext`
+ * on `PreToolUse`, `PostToolUse`, `SessionStart` and `SubagentStart`
+ * ([/decisions/ad-125.md](/decisions/ad-125.md)).
  */
-test("context at SessionStart rides hookSpecificOutput.additionalContext", () => {
-  const output = hookSpecificOutput({ kind: "context", text: "three lessons apply here" }, sessionStart);
-  assert.equal(output.hookEventName, "SessionStart");
-  assert.equal(output.additionalContext, "three lessons apply here");
+test("context rides hookSpecificOutput.additionalContext on each of the four events that accept it", () => {
+  for (const [fixtureName, hookEventName] of [
+    ["session-start.json", "SessionStart"],
+    ["pre-tool-use-terminal.json", "PreToolUse"],
+    ["post-tool-use-edit.json", "PostToolUse"],
+    ["subagent-start.json", "SubagentStart"],
+  ] as const) {
+    const output = hookSpecificOutput(
+      { kind: "context", text: "three lessons apply here" },
+      eventFrom(fixtureName),
+    );
+    assert.equal(output.hookEventName, hookEventName, fixtureName);
+    assert.equal(output.additionalContext, "three lessons apply here", fixtureName);
+  }
 });
 
 /**
- * `degrade()` gates context on `tool.before`, `tool.after` and `stop` only, so a context decision at
- * `shell.before` or `edit.after` reaches the renderer intact on this host. Rendering it into a field VS Code
- * ignores would leave the caller believing it was delivered ([/decisions/ad-050.md](/decisions/ad-050.md)).
+ * why the renderer keeps its own guard: `degrade()` gates context on `tool.before`, `tool.after` and `stop`
+ * only, so a context decision at `prompt.submit` or `compact.before` reaches the renderer intact. Rendering it
+ * into a field VS Code ignores would leave the caller believing it was delivered
+ * ([/decisions/ad-050.md](/decisions/ad-050.md)).
  */
-test("context anywhere but SessionStart renders nothing rather than a field this host ignores", () => {
+test("context on an event outside those four renders nothing rather than a field this host ignores", () => {
   for (const fixtureName of [
-    "pre-tool-use-terminal.json",
-    "pre-tool-use-read.json",
-    "post-tool-use-edit.json",
     "user-prompt-submit.json",
     "stop.json",
+    "pre-compact.json",
+    "subagent-stop.json",
   ]) {
     const rendered = vscodeRender({ kind: "context", text: "ignored" }, eventFrom(fixtureName));
     assert.equal(rendered.stdout, null, fixtureName);
@@ -112,11 +123,10 @@ test("context at stop is stripped by degrade, and context at the two tool events
 });
 
 /**
- * The reason the renderer needs its own guard: `degrade()` reads the three flags on `tool.before`, `tool.after`
- * and `stop` only, so a context decision at any other kind arrives intact — on a host whose only context channel
- * is `SessionStart`.
+ * The pair that matters end to end: a context decision at a tool event now survives `degrade()` and is
+ * delivered, where before the flags were corrected it was stripped.
  */
-test("degrade does not strip context at the other before-kinds, so the renderer's guard is load-bearing", () => {
+test("context at a tool event survives degrade and is rendered", () => {
   const capabilities = vscodeCapabilities();
   for (const fixtureName of [
     "pre-tool-use-terminal.json",
@@ -126,11 +136,11 @@ test("degrade does not strip context at the other before-kinds, so the renderer'
     const event = eventFrom(fixtureName);
     const degraded = degrade({ kind: "context", text: "kept" }, event, capabilities);
     assert.equal(degraded.kind, "context", `${fixtureName} (${event.event})`);
-    assert.equal(vscodeRender(degraded, event).stdout, null, fixtureName);
+    assert.equal(hookSpecificOutput(degraded, event).additionalContext, "kept", fixtureName);
   }
 });
 
-test("context at SessionStart survives degrade, so the renderer's one context branch is reachable", () => {
+test("context at SessionStart survives degrade, so the renderer's context branch is reachable", () => {
   const degraded = degrade({ kind: "context", text: "kept" }, sessionStart, vscodeCapabilities());
   assert.deepEqual(degraded, { kind: "context", text: "kept" });
 });
@@ -144,28 +154,55 @@ test("abstain renders silence", () => {
  * ([/decisions/ad-125.md](/decisions/ad-125.md)) — so `degrade()` carries a rewrite through untouched instead of
  * converting it to an ask.
  */
-test("a rewrite survives degrade, because updatedInput is documented on PreToolUse", () => {
+test("a rewrite survives degrade and renders hookSpecificOutput.updatedInput at PreToolUse", () => {
   const rewrite: Decision = { kind: "rewriteInput", input: { command: "ls" }, reason: "safer" };
   const degraded = degrade(rewrite, toolBefore, vscodeCapabilities());
   assert.deepEqual(degraded, rewrite);
+  assert.deepEqual(stdoutOf(rewrite, toolBefore), {
+    hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: { command: "ls" } },
+  });
 });
 
-test("a continue hands its text back through the stop channel", () => {
-  const parsed = stdoutOf({ kind: "continue", text: "the gate has not run" }, eventFrom("stop.json"));
-  assert.deepEqual(parsed, { decision: "block", reason: "the gate has not run" });
+/** invariant: `updatedInput` is a `PreToolUse` field, so a rewrite reaching any other event renders silence. */
+test("a rewrite outside PreToolUse renders silence", () => {
+  const rewrite: Decision = { kind: "rewriteInput", input: { command: "ls" }, reason: "safer" };
+  assert.equal(vscodeRender(rewrite, eventFrom("post-tool-use-edit.json")).stdout, null);
 });
 
 /**
- * why a refusal is emitted where context is not: the host offers no second channel for a refusal, so dropping one
- * lets through the exact action a rail refused. Dropping context costs a note nobody reads.
+ * One pair, two placements. On `Stop` the reference documents `decision` and `reason` inside
+ * `hookSpecificOutput` beside `hookEventName`; on `PostToolUse` and `SubagentStop` it documents them top-level
+ * ([/decisions/ad-125.md](/decisions/ad-125.md)).
  */
-test("a deny outside PreToolUse is still emitted rather than dropped", () => {
-  const output = hookSpecificOutput(
-    { kind: "deny", reason: "no", rule: "test-rule" },
-    eventFrom("user-prompt-submit.json"),
-  );
-  assert.equal(output.hookEventName, "UserPromptSubmit");
-  assert.equal(output.permissionDecision, "deny");
+test("a continue at Stop nests decision and reason inside hookSpecificOutput", () => {
+  const parsed = stdoutOf({ kind: "continue", text: "the gate has not run" }, eventFrom("stop.json"));
+  assert.deepEqual(parsed, {
+    hookSpecificOutput: {
+      hookEventName: "Stop",
+      decision: "block",
+      reason: "the gate has not run",
+    },
+  });
+});
+
+test("a continue at PostToolUse and SubagentStop puts the same pair top-level", () => {
+  for (const fixtureName of ["post-tool-use-edit.json", "subagent-stop.json"]) {
+    const parsed = stdoutOf({ kind: "continue", text: "the gate has not run" }, eventFrom(fixtureName));
+    assert.deepEqual(parsed, { decision: "block", reason: "the gate has not run" }, fixtureName);
+  }
+});
+
+/**
+ * hazard: a refusal raised outside `PreToolUse` is dropped, because `permissionDecision` is exclusive to that
+ * event and emitting it elsewhere claimed a channel the host reads on no other event
+ * ([/decisions/ad-125.md](/decisions/ad-125.md), [/decisions/ad-050.md](/decisions/ad-050.md)).
+ */
+test("a deny outside PreToolUse renders silence rather than a field this host ignores", () => {
+  for (const fixtureName of ["user-prompt-submit.json", "post-tool-use-edit.json", "stop.json"]) {
+    const rendered = vscodeRender({ kind: "deny", reason: "no", rule: "test-rule" }, eventFrom(fixtureName));
+    assert.equal(rendered.stdout, null, fixtureName);
+    assert.equal(rendered.exitCode, 0, fixtureName);
+  }
 });
 
 // the hook name echoed back is the host's own, in whichever of the two documented spellings it arrived.

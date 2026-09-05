@@ -104,18 +104,17 @@ it carries `"end_turn"`, which is not a member of the `completed | aborted | err
 
 `vscode.outbound.ts`:
 
-- `allow`, `deny` and `ask` render `hookSpecificOutput.permissionDecision` with a
-  `permissionDecisionReason`. `PreToolUse` is where VS Code honours it; a refusal is emitted on the other events
-  anyway, because the host offers no second channel for one and dropping it lets the refused action through.
-- `context` rides `hookSpecificOutput.additionalContext` at `SessionStart` **and nowhere else**. `degrade()`
-  strips context at `tool.before`, `tool.after` and `stop`; the renderer's own guard covers the rest, because
-  emitting into a field this host ignores would leave the caller believing it was delivered.
-- `continue` emits `{ decision: "block", reason }`. This is the one unverified field pair in the adapter — the
-  VS Code page's common stop outputs are `continue`, `stopReason` and `systemMessage`, and the Copilot reference
-  documents `decision` plus `reason`. If the name is wrong the advisory is dropped and the turn ends, which fails
-  visibly.
-- `rewriteInput` renders nothing. `toolInputRewrite` is `false`, so `degrade()` turns a rewrite into an ask,
-  which the four before-kinds do support.
+- `allow`, `deny` and `ask` render `hookSpecificOutput.permissionDecision` with a `permissionDecisionReason`, on
+  `PreToolUse` **only**. The reference states the pair is exclusive to that event, so the same object anywhere
+  else is read by nothing. A refusal raised at another event is therefore dropped — recorded as a limitation
+  below rather than routed through a channel that means something different.
+- `context` rides `hookSpecificOutput.additionalContext` on the four events that accept it: `PreToolUse`,
+  `PostToolUse`, `SessionStart` and `SubagentStart`. Anywhere else it renders nothing, because emitting into a
+  field this host ignores would leave the caller believing it was delivered.
+- `continue` emits `decision: "block"` with a `reason` — one pair in two placements. On `Stop` it sits inside
+  `hookSpecificOutput` beside `hookEventName`; on `PostToolUse` and `SubagentStop` it is top-level. No other
+  event documents a channel that hands text back and keeps the turn going, so elsewhere it renders nothing.
+- `rewriteInput` emits `hookSpecificOutput.updatedInput` at `PreToolUse` and nothing elsewhere.
 
 ## Wiring target
 
@@ -161,6 +160,9 @@ Three ways a rail on this host goes quiet, recorded in [/decisions/ad-125.md](/d
    `warn` beside the VS Code row.
 2. **A `!`-prefixed terminal input bypasses the tool hook**, so `shell.before` never sees it.
 3. **A sandboxed auto-approve bypasses it too.**
+4. **A refusal raised outside `PreToolUse` is dropped.** `permissionDecision` is exclusive to that event, and
+   the events that carry `decision: "block"` carry a stop advisory rather than a permission verdict. In practice
+   every rail that refuses runs at a before-kind, all four of which map to `PreToolUse`.
 
 Neither bypass is a capability flag: `enforcesHooks` describes what happens when a hook runs, and these are the
 cases where none does.

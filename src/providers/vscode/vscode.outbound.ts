@@ -31,7 +31,23 @@ const HOOK_EVENT_NAME_BY_KIND: Record<HarnessEventKind, string> = {
   "thought.after": "Stop",
 };
 
-const SESSION_START = "SessionStart";
+const PRE_TOOL_USE = "PreToolUse";
+const POST_TOOL_USE = "PostToolUse";
+const STOP = "Stop";
+const SUBAGENT_STOP = "SubagentStop";
+
+/**
+ * The four events whose output the published reference documents as accepting
+ * `hookSpecificOutput.additionalContext`, and no others
+ * (<https://code.visualstudio.com/docs/agents/reference/hooks-reference>, read 2026-09-05).
+ */
+const CONTEXT_EVENTS = new Set([PRE_TOOL_USE, POST_TOOL_USE, "SessionStart", "SubagentStart"]);
+
+/**
+ * The events that document `decision: "block"` with a `reason` **top-level**. `Stop` documents the same pair
+ * one level down, inside `hookSpecificOutput`, which is why the two placements are separate branches below.
+ */
+const TOP_LEVEL_BLOCK_EVENTS = new Set([POST_TOOL_USE, SUBAGENT_STOP]);
 
 const SILENT: Rendered = { stdout: null, exitCode: 0 };
 
@@ -44,16 +60,28 @@ function hookEventNameFor(event: HarnessEvent): string {
     : HOOK_EVENT_NAME_BY_KIND[event.event];
 }
 
+/**
+ * invariant: emitted on `PreToolUse` and nowhere else. The reference states `permissionDecision` and
+ * `permissionDecisionReason` are exclusive to that event, so the same object on any other event is read by
+ * nothing — which is the defect [/decisions/ad-050.md](/decisions/ad-050.md) records, not a fallback.
+ */
 function renderPermission(
   permissionDecision: "allow" | "deny" | "ask",
   hookEventName: string,
   reason: string | undefined,
-): string {
+): Rendered {
+  if (hookEventName !== PRE_TOOL_USE) {
+    // hazard: a refusal raised at any other event has no channel this host honours, so it is dropped and the
+    // action it refused proceeds. The events that document `decision: "block"` carry a stop advisory rather
+    // than a permission verdict, and routing a refusal through one would be inventing a rail
+    // ([/decisions/ad-125.md](/decisions/ad-125.md)).
+    return SILENT;
+  }
   const hookSpecificOutput: Record<string, unknown> = { hookEventName, permissionDecision };
   if (reason !== undefined) {
     hookSpecificOutput.permissionDecisionReason = reason;
   }
-  return JSON.stringify({ hookSpecificOutput });
+  return { stdout: JSON.stringify({ hookSpecificOutput }), exitCode: 0 };
 }
 
 export function vscodeRender(decision: Decision, event: HarnessEvent): Rendered {
@@ -62,33 +90,23 @@ export function vscodeRender(decision: Decision, event: HarnessEvent): Rendered 
     case "abstain":
       return SILENT;
     /**
-     * `PreToolUse` is the only event the VS Code page documents as returning
-     * `hookSpecificOutput.permissionDecision`, and it takes all three verdicts — which is what
-     * `askSupportedOn` lists the four before-kinds for (spec P4 AC4, [/decisions/ad-125.md](/decisions/ad-125.md)).
-     *
-     * why a refusal is still emitted on the other events, where context is not: the host offers no second channel
-     * for a refusal, and dropping one lets through the exact action a rail refused. Dropping context costs a note
-     * nobody reads. The asymmetry is the reason the two branches differ.
+     * why all three verdicts go through one function: `PreToolUse` is the only event whose hook may return
+     * `permissionDecision`, and it takes `allow`, `deny` and `ask` alike — which is what `askSupportedOn` lists
+     * the four before-kinds for (spec P4 AC4, [/decisions/ad-125.md](/decisions/ad-125.md)).
      */
     case "allow":
-      return { stdout: renderPermission("allow", hookEventName, undefined), exitCode: 0 };
+      return renderPermission("allow", hookEventName, undefined);
     case "deny":
-      return { stdout: renderPermission("deny", hookEventName, decision.reason), exitCode: 0 };
+      return renderPermission("deny", hookEventName, decision.reason);
     case "ask":
-      return { stdout: renderPermission("ask", hookEventName, decision.reason), exitCode: 0 };
+      return renderPermission("ask", hookEventName, decision.reason);
     /**
-     * invariant: context rides `hookSpecificOutput.additionalContext` at `SessionStart` and nowhere else. The
-     * VS Code page documents that field on that event alone, and GitHub's Copilot reference states outright that
-     * `preToolUse` does not return it — so `contextAtToolBefore`, `contextAtToolAfter` and `contextAtStop` are all
-     * false and `degrade()` strips those three before this function runs.
-     *
-     * why the branch exists anyway: `degrade()` gates context only on those three kinds, so a context decision at
-     * `shell.before`, `read.before` or `edit.after` reaches here intact. Rendering it into a field this host
-     * ignores would leave the caller believing it was delivered, which is the defect
-     * [/decisions/ad-050.md](/decisions/ad-050.md) records. Silence is the honest answer.
+     * invariant: context rides `hookSpecificOutput.additionalContext` on the four events the reference lists
+     * for it, and nowhere else. Rendering it into a field this host ignores would leave the caller believing it
+     * was delivered ([/decisions/ad-050.md](/decisions/ad-050.md)); silence is the honest answer.
      */
     case "context":
-      return hookEventName === SESSION_START
+      return CONTEXT_EVENTS.has(hookEventName)
         ? {
             stdout: JSON.stringify({
               hookSpecificOutput: { hookEventName, additionalContext: decision.text },
@@ -97,25 +115,40 @@ export function vscodeRender(decision: Decision, event: HarnessEvent): Rendered 
           }
         : SILENT;
     /**
-     * hazard: the one unverified field pair in this adapter. The VS Code page's common stop outputs are
-     * `continue`, `stopReason` and `systemMessage`; GitHub's Copilot reference documents `decision` with a
-     * `reason` for the same event. This emits the second, because it is the shape that hands text back *and*
-     * keeps the turn going, and it is what the host whose payload shape this reuses reads. If the name is wrong
-     * the advisory is dropped and the turn simply ends, which is the direction that fails visibly.
+     * why one pair and two placements: the reference documents `decision: "block"` with a `reason` top-level on
+     * `PostToolUse` and `SubagentStop`, and one level down inside `hookSpecificOutput` — beside
+     * `hookEventName` — on `Stop`. Emitting the wrong placement drops the advisory and ends the turn.
      */
-    case "continue":
-      return { stdout: JSON.stringify({ decision: "block", reason: decision.text }), exitCode: 0 };
+    case "continue": {
+      if (hookEventName === STOP) {
+        return {
+          stdout: JSON.stringify({
+            hookSpecificOutput: { hookEventName, decision: "block", reason: decision.text },
+          }),
+          exitCode: 0,
+        };
+      }
+      // hazard: an advisory raised anywhere else is dropped. No other event documents a channel that hands text
+      // back and keeps the turn going, and the common `systemMessage` is shown to the operator, not the model.
+      return TOP_LEVEL_BLOCK_EVENTS.has(hookEventName)
+        ? { stdout: JSON.stringify({ decision: "block", reason: decision.text }), exitCode: 0 }
+        : SILENT;
+    }
     /**
-     * why a rewrite renders as silence: `toolInputRewrite` is false — the VS Code page documents a permission
-     * decision on `PreToolUse` and no argument substitution, and the `modifiedArgs` in the Copilot reference is
-     * the Copilot CLI's field ([/decisions/ad-125.md](/decisions/ad-125.md)). `degrade()` turns a rewrite into
-     * an ask on this host, which the four before-kinds do support, so this branch is what a caller that skipped
-     * `degrade()` falls to. Emitting an
-     * undocumented field would claim a channel the descriptor denies, and the tool would run its original input
-     * either way.
+     * hazard: `updatedInput` is emitted alone, as the host whose payload shape this reuses does. Codex errors
+     * unless `permissionDecision: "allow"` rides with it, and the VS Code reference documents both fields on
+     * this event without saying whether either requires the other. If the pairing turns out to be required, the
+     * rewrite is ignored and the tool runs its original input.
      */
     case "rewriteInput":
-      return SILENT;
+      return hookEventName === PRE_TOOL_USE
+        ? {
+            stdout: JSON.stringify({
+              hookSpecificOutput: { hookEventName, updatedInput: decision.input },
+            }),
+            exitCode: 0,
+          }
+        : SILENT;
     default: {
       const exhaustive: never = decision;
       throw new Error(`unreachable decision kind: ${JSON.stringify(exhaustive)}`);
