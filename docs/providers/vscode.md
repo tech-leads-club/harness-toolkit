@@ -96,6 +96,10 @@ field — `hook_event_name` / `hookEventName`, `session_id` / `sessionId`, `tool
 `tool_input` / `toolArgs` — and the two formats of one payload produce the same event. This is the vendor's own
 contract, not a hedge against Preview drift; the drift is the second reason, not the first.
 
+The tool's output is read under three names for the same reason. GitHub's reference calls the `PostToolUse` field
+`tool_result` with a `text_result_for_llm` inside it; VS Code's own reference calls it `tool_response`. Both are
+read, the second serialised when it is not a string.
+
 Two fields are deliberately not mapped. `stop_hook_active` never reaches `loopCount` — it is a boolean where the
 grind cap reads a count, so mapping it in would leave the cap unreachable. `stop_reason` never reaches `status` —
 it carries `"end_turn"`, which is not a member of the `completed | aborted | error` vocabulary.

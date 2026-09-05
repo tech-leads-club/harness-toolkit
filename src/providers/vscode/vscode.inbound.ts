@@ -222,6 +222,14 @@ export function vscodeToEvent(raw: Record<string, unknown>): HarnessEvent | null
       event.toolOutput = text;
     } else if (typeof toolResult === "string") {
       event.toolOutput = toolResult;
+    } else {
+      // why a third name: VS Code's own published reference calls this field `tool_response` where the Copilot
+      // reference calls it `tool_result`. Two vendor pages, two names for one payload — the same reason the
+      // envelope is read under two spellings. Serialised when it is not a string, as Claude's adapter does.
+      const toolResponse = field(raw, "tool_response", "toolResponse");
+      if (toolResponse !== undefined && toolResponse !== null) {
+        event.toolOutput = typeof toolResponse === "string" ? toolResponse : JSON.stringify(toolResponse);
+      }
     }
   }
 

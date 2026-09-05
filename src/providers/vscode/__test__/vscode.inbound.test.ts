@@ -129,6 +129,19 @@ test("PostToolUse delivers the tool's text result, unwrapped from the tool_resul
   assert.equal(parse("post-tool-use-edit.json").toolOutput, "edited src/index.ts");
 });
 
+/**
+ * why a third field name is read: VS Code's published reference names the `PostToolUse` output field
+ * `tool_response` where GitHub's Copilot reference names it `tool_result`. Two vendor pages, one payload
+ * (<https://code.visualstudio.com/docs/agents/reference/hooks-reference>, read 2026-09-05).
+ */
+test("PostToolUse delivers a tool_response too, string or object", () => {
+  const { tool_result: _dropped, ...withoutResult } = fixture("post-tool-use-terminal.json");
+  const asText = vscodeToEvent({ ...withoutResult, tool_response: "2527 passing" });
+  assert.equal(asText?.toolOutput, "2527 passing");
+  const asObject = vscodeToEvent({ ...withoutResult, tool_response: { stdout: "2527 passing" } });
+  assert.equal(asObject?.toolOutput, JSON.stringify({ stdout: "2527 passing" }));
+});
+
 test("a before-event carries no tool output", () => {
   assert.equal(parse("pre-tool-use-terminal.json").toolOutput, undefined);
 });
