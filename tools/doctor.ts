@@ -28,7 +28,7 @@ import {
 import { providers } from "../src/providers/index.ts";
 import { isOpencodeManaged, renderOpencodePlugin } from "../src/providers/opencode/opencode.wiring.ts";
 import type { ProviderPort, ProviderWiringKind } from "../src/providers/provider.port.ts";
-import { VSCODE_DEFERRAL_REASON } from "../src/providers/vscode/vscode.wiring.ts";
+import { isVSCodeManaged, renderVSCodeHooksText } from "../src/providers/vscode/vscode.wiring.ts";
 
 export type CheckLevel = "ok" | "warn" | "fail";
 
@@ -350,7 +350,9 @@ export function checkHookRuntime(
       };
 }
 
-export type ProviderWiringStatus = "wired" | "detected-but-unwired" | "not-installed" | "deferred";
+// why no `deferred` member any more: every kind in the union now has a writer that runs. A status no
+// branch can return is a row an operator can never see ([/decisions/ad-126.md](/decisions/ad-126.md)).
+export type ProviderWiringStatus = "wired" | "detected-but-unwired" | "not-installed";
 
 /**
  * hazard: this branch decided health by marker presence alone, so a file carrying the marker in one entry and a
@@ -428,14 +430,19 @@ export function providerWiringStatus(wiring: ProviderWiring<ProviderWiringKind>)
       const result = mergeCodexHooks(existingText, wiring.entries);
       return result.ok && !result.changed ? "wired" : "detected-but-unwired";
     }
-    /**
-     * why a status of its own and not `detected-but-unwired`: that row tells the operator to run
-     * `tlc harness update`, and update would write nothing — the same command reports this kind as skipped. A
-     * warning nothing can clear is the [/decisions/ad-034.md](/decisions/ad-034.md) defect
-     * ([/decisions/ad-126.md](/decisions/ad-126.md), spec P4 AC5).
-     */
-    case "vscode-hooks-json":
-      return "deferred";
+    // why the same shape as the opencode branch: a replaced file is ours only if we would write it byte for
+    // byte, so a stale document from an older harness reads as unwired rather than as wired.
+    case "vscode-hooks-json": {
+      if (!existsSync(wiring.target)) {
+        return "detected-but-unwired";
+      }
+      const existing = readFileSync(wiring.target, "utf8");
+      const launcherPath = wiring.entries[0]?.args?.[0] ?? "";
+      if (!isVSCodeManaged(existing, launcherPath)) {
+        return "detected-but-unwired";
+      }
+      return existing === renderVSCodeHooksText(wiring.entries) ? "wired" : "detected-but-unwired";
+    }
     default:
       return unreachableWiringKind(wiring.kind);
   }
@@ -549,12 +556,6 @@ export function checkProviders(
     ];
     if (status === "not-installed") {
       return [{ level: "ok", name: `${provider.name} wiring`, detail: "not installed" }, ...reminders];
-    }
-    if (status === "deferred") {
-      return [
-        { level: "ok" as const, name: `${provider.name} wiring`, detail: VSCODE_DEFERRAL_REASON },
-        ...reminders,
-      ];
     }
     if (status === "wired") {
       return [

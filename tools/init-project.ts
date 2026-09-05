@@ -321,8 +321,9 @@ export function applyPlan(
     : { skipped: true as const };
 
   /**
-   * The deferral branch. Nothing is detected and nothing is written: this host's project hook file stays absent
-   * for as long as Agent Hooks are Preview, and `init` says so rather than leaving an operator to notice.
+   * The deferral branch, now narrower than it was. The user-level hook file *is* written — `tlc harness install`
+   * dispatches it against the published schema. What stays absent is the workspace shim, which needs a presence
+   * probe and an entry set this file does not have ([/decisions/ad-126.md](/decisions/ad-126.md)).
    */
   const vscode = {
     deferred: true as const,

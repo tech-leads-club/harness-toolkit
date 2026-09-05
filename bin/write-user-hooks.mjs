@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { applyClaudeWiring } from "../src/providers/claude/claude.wiring.ts";
 import { applyCodexWiring } from "../src/providers/codex/codex.wiring.ts";
 import { isOpencodeManaged, renderOpencodePlugin } from "../src/providers/opencode/opencode.wiring.ts";
-import { VSCODE_DEFERRAL_REASON } from "../src/providers/vscode/vscode.wiring.ts";
+import { isVSCodeManaged, renderVSCodeHooksText } from "../src/providers/vscode/vscode.wiring.ts";
 import { providers } from "../src/providers/index.ts";
 
 const CURSOR_MARKER = "tlc-exec.mjs";
@@ -94,6 +94,38 @@ export function applyOpencodePluginWiring(wiring, { force = false } = {}) {
 }
 
 /**
+ * The hook file VS Code reads from `~/.copilot/hooks/`.
+ *
+ * why replace and not merge: that directory holds one file per tool, and this one carries our own name. A merge
+ * would be the right rule for a shared document like Codex's `hooks.json`; here another tool's hooks live in
+ * another file and are never touched.
+ *
+ * invariant: a file at our path whose commands do not all name our launcher was written by somebody else, and is
+ * refused rather than overwritten — the same rule the Cursor and opencode writers apply.
+ */
+export function applyVSCodeWiring(wiring, { force = false } = {}) {
+  const targetPath = wiring.target;
+  const rendered = renderVSCodeHooksText(wiring.entries);
+  const launcherPath = wiring.entries[0]?.args?.[0] ?? "";
+  if (existsSync(targetPath) && !force) {
+    const existing = readFileSync(targetPath, "utf8");
+    if (!isVSCodeManaged(existing, launcherPath)) {
+      return {
+        status: "refused",
+        target: targetPath,
+        reason: `${targetPath} exists and was not written by the harness — rerun with --force to overwrite, or move it aside.`,
+      };
+    }
+    if (existing === rendered) {
+      return { status: "unchanged", target: targetPath };
+    }
+  }
+  mkdirSync(dirname(targetPath), { recursive: true });
+  writeFileSync(targetPath, rendered);
+  return { status: "written", target: targetPath };
+}
+
+/**
  * why it dispatches on `kind` and not on `strategy`: `strategy` answers replace-or-merge, which is not the same
  * question as which writer to call. A flat hooks JSON and an ES-module plugin are both `replace` and need
  * different writers, so a `strategy` branch would silently hand the second one to the first one's writer.
@@ -125,17 +157,8 @@ export function applyProviderWiring(wiring, { force = false } = {}) {
       }
       return { status: result.changed ? "merged" : "unchanged", target: wiring.target };
     }
-    /**
-     * The deferral branch, not a missing writer. `vscode.wiring.ts` renders the document and is unit-tested
-     * against a golden file; what is withheld is the dispatch, while Agent Hooks are Preview and the hook file
-     * schema is unpublished ([/decisions/ad-126.md](/decisions/ad-126.md), spec P4 AC5).
-     *
-     * why a status of its own rather than `refused`: a refusal means the operator has something to fix. This one
-     * is the harness's own decision and nothing on the machine changes it, so it reports as skipped and does not
-     * fail the install.
-     */
     case "vscode-hooks-json":
-      return { status: "deferred", target: wiring.target, reason: VSCODE_DEFERRAL_REASON };
+      return applyVSCodeWiring(wiring, { force });
     default:
       return {
         status: "failed",
@@ -183,9 +206,6 @@ function report(result) {
       return true;
     case "unchanged":
       console.log(`hooks: unchanged (${result.target})`);
-      return true;
-    case "deferred":
-      console.log(`hooks: skipped ${result.target} — ${result.reason}`);
       return true;
     case "refused":
       console.error(`hooks: ${result.reason}`);

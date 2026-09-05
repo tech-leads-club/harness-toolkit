@@ -16,7 +16,7 @@ import {
   renderOpencodePlugin,
 } from "../../src/providers/opencode/opencode.wiring.ts";
 import type { ProviderPort, ProviderWiringKind } from "../../src/providers/provider.port.ts";
-import { vscodeWiring } from "../../src/providers/vscode/vscode.wiring.ts";
+import { renderVSCodeHooksText, vscodeWiring } from "../../src/providers/vscode/vscode.wiring.ts";
 import {
   type Check,
   checkCapabilities,
@@ -200,7 +200,7 @@ describe("providerWiringStatus", () => {
    * nothing for this kind — a warning nothing can clear is the [/decisions/ad-034.md](/decisions/ad-034.md)
    * defect ([/decisions/ad-126.md](/decisions/ad-126.md)).
    */
-  test("vscode: deferred once the host is present, and never detected-but-unwired", () => {
+  test("vscode: unwired once the host is present, wired only when the file is ours", () => {
     const root = newRoot();
     const copilot = join(root, "copilot-home");
     const local: ProviderWiring<ProviderWiringKind> = {
@@ -211,15 +211,19 @@ describe("providerWiringStatus", () => {
     assert.equal(providerWiringStatus(local), "not-installed", "VS Code itself is absent");
 
     mkdirSync(copilot, { recursive: true });
-    assert.equal(providerWiringStatus(local), "deferred");
+    assert.equal(providerWiringStatus(local), "detected-but-unwired", "present, nothing written yet");
 
-    // and it stays deferred with a hook file already at the target — nothing here is a wiring the harness wrote
+    // why a file at the target is not enough: presence would read as wired, and a foreign hook file at
+    // our path is exactly the case that must not.
     mkdirSync(join(copilot, "hooks"), { recursive: true });
     writeFileSync(local.target, "{}");
-    assert.equal(providerWiringStatus(local), "deferred");
+    assert.equal(providerWiringStatus(local), "detected-but-unwired");
+
+    writeFileSync(local.target, renderVSCodeHooksText(local.entries));
+    assert.equal(providerWiringStatus(local), "wired");
   });
 
-  test("vscode: the deferral reports as an ok row carrying the reason, and no file is written", () => {
+  test("vscode: doctor reports the wiring row and writes nothing itself", () => {
     const root = newRoot();
     const copilot = join(root, "copilot-home");
     mkdirSync(copilot, { recursive: true });
@@ -231,10 +235,7 @@ describe("providerWiringStatus", () => {
 
     const checks = checkProviders([provider], join(root, "runtime-home"));
     assert.equal(checks.length, 1);
-    assert.equal(checks[0]?.level, "ok");
     assert.equal(checks[0]?.name, "vscode wiring");
-    assert.match(checks[0]?.detail ?? "", /Preview/);
-    assert.doesNotMatch(checks[0]?.detail ?? "", /tlc harness update/);
     assert.equal(existsSync(target), false, "doctor writes nothing");
   });
 
@@ -364,9 +365,7 @@ describe("vscodeMismatchHazard", () => {
   test("reports the hazard when Claude hooks are present and VS Code is installed", () => {
     const root = newRoot();
     const settings = writeClaudeHooks(root);
-    const checks = vscodeMismatchHazard(vscodeWiringAt(join(root, "hooks", "x.json")), "deferred", [
-      settings,
-    ]);
+    const checks = vscodeMismatchHazard(vscodeWiringAt(join(root, "hooks", "x.json")), "wired", [settings]);
     assert.equal(checks.length, 1);
     assert.equal(checks[0]?.level, "warn");
     assert.equal(checks[0]?.name, "vscode settings mismatch");
@@ -378,12 +377,12 @@ describe("vscodeMismatchHazard", () => {
   test("says nothing when no Claude hooks are configured", () => {
     const root = newRoot();
     const settings = join(root, ".claude", "settings.json");
-    assert.deepEqual(vscodeMismatchHazard(vscodeWiringAt("/x/y.json"), "deferred", [settings]), []);
+    assert.deepEqual(vscodeMismatchHazard(vscodeWiringAt("/x/y.json"), "wired", [settings]), []);
 
     // a settings.json with no hooks at all is not the hazard either
     mkdirSync(dirname(settings), { recursive: true });
     writeFileSync(settings, JSON.stringify({ permissions: { allow: [] } }));
-    assert.deepEqual(vscodeMismatchHazard(vscodeWiringAt("/x/y.json"), "deferred", [settings]), []);
+    assert.deepEqual(vscodeMismatchHazard(vscodeWiringAt("/x/y.json"), "wired", [settings]), []);
   });
 
   test("says nothing when VS Code is not installed, however the settings file looks", () => {
@@ -413,7 +412,7 @@ describe("vscodeMismatchHazard", () => {
     const settings = join(root, ".claude", "settings.json");
     mkdirSync(dirname(settings), { recursive: true });
     writeFileSync(settings, "{ not json");
-    assert.deepEqual(vscodeMismatchHazard(vscodeWiringAt("/x/y.json"), "deferred", [settings]), []);
+    assert.deepEqual(vscodeMismatchHazard(vscodeWiringAt("/x/y.json"), "wired", [settings]), []);
   });
 
   // both files, because VS Code reads the workspace one and the user one, and this harness writes to both.

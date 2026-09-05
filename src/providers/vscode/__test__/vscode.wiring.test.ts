@@ -1,17 +1,15 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { applyProviderWiring, providerHomeDir } from "../../../../bin/write-user-hooks.mjs";
+import { applyProviderWiring } from "../../../../bin/write-user-hooks.mjs";
 import type { WiringEntry } from "../../../contracts/index.ts";
 import { copilotConfigDir } from "../../../platform/paths.ts";
-import { providers } from "../../provider.registry.ts";
 import {
-  isDeferredWiringKind,
+  isVSCodeManaged,
   renderVSCodeHooksText,
-  VSCODE_DEFERRAL_REASON,
   vscodeCommandString,
   vscodeHooksPath,
   vscodeWiring,
@@ -139,52 +137,54 @@ test("every entry carries its own timeout rather than falling to the documented 
  * why the target is asserted as still absent: "returns deferred" and "wrote nothing" are different claims, and
  * only the second is the criterion.
  */
-test("the installer defers instead of writing, and creates nothing", () => {
+test("the installer writes the hook file and creates its directory", () => {
   const root = mkdtempSync(join(tmpdir(), "vscode-wiring-"));
   try {
     const target = join(root, "hooks", "tlc-harness.json");
     const result = applyProviderWiring({ ...wiring, target });
-    assert.equal(result.status, "deferred");
-    assert.equal(result.reason, VSCODE_DEFERRAL_REASON);
+    assert.equal(result.status, "written");
     assert.equal(result.target, target);
-    assert.equal(existsSync(target), false, "the wiring file must not be written");
-    assert.equal(existsSync(join(root, "hooks")), false, "not even its directory");
+    assert.equal(existsSync(target), true);
+    assert.equal(readFileSync(target, "utf8"), renderVSCodeHooksText(wiring.entries));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("the deferral reason says what is deferred and why, without claiming the adapter is missing", () => {
-  assert.match(VSCODE_DEFERRAL_REASON, /Preview/);
-  assert.match(VSCODE_DEFERRAL_REASON, /nothing is written/);
-  assert.match(VSCODE_DEFERRAL_REASON, /ad-126/);
-});
-
-test("the deferral is keyed to the wiring kind, so no other host is caught by it", () => {
-  assert.equal(isDeferredWiringKind("vscode-hooks-json"), true);
-  for (const provider of providers) {
-    if (provider.name === "vscode") {
-      continue;
-    }
-    assert.equal(
-      isDeferredWiringKind(provider.wiring({ launcherPath: LAUNCHER }).kind),
-      false,
-      provider.name,
-    );
+test("a hook file this harness did not write is refused, and left byte-identical", () => {
+  const root = mkdtempSync(join(tmpdir(), "vscode-wiring-"));
+  try {
+    const target = join(root, "hooks", "tlc-harness.json");
+    mkdirSync(join(root, "hooks"), { recursive: true });
+    const theirs =
+      '{\n  "hooks": {\n    "PreToolUse": [{ "type": "command", "command": "their-tool" }]\n  }\n}\n';
+    writeFileSync(target, theirs);
+    const result = applyProviderWiring({ ...wiring, target });
+    assert.equal(result.status, "refused");
+    assert.equal(readFileSync(target, "utf8"), theirs);
+    assert.equal(applyProviderWiring({ ...wiring, target }, { force: true }).status, "written");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
-/**
- * why the host directory is one level above the target: `~/.copilot/hooks` is a directory this writer would
- * create, so its absence says nothing about whether VS Code is installed — the same shape as the namespaced
- * opencode plugin ([/decisions/ad-124.md](/decisions/ad-124.md)).
- */
-test("host presence is asked of ~/.copilot, not of the hooks directory this writer would create", () => {
-  assert.equal(providerHomeDir(wiring), copilotConfigDir());
+test("rewriting our own unchanged hook file reports unchanged", () => {
+  const root = mkdtempSync(join(tmpdir(), "vscode-wiring-"));
+  try {
+    const target = join(root, "hooks", "tlc-harness.json");
+    assert.equal(applyProviderWiring({ ...wiring, target }).status, "written");
+    assert.equal(applyProviderWiring({ ...wiring, target }).status, "unchanged");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
-test("the adapter is registered, and sits ahead of Claude", () => {
-  const names = providers.map((provider) => provider.name);
-  assert.ok(names.includes("vscode"), names.join(","));
-  assert.ok(names.indexOf("vscode") < names.indexOf("claude"), names.join(","));
+test("ownership is decided by the launcher every command names, not by a field of our own", () => {
+  const wiring = vscodeWiring({ launcherPath: LAUNCHER });
+  const ours = renderVSCodeHooksText(wiring.entries);
+  assert.equal(isVSCodeManaged(ours, LAUNCHER), true);
+  assert.equal(isVSCodeManaged('{"hooks":{"PreToolUse":[{"command":"other"}]}}', LAUNCHER), false);
+  assert.equal(isVSCodeManaged("not json", LAUNCHER), false);
+  assert.equal(isVSCodeManaged(null, LAUNCHER), false);
+  assert.equal(isVSCodeManaged('{"hooks":{}}', LAUNCHER), false);
 });
