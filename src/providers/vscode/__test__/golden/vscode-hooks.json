@@ -2,138 +2,58 @@
   "hooks": {
     "SessionStart": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "/opt/tlc/bin/tlc-exec.mjs",
-              "--provider",
-              "vscode",
-              "session-start"
-            ],
-            "timeout": 10
-          }
-        ]
+        "type": "command",
+        "command": "node /opt/tlc/bin/tlc-exec.mjs --provider vscode session-start",
+        "timeout": 10
       }
     ],
     "UserPromptSubmit": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "/opt/tlc/bin/tlc-exec.mjs",
-              "--provider",
-              "vscode",
-              "prompt-submit"
-            ],
-            "timeout": 5
-          }
-        ]
+        "type": "command",
+        "command": "node /opt/tlc/bin/tlc-exec.mjs --provider vscode prompt-submit",
+        "timeout": 5
       }
     ],
     "PreToolUse": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "/opt/tlc/bin/tlc-exec.mjs",
-              "--provider",
-              "vscode",
-              "tool-before"
-            ],
-            "timeout": 10
-          }
-        ]
+        "type": "command",
+        "command": "node /opt/tlc/bin/tlc-exec.mjs --provider vscode tool-before",
+        "timeout": 10
       }
     ],
     "PostToolUse": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "/opt/tlc/bin/tlc-exec.mjs",
-              "--provider",
-              "vscode",
-              "tool-after"
-            ],
-            "timeout": 10
-          }
-        ]
+        "type": "command",
+        "command": "node /opt/tlc/bin/tlc-exec.mjs --provider vscode tool-after",
+        "timeout": 10
       }
     ],
     "SubagentStart": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "/opt/tlc/bin/tlc-exec.mjs",
-              "--provider",
-              "vscode",
-              "subagent-start"
-            ],
-            "timeout": 5
-          }
-        ]
+        "type": "command",
+        "command": "node /opt/tlc/bin/tlc-exec.mjs --provider vscode subagent-start",
+        "timeout": 5
       }
     ],
     "SubagentStop": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "/opt/tlc/bin/tlc-exec.mjs",
-              "--provider",
-              "vscode",
-              "subagent-stop"
-            ],
-            "timeout": 5
-          }
-        ]
+        "type": "command",
+        "command": "node /opt/tlc/bin/tlc-exec.mjs --provider vscode subagent-stop",
+        "timeout": 5
       }
     ],
     "Stop": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "/opt/tlc/bin/tlc-exec.mjs",
-              "--provider",
-              "vscode",
-              "stop"
-            ],
-            "timeout": 120
-          }
-        ]
+        "type": "command",
+        "command": "node /opt/tlc/bin/tlc-exec.mjs --provider vscode stop",
+        "timeout": 120
       }
     ],
     "PreCompact": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "/opt/tlc/bin/tlc-exec.mjs",
-              "--provider",
-              "vscode",
-              "compact-before"
-            ],
-            "timeout": 5
-          }
-        ]
+        "type": "command",
+        "command": "node /opt/tlc/bin/tlc-exec.mjs --provider vscode compact-before",
+        "timeout": 5
       }
     ]
   }

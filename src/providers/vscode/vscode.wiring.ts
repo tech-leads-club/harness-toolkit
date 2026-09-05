@@ -53,32 +53,51 @@ export function vscodeWiring(runtime: RuntimePaths): ProviderWiring<ProviderWiri
   };
 }
 
-type VSCodeHookCommand = { type: "command"; command: string; args: string[]; timeout: number };
-type VSCodeHookGroup = { hooks: VSCodeHookCommand[] };
+type VSCodeHookCommand = { type: "command"; command: string; timeout: number };
+
+/**
+ * why a single quoted line and not the `{ command, args }` exec form: the published hooks reference documents
+ * `command` as one shell command line
+ * (<https://code.visualstudio.com/docs/agents/reference/hooks-reference>, read 2026-09-05). An array here would
+ * leave every hook unparsed.
+ *
+ * invariant: any token carrying whitespace or a quote is double-quoted and its backslashes and quotes escaped.
+ * The launcher path is the token that varies per machine, and a home directory with a space in it is the case
+ * that turns a working install into a hook that runs the wrong file.
+ */
+export function vscodeCommandString(entry: WiringEntry): string {
+  return [entry.command, ...entry.args]
+    .map((token) =>
+      /[\s"\\]/.test(token) ? `"${token.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"` : token,
+    )
+    .join(" ");
+}
 
 /**
  * The document this writer would put at `~/.copilot/hooks/tlc-harness.json`.
  *
- * hazard: the file *schema* is the one thing about this host neither source publishes. The VS Code page names the
- * discovery locations and the exit-code contract; it does not inline the hook file's own shape. What is emitted
- * here is the shape of the host whose payload format this reuses, which is the best-supported guess and still a
- * guess — and it is one of the two reasons this wiring is not dispatched
- * ([/decisions/ad-126.md](/decisions/ad-126.md)). A capture settles it, and until then the deferral means nobody
- * runs on the guess.
+ * why flat, with no group wrapper: the published reference maps each event to an array of command objects
+ * directly. The group nesting this once emitted is the shape of the host whose *payloads* VS Code reuses, and it
+ * was a guess made while the schema was unpublished.
+ *
+ * why no `matcher`: quoted verbatim from that reference — "Currently, VS Code ignores matcher values, so hooks
+ * run on all tool invocations regardless of the matcher". Emitting one would read as a filter that is doing
+ * something.
  */
 function renderVSCodeHooksDocument(entries: readonly WiringEntry[]): {
-  hooks: Record<string, VSCodeHookGroup[]>;
+  hooks: Record<string, VSCodeHookCommand[]>;
 } {
-  const hooks: Record<string, VSCodeHookGroup[]> = {};
+  const hooks: Record<string, VSCodeHookCommand[]> = {};
   for (const entry of entries) {
-    // why `timeout` is emitted although the host whose shape this borrows omits it: `WiringEntry` carries a
-    // per-event timeout — 120 seconds on `Stop`, 5 on the cheap events — and dropping it here would silently
-    // hand every hook whatever default the host picks. The field name shares the schema's uncertainty; the
-    // number does not.
-    const group: VSCodeHookGroup = {
-      hooks: [{ type: "command", command: entry.command, args: entry.args, timeout: entry.timeoutSeconds }],
+    // why `timeout` is emitted on every entry: the documented default is 30 seconds, which is a quarter of what
+    // `Stop` needs and six times what the cheap events want. `WiringEntry` carries the per-event number and
+    // dropping it here would hand all eight hooks the same 30.
+    const command: VSCodeHookCommand = {
+      type: "command",
+      command: vscodeCommandString(entry),
+      timeout: entry.timeoutSeconds,
     };
-    hooks[entry.hookEvent] = [...(hooks[entry.hookEvent] ?? []), group];
+    hooks[entry.hookEvent] = [...(hooks[entry.hookEvent] ?? []), command];
   }
   return { hooks };
 }
@@ -88,19 +107,19 @@ export function renderVSCodeHooksText(entries: readonly WiringEntry[]): string {
 }
 
 /**
- * Why nothing writes that document.
- *
- * VS Code Agent Hooks are Preview. Two things follow, and either alone is enough: the payload format is not
- * frozen, and the hook *file* schema is not published at all. Dispatching this writer would put a file an
- * operator did not ask for at a path whose format is a guess, on a host that reads `.claude/settings.json` by
- * default and would therefore already be running Claude's wiring against its own tool names (T19's hazard).
+ * why nothing writes that document: AD-126 rested on two facts and only one of them has since been settled.
+ * The file shape above is the vendor's rather than a guess; Agent Hooks are still Preview, and the reference
+ * says so in its own words — "The configuration format and behavior might change in future releases".
+ * Dispatching this writer would put a file an operator did not ask for on a host that reads
+ * `.claude/settings.json` by default and is therefore already running Claude's wiring against its own tool
+ * names (T19's hazard).
  *
  * invariant: the adapter is complete and the writer is tested. What is deferred is the *dispatch*, so the day
  * Agent Hooks reach GA the change is deleting a branch, not writing an adapter
  * ([/decisions/ad-126.md](/decisions/ad-126.md), spec P4 AC5).
  */
 export const VSCODE_DEFERRAL_REASON =
-  "deferred while VS Code Agent Hooks are Preview — the adapter is complete and tested, and the hook file schema is not published, so nothing is written (docs/decisions/ad-126.md)";
+  "deferred while VS Code Agent Hooks are Preview — the vendor states the configuration format and behavior might change, the adapter is complete and tested, so nothing is written (docs/decisions/ad-126.md)";
 
 export function isDeferredWiringKind(kind: string): boolean {
   return kind === VSCODE_WIRING_KIND;

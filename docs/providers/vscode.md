@@ -123,12 +123,22 @@ it carries `"end_turn"`, which is not a member of the `completed | aborted | err
 event, each launching with `--provider vscode`. `renderVSCodeHooksText` produces the document and is asserted
 against a golden file.
 
+The document follows the published schema: each event maps to a **flat array of command objects**, with no group
+wrapper, and `command` is a **single shell command line** rather than an argv array. Tokens carrying whitespace
+are quoted. `timeout` is emitted per entry because the documented default is 30 seconds. No `matcher` is written —
+quoted verbatim from the reference, "Currently, VS Code ignores matcher values, so hooks run on all tool
+invocations regardless of the matcher", so writing one would read as a filter that is doing something.
+
+```json
+{ "hooks": { "PreToolUse": [{ "type": "command", "command": "node …/tlc-exec.mjs --provider vscode tool-before", "timeout": 10 }] } }
+```
+
 **Nothing writes it.** `applyProviderWiring` returns a `deferred` status, `providerWiringStatus` returns
 `deferred` and doctor prints it as an `ok` row, and `init` names the workspace path in
-`DEFERRED_PROJECT_SHIMS` without creating it. Two facts hold the deferral: Agent Hooks are Preview, so the
-payload format is not frozen, and neither vendor page publishes the hook *file's* schema — the emitted document is
-the shape of the host whose payloads VS Code reuses, which is the best-supported guess and still a guess
-([/decisions/ad-126.md](/decisions/ad-126.md)).
+`DEFERRED_PROJECT_SHIMS` without creating it. AD-126 rested on two facts and one of them is now settled: the file
+shape is published, so the document is the vendor's rather than a guess. The other holds the deferral on its own —
+Agent Hooks are Preview, and the reference says "The configuration format and behavior might change in future
+releases" ([/decisions/ad-126.md](/decisions/ad-126.md)).
 
 ## Lessons view
 

@@ -5,12 +5,14 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { applyProviderWiring, providerHomeDir } from "../../../../bin/write-user-hooks.mjs";
+import type { WiringEntry } from "../../../contracts/index.ts";
 import { copilotConfigDir } from "../../../platform/paths.ts";
 import { providers } from "../../provider.registry.ts";
 import {
   isDeferredWiringKind,
   renderVSCodeHooksText,
   VSCODE_DEFERRAL_REASON,
+  vscodeCommandString,
   vscodeHooksPath,
   vscodeWiring,
 } from "../vscode.wiring.ts";
@@ -78,6 +80,57 @@ test("no entry names an event VS Code does not document", () => {
 test("the rendered document matches the golden file", () => {
   const golden = readFileSync(join(HERE, "golden", "vscode-hooks.json"), "utf8");
   assert.equal(renderVSCodeHooksText(wiring.entries), golden);
+});
+
+/**
+ * The published schema, asserted directly rather than only through the golden bytes: each event maps to a flat
+ * array of command objects, `command` is one shell line, and there is no group wrapper and no `args` key
+ * (<https://code.visualstudio.com/docs/agents/reference/hooks-reference>, read 2026-09-05).
+ */
+test("each event maps to a flat array of command objects, with command a single string", () => {
+  const document = JSON.parse(renderVSCodeHooksText(wiring.entries)) as {
+    hooks: Record<string, Record<string, unknown>[]>;
+  };
+  assert.deepEqual(Object.keys(document.hooks).sort(), wiring.entries.map((e) => e.hookEvent).sort());
+  for (const [hookEvent, commands] of Object.entries(document.hooks)) {
+    assert.equal(commands.length, 1, hookEvent);
+    const command = commands[0] as Record<string, unknown>;
+    assert.deepEqual(Object.keys(command).sort(), ["command", "timeout", "type"]);
+    assert.equal(command.type, "command");
+    assert.equal(typeof command.command, "string");
+    assert.match(command.command as string, /^node \/opt\/tlc\/bin\/tlc-exec\.mjs --provider vscode \S+$/);
+    assert.equal(typeof command.timeout, "number");
+  }
+});
+
+/**
+ * why no `matcher` is emitted: quoted verbatim from the reference — "Currently, VS Code ignores matcher values,
+ * so hooks run on all tool invocations regardless of the matcher".
+ */
+test("no entry carries a matcher, on either side of the render", () => {
+  const rendered = renderVSCodeHooksText(wiring.entries);
+  assert.ok(!rendered.includes("matcher"), rendered);
+  for (const entry of wiring.entries) {
+    assert.equal(entry.matcher, undefined, entry.hookEvent);
+  }
+});
+
+/** invariant: a launcher path with a space in it stays one token on the command line. */
+test("a path carrying a space is quoted into a single token", () => {
+  const spaced = vscodeWiring({ launcherPath: "/Users/a b/.tlc/bin/tlc-exec.mjs" });
+  assert.equal(
+    vscodeCommandString(spaced.entries[0] as WiringEntry),
+    'node "/Users/a b/.tlc/bin/tlc-exec.mjs" --provider vscode session-start',
+  );
+});
+
+/** why the per-event timeout is emitted on every entry: the documented default is 30 seconds. */
+test("every entry carries its own timeout rather than falling to the documented default of 30", () => {
+  const document = JSON.parse(renderVSCodeHooksText(wiring.entries)) as {
+    hooks: Record<string, { timeout: number }[]>;
+  };
+  assert.equal(document.hooks.Stop?.[0]?.timeout, 120);
+  assert.equal(document.hooks.UserPromptSubmit?.[0]?.timeout, 5);
 });
 
 /**
