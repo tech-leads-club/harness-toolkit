@@ -152,6 +152,7 @@ function checkShell(input: FloorInput): Decision {
   }
 
   const segments = tokenizeShell(command);
+  const protectedPaths = input.protectedPaths ?? [];
 
   // invariant: asked before the rest. A fetched program satisfies every other rule by containing nothing this
   // gate can read, so checking the wrapper first and the payload never is the order that let it through.
@@ -216,6 +217,16 @@ function checkShell(input: FloorInput): Decision {
 
     for (const word of targets) {
       const resolved = resolveTarget(input.projectDir, word.text);
+      // why: a destructive verb targeting a provider's wiring path is the same tampering the redirect and
+      // in-place-edit cases already name — attributing it to `outside-project-destruction` instead would be
+      // technically safe (the file still cannot be destroyed) but would hide which rule actually did the work.
+      if (isProtectedWiringTarget(resolved, protectedPaths)) {
+        return denial(
+          "wiring-tamper",
+          `${resolved} is where a provider reads its own hook registration from, and destroying it would stop every hook this harness has for that host from firing.`,
+          `${verb} of ${resolved}`,
+        );
+      }
       if (!isInside(input.projectDir, resolved) && !isScratch(resolved)) {
         return denial(
           "outside-project-destruction",
@@ -228,7 +239,6 @@ function checkShell(input: FloorInput): Decision {
 
   // hazard: the guard that used to defend this surface keyed off tool names, so a single shell line went
   // around it. The rule belongs here, where the decision is made before any policy is read.
-  const protectedPaths = input.protectedPaths ?? [];
   const surface = checkPolicySurface(input.projectDir, command, segments, protectedPaths);
   if (surface.kind === "deny") {
     // invariant: the remedy comes from the branch that denied, so a read refusal names how to read and a write

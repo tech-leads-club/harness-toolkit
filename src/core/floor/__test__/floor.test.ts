@@ -199,6 +199,26 @@ test("a shell in-place edit of a protectedPaths entry is denied under wiring-tam
   assert.equal(ruleOf(decision), "wiring-tamper");
 });
 
+test("a destructive-verb shell command against a protectedPaths entry is denied under wiring-tamper, not outside-project-destruction", () => {
+  const rm = withEnv({ HOME, USERPROFILE: HOME }, () =>
+    evaluateFloor({
+      projectDir: PROJECT,
+      command: `rm ${WIRING_TARGET}`,
+      protectedPaths: [WIRING_TARGET],
+    }),
+  );
+  assert.equal(ruleOf(rm), "wiring-tamper");
+
+  const truncate = withEnv({ HOME, USERPROFILE: HOME }, () =>
+    evaluateFloor({
+      projectDir: PROJECT,
+      command: `truncate -s 0 ${WIRING_TARGET}`,
+      protectedPaths: [WIRING_TARGET],
+    }),
+  );
+  assert.equal(ruleOf(truncate), "wiring-tamper");
+});
+
 test("an Edit/Write/MultiEdit tool call against a protectedPaths entry is denied under wiring-tamper", () => {
   for (const toolName of ["Edit", "Write", "MultiEdit"]) {
     const decision = evaluateFloor({
