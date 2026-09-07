@@ -16,7 +16,7 @@ test("EFH-07: a GitHub token is matched with kind github-token", () => {
 });
 
 test("EFH-07: a Slack token is matched with kind slack-token", () => {
-  const matches = scanForSecrets("SLACK_TOKEN=xoxb-1234567890-abcdefghijklmnopqrstuvwx");
+  const matches = scanForSecrets("SLACK_TOKEN=xoxb-FAKE0000000000-NOTAREALTOKENTESTFIXTURE");
   assert.equal(matches.length, 1);
   assert.equal(matches[0]?.kind, "slack-token");
 });
