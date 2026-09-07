@@ -1,7 +1,7 @@
 import type { HarnessEvent, HarnessEventKind } from "../../contracts/index.ts";
 import { sanitizeSegment } from "../../platform/sanitize.ts";
 
-const EVENT_KIND_BY_HOOK: Record<string, HarnessEventKind> = {
+export const EVENT_KIND_BY_HOOK: Record<string, HarnessEventKind> = {
   sessionStart: "session.start",
   sessionEnd: "session.end",
   beforeSubmitPrompt: "prompt.submit",
