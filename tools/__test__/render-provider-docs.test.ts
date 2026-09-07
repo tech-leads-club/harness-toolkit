@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { dirname, join } from "node:path";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
 import type { ProviderCapabilities } from "../../src/contracts/index.ts";
 import { providers } from "../../src/providers/provider.registry.ts";
 import {
@@ -11,8 +11,6 @@ import {
   renderCapabilityTable,
   renderEventMappingTable,
 } from "../dev/render-provider-docs.ts";
-
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const FIXTURE_CAPABILITIES: ProviderCapabilities = {
   enforcesHooks: true,
@@ -83,16 +81,33 @@ test("renderAll returns one {file, current, next} result per registered provider
   }
 });
 
-// hazard: at this point in the feature's rollout, neither existing provider doc has the generated marker
-// pair yet (that lands in a later task) — so every region replacement here misses its marker. This proves
-// that scenario reports the gap on stderr rather than crashing the whole run.
-test("--check against provider docs with no marker regions yet reports the gap, and does not crash", () => {
-  const result = spawnSync(
-    process.execPath,
-    [join("tools", "dev", "render-provider-docs.ts"), "--check"],
-    { cwd: repoRoot, encoding: "utf8" },
-  );
-  assert.notEqual(result.status, null, "the process exited rather than crashing with a signal");
-  assert.doesNotMatch(result.stderr, /at file:/, "no uncaught exception stack trace on stderr");
-  assert.match(result.stderr, /missing region marker/);
+// why: a provider doc lacking its marker pair is a real, permanent edge case (a provider scaffolded before
+// its doc is retrofitted, or a doc regressed by a careless hand-edit) — proven against a scratch fixture
+// rather than the repo's own committed docs, so this stays true regardless of their current state.
+test("renderAll reports a missing marker per file, and does not crash, rather than throwing", async () => {
+  const scratch = mkdtempSync(join(tmpdir(), "render-provider-docs-"));
+  const messages: string[] = [];
+  const originalError = console.error;
+  try {
+    mkdirSync(join(scratch, "docs", "providers"), { recursive: true });
+    writeFileSync(join(scratch, "docs", "providers", "claude-code.md"), "# no markers here\n", "utf8");
+    writeFileSync(join(scratch, "docs", "providers", "cursor.md"), "# no markers here\n", "utf8");
+
+    console.error = (message?: unknown) => {
+      messages.push(String(message));
+    };
+    const results = await renderAll(scratch);
+
+    assert.equal(results.length, providers.length);
+    for (const result of results) {
+      assert.equal(result.current, result.next, "no marker found, so nothing to replace");
+    }
+    assert.ok(
+      messages.some((message) => message.includes("missing region marker")),
+      `expected a reported missing-marker message, got: ${messages.join(" | ")}`,
+    );
+  } finally {
+    console.error = originalError;
+    rmSync(scratch, { recursive: true, force: true });
+  }
 });

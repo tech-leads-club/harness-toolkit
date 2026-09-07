@@ -19,22 +19,38 @@ Source: `src/providers/claude/`.
 
 `claude.capabilities.ts`:
 
+<!-- generated:capabilities -->
+
 | Capability | Value |
-| --- | --- |
+|---|---|
 | `enforcesHooks` | `true` |
-| `askSupportedOn` | `["tool.before", "shell.before", "mcp.before", "read.before"]` — includes `tool.before`, unlike Cursor (see [/decisions/ad-009.md](/decisions/ad-009.md), note) |
+| `askSupportedOn` | `["tool.before","shell.before","mcp.before","read.before"]` |
 | `sessionEnv` | `false` |
-| `nativeLoopCounter` | `false` — `Stop` carries no loop counter; `core/turn` supplies it instead (see [/decisions/ad-014.md](/decisions/ad-014.md)) |
-| `dedicatedShellEvent` | `false` — shell is `PreToolUse`/`PostToolUse` with `tool_name: "Bash"` |
+| `nativeLoopCounter` | `false` |
+| `dedicatedShellEvent` | `false` |
 | `toolInputRewrite` | `true` |
-| `toolOutputRewriteOn` | `["tool.after", "tool.failure"]` — `updatedToolOutput` is documented on every `PostToolUse`/`PostToolUseFailure` event this adapter fires |
+| `toolOutputRewriteOn` | `["tool.after","tool.failure"]` |
 | `contextAtToolBefore` | `true` |
 | `contextAtToolAfter` | `true` |
-| `contextAtStop` | `true` — `Stop` accepts `hookSpecificOutput.additionalContext` for feedback that continues the turn |
-| `sessionStartContextReliable` | `true` — `SessionStart` delivers `hookSpecificOutput.additionalContext`, capped at 10,000 characters |
-| `usageInPayload` | `false` — cost comes from the transcript, not the hook payload |
-| `effortSignal` | `true` — `effort.level` (`low\|medium\|high\|xhigh\|max`) |
+| `contextAtStop` | `true` |
+| `sessionStartContextReliable` | `true` |
+| `toolOutputAtAfter` | `true` |
+| `usageInPayload` | `false` |
+| `effortSignal` | `true` |
 | `thoughtEvent` | `false` |
+
+<!-- /generated -->
+
+`askSupportedOn` includes `tool.before`, unlike Cursor (see [/decisions/ad-009.md](/decisions/ad-009.md), note).
+`nativeLoopCounter` is `false` because `Stop` carries no loop counter — `core/turn` supplies it instead (see
+[/decisions/ad-014.md](/decisions/ad-014.md)). `dedicatedShellEvent` is `false` because shell is
+`PreToolUse`/`PostToolUse` with `tool_name: "Bash"`. `toolOutputRewriteOn` covers `tool.after`/`tool.failure`
+because `updatedToolOutput` is documented on every `PostToolUse`/`PostToolUseFailure` event this adapter fires.
+`contextAtStop` is `true` because `Stop` accepts `hookSpecificOutput.additionalContext` for feedback that
+continues the turn. `sessionStartContextReliable` is `true` because `SessionStart` delivers
+`hookSpecificOutput.additionalContext`, capped at 10,000 characters. `usageInPayload` is `false` — cost comes
+from the transcript, not the hook payload. `effortSignal` is `true` — `effort.level`
+(`low|medium|high|xhigh|max`).
 
 ## Policy defaults
 
@@ -51,27 +67,32 @@ enforces nothing and `doctor` says so ([/decisions/ad-053.md](/decisions/ad-053.
 `claude.inbound.ts` maps Claude's PascalCase hook names to `HarnessEventKind`. Unlike Cursor, `PreToolUse`
 and `PostToolUse` are single dispatcher hooks that fan out by `tool_name`:
 
-| Claude hook | Fan-out rule | `HarnessEventKind` |
-| --- | --- | --- |
+<!-- generated:event-mapping -->
+
+| Hook | Fan-out rule | HarnessEventKind |
+|---|---|---|
 | `SessionStart` | — | `session.start` |
 | `SessionEnd` | — | `session.end` |
 | `UserPromptSubmit` | — | `prompt.submit` |
-| `PreToolUse` | `tool_name === "Bash"` | `shell.before` |
-| `PreToolUse` | `tool_name` matches `mcp__*` | `mcp.before` |
-| `PreToolUse` | `tool_name === "Read"` | `read.before` |
-| `PreToolUse` | otherwise | `tool.before` |
-| `PostToolUse` | `tool_name === "Bash"` | `shell.after` |
-| `PostToolUse` | `tool_name` matches `mcp__*` | `mcp.after` |
-| `PostToolUse` | `tool_name` is `Edit`/`Write` | `edit.after` |
-| `PostToolUse` | otherwise | `tool.after` |
 | `PostToolUseFailure` | — | `tool.failure` |
 | `SubagentStart` | — | `subagent.start` |
 | `SubagentStop` | — | `subagent.stop` |
 | `Stop` | — | `stop` |
 | `PreCompact` | — | `compact.before` |
 | `MessageDisplay` | — | `response.after` |
+| `PreToolUse` | tool_name === "Bash" | `shell.before` |
+| `PreToolUse` | tool_name matches `^mcp__` | `mcp.before` |
+| `PreToolUse` | tool_name === "Read" | `read.before` |
+| `PostToolUse` | tool_name === "Bash" | `shell.after` |
+| `PostToolUse` | tool_name matches `^mcp__` | `mcp.after` |
+| `PostToolUse` | tool_name === "Edit" | `edit.after` |
+| `PostToolUse` | tool_name === "Write" | `edit.after` |
 
-Claude has no `thought.after` equivalent (`thoughtEvent: false`).
+<!-- /generated -->
+
+Neither fan-out table carries the "otherwise" fallback (`tool.before`/`tool.after`) — that default lives in
+the adapter's own dispatch code, not in an exported table. Claude has no `thought.after` equivalent
+(`thoughtEvent: false`).
 
 ## Field paths
 
