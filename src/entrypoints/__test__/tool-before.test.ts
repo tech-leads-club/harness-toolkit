@@ -3,13 +3,26 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, test } from "node:test";
+import type { Decision, HarnessEvent } from "../../contracts/index.ts";
 import { coreFacade } from "../../core/index.ts";
 import { projectConfigPath } from "../../platform/paths.ts";
+import type { ProviderPort } from "../../providers/index.ts";
+import { providers } from "../../providers/index.ts";
 import { runHandler } from "../run.ts";
 import { toolBeforeHandler } from "../tool-before.ts";
 
 function tempRoot(): string {
   return mkdtempSync(join(tmpdir(), "tlc-tool-before-"));
+}
+
+// why: the barrel exports the registry, never a provider by name — reaching past it is the coupling
+// check-boundaries' entrypoints-deep-imports-providers rule exists to catch.
+function providerNamed(name: string): ProviderPort {
+  const found = providers.find((provider) => provider.name === name);
+  if (!found) {
+    throw new Error(`no registered provider named ${name}`);
+  }
+  return found;
 }
 
 /**
@@ -657,6 +670,102 @@ test("a non-shell refusal is recorded as a policy refusal, carrying the floor ru
     assert.equal(refusals[0]?.attrs.permission, "deny");
     assert.equal(coreFacade.observability.getRollup(root, "cursor-conv-1")?.denials, 1);
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * wiring-tamper, end-to-end (T7 / EFH-01..04) — HandlerContext.protectedPaths is populated from the real
+ * provider registry in run.ts, and threaded into the floor by tool-before.ts.
+ */
+for (const [label, build, provider] of [
+  ["Claude", claudeShell, providerNamed("claude")],
+  ["Cursor", cursorShell, providerNamed("cursor")],
+] as const) {
+  test(`a shell write to ${label}'s real wiring target is denied end-to-end`, async () => {
+    const root = tempRoot();
+    try {
+      const target = provider.wiringTargets()[0];
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(build(root, `echo '{}' > ${target}`)));
+      assert.equal(outcome.decision.kind, "deny");
+      assert.match(outcome.decision.kind === "deny" ? outcome.decision.reason : "", /rule=wiring-tamper/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test("an Edit tool call against Claude's real wiring target is denied end-to-end", async () => {
+  const root = tempRoot();
+  try {
+    const target = providerNamed("claude").wiringTargets()[0];
+    const outcome = await runHandler(
+      toolBeforeHandler,
+      stdinOf(claudeTool(root, { tool_name: "Edit", tool_input: { file_path: target } })),
+    );
+    assert.equal(outcome.decision.kind, "deny");
+    assert.match(outcome.decision.kind === "deny" ? outcome.decision.reason : "", /rule=wiring-tamper/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * EFH-04 — a new provider's wiring target is protected the moment it registers, with zero change to
+ * run.ts or tool-before.ts. The fixture is pushed into the real registry and spliced back out, the same
+ * pattern provider.contract.test.ts already uses.
+ */
+function makeFixtureWiringProvider(target: string): ProviderPort {
+  const base = providerNamed("claude");
+  return {
+    name: "fixture-wiring-provider",
+    detect(raw: unknown): boolean {
+      return (
+        Boolean(raw) && typeof raw === "object" && (raw as Record<string, unknown>).fixtureWiring === true
+      );
+    },
+    capabilities: base.capabilities,
+    policyDefaults: base.policyDefaults,
+    toEvent(raw: Record<string, unknown>): HarnessEvent | null {
+      if (raw.fixtureWiring !== true) {
+        return null;
+      }
+      return {
+        provider: "fixture-wiring-provider",
+        event: "shell.before",
+        sessionKey: "fixture-wiring-sess",
+        projectDir: String(raw.projectDir ?? "/tmp"),
+        command: String(raw.command ?? ""),
+        raw,
+      };
+    },
+    render(decision: Decision, event: HarnessEvent) {
+      return base.render(decision, event);
+    },
+    wiring: base.wiring,
+    wiringTargets(): string[] {
+      return [target];
+    },
+  };
+}
+
+test("EFH-04: a fixture provider's own wiring target is protected with zero changes to run.ts/tool-before.ts", async () => {
+  const root = tempRoot();
+  const target = join(root, "fixture-provider-wiring.json");
+  const fixture = makeFixtureWiringProvider(target);
+  providers.push(fixture);
+  try {
+    const outcome = await runHandler(
+      toolBeforeHandler,
+      stdinOf(JSON.stringify({ fixtureWiring: true, projectDir: root, command: `echo '{}' > ${target}` })),
+    );
+    assert.equal(outcome.decision.kind, "deny");
+    assert.match(outcome.decision.kind === "deny" ? outcome.decision.reason : "", /rule=wiring-tamper/);
+  } finally {
+    const index = providers.indexOf(fixture);
+    if (index >= 0) {
+      providers.splice(index, 1);
+    }
     rmSync(root, { recursive: true, force: true });
   }
 });

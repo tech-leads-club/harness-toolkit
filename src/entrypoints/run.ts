@@ -18,6 +18,7 @@ export type HandlerContext = {
   capabilities: ProviderCapabilities;
   provider: ProviderPort;
   now: Date;
+  protectedPaths: string[];
 };
 
 export type Handler = (event: HarnessEvent, ctx: HandlerContext) => Decision | Promise<Decision>;
@@ -180,7 +181,8 @@ export async function runHandler(handler: Handler, io: RunIo = {}): Promise<RunO
       ...(claimsFile(event) ? { file: event.filePath } : {}),
       now,
     });
-    const context: HandlerContext = { policy, capabilities, provider, now };
+    const protectedPaths = providerRegistry.flatMap((p) => p.wiringTargets());
+    const context: HandlerContext = { policy, capabilities, provider, now, protectedPaths };
     const decision = await handler(event, context);
     const degraded = degrade(decision, event, capabilities, {
       contextBudgetChars: CONTEXT_BUDGET_CHARS,

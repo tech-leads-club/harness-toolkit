@@ -479,6 +479,7 @@ test("the framing is skipped when the provider cannot carry context on tool.afte
         capabilities: { ...capable, contextAtToolAfter: false },
         provider,
         now: new Date(),
+        protectedPaths: [],
       },
     );
     assert.equal(decision.kind, "abstain");
