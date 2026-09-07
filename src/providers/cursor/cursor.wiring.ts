@@ -12,6 +12,14 @@ type EntrySpec = {
 };
 
 // why: mirrors bin/write-user-hooks.mjs verbatim — same hook keys, timeouts, failClosed/matcher/loopLimit values, and handler order.
+export function cursorHooksPath(): string {
+  return join(cursorConfigDir(), "hooks.json");
+}
+
+export function cursorWiringTargets(): string[] {
+  return [cursorHooksPath()];
+}
+
 const ENTRY_SPECS: readonly EntrySpec[] = [
   { hookEvent: "sessionStart", handler: "session-start", timeoutSeconds: 10 },
   { hookEvent: "sessionEnd", handler: "session-end", timeoutSeconds: 10 },
@@ -57,7 +65,7 @@ export function cursorWiring(runtime: RuntimePaths): ProviderWiring {
   }));
 
   return {
-    target: join(cursorConfigDir(), "hooks.json"),
+    target: cursorHooksPath(),
     strategy: "replace",
     entries,
   };

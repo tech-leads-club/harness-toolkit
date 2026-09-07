@@ -4,7 +4,7 @@ import { detectCursor } from "./cursor.detect.ts";
 import { cursorToEvent } from "./cursor.inbound.ts";
 import { cursorRender } from "./cursor.outbound.ts";
 import { cursorPolicyDefaults } from "./cursor.policy-defaults.ts";
-import { cursorWiring } from "./cursor.wiring.ts";
+import { cursorWiring, cursorWiringTargets } from "./cursor.wiring.ts";
 
 export const cursorProvider: ProviderPort = {
   name: "cursor",
@@ -14,4 +14,5 @@ export const cursorProvider: ProviderPort = {
   toEvent: cursorToEvent,
   render: cursorRender,
   wiring: cursorWiring,
+  wiringTargets: cursorWiringTargets,
 };
