@@ -57,6 +57,10 @@ export function claudeRender(decision: Decision, event: HarnessEvent): Rendered 
         stdout: JSON.stringify({ hookSpecificOutput: { hookEventName, updatedInput: decision.input } }),
         exitCode: 0,
       };
+    // why: the documented schema for updatedToolOutput places it at the top of the JSON, unlike every other
+    // field this adapter emits — nesting it under hookSpecificOutput would not be read.
+    case "rewriteOutput":
+      return { stdout: JSON.stringify({ updatedToolOutput: decision.output }), exitCode: 0 };
     default: {
       const exhaustive: never = decision;
       throw new Error(`unreachable decision kind: ${JSON.stringify(exhaustive)}`);
