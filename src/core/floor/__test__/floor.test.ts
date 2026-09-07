@@ -171,6 +171,78 @@ test("writing a credential file is not a floor concern — only reading one is",
   assert.equal(decision.kind, "allow");
 });
 
+/**
+ * wiring-tamper (EFH-01, EFH-02, EFH-03, EFH-05, EFH-06) — a registered provider's wiring target is protected
+ * the same way the harness's own policy surface already is, but under a distinct rule name.
+ */
+const WIRING_TARGET = join(HOME, ".claude", "settings.json");
+
+test("a shell redirect into a protectedPaths entry is denied under wiring-tamper", () => {
+  const decision = withEnv({ HOME, USERPROFILE: HOME }, () =>
+    evaluateFloor({
+      projectDir: PROJECT,
+      command: `echo '{}' > ${WIRING_TARGET}`,
+      protectedPaths: [WIRING_TARGET],
+    }),
+  );
+  assert.equal(ruleOf(decision), "wiring-tamper");
+});
+
+test("a shell in-place edit of a protectedPaths entry is denied under wiring-tamper", () => {
+  const decision = withEnv({ HOME, USERPROFILE: HOME }, () =>
+    evaluateFloor({
+      projectDir: PROJECT,
+      command: `sed -i s/a/b/ ${WIRING_TARGET}`,
+      protectedPaths: [WIRING_TARGET],
+    }),
+  );
+  assert.equal(ruleOf(decision), "wiring-tamper");
+});
+
+test("an Edit/Write/MultiEdit tool call against a protectedPaths entry is denied under wiring-tamper", () => {
+  for (const toolName of ["Edit", "Write", "MultiEdit"]) {
+    const decision = evaluateFloor({
+      projectDir: PROJECT,
+      toolName,
+      filePath: WIRING_TARGET,
+      protectedPaths: [WIRING_TARGET],
+    });
+    assert.equal(decision.kind, "deny", toolName);
+    assert.equal(ruleOf(decision), "wiring-tamper", toolName);
+  }
+});
+
+test("a read of a protectedPaths entry is still allowed, by shell and by Read", () => {
+  const shellRead = withEnv({ HOME, USERPROFILE: HOME }, () =>
+    evaluateFloor({
+      projectDir: PROJECT,
+      command: `cat ${WIRING_TARGET}`,
+      protectedPaths: [WIRING_TARGET],
+    }),
+  );
+  assert.equal(shellRead.kind, "allow");
+
+  const toolRead = evaluateFloor({
+    projectDir: PROJECT,
+    toolName: "Read",
+    filePath: WIRING_TARGET,
+    protectedPaths: [WIRING_TARGET],
+  });
+  assert.equal(toolRead.kind, "allow");
+});
+
+test("with protectedPaths empty or undefined, behavior is unchanged", () => {
+  const withEmpty = evaluateFloor({
+    projectDir: PROJECT,
+    toolName: "Write",
+    filePath: WIRING_TARGET,
+    protectedPaths: [],
+  });
+  const withUndefined = evaluateFloor({ projectDir: PROJECT, toolName: "Write", filePath: WIRING_TARGET });
+  assert.equal(withEmpty.kind, "allow");
+  assert.equal(withUndefined.kind, "allow");
+});
+
 test("every denial names its rule and refuses the config escape", () => {
   const decision = shell("rm -rf /");
   assert.equal(decision.kind, "deny");

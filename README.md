@@ -90,11 +90,11 @@ Three tiers, and which tier a check is in decides whether you can turn it off.
 
 | Tier | Count | Configurable | Runs |
 |------|-------|--------------|------|
-| [Floor](#tier-1--the-floor-no-configuration-reaches-it) | 7 rules | Never | Before any policy is loaded, on every tool call, shell command and read |
+| [Floor](#tier-1--the-floor-no-configuration-reaches-it) | 8 rules | Never | Before any policy is loaded, on every tool call, shell command and read |
 | [Always on](#tier-2--always-on-no-switch) | 3 checks | Never | After the floor, on every acting event |
 | [Rails](#tier-3--the-rails-you-choose) | 24 capabilities | Each one, individually | Where the table says |
 
-Nothing else runs. If a message on your screen is not from one of the thirty-four rows below, it is not the
+Nothing else runs. If a message on your screen is not from one of the thirty-five rows below, it is not the
 harness.
 
 ### Tier 1 — the floor, no configuration reaches it
@@ -113,6 +113,7 @@ prints `rule=<name>`, and the name is the first column here.
 | `machine-control` | `shutdown`, `reboot`, `halt`, `poweroff` | — |
 | `unprovable-execution` | a program fetched over the network and handed to a shell — piped, process-substituted, or inside a shell's `-c`/`eval` substitution. The gate cannot read what would run | a fetch with no shell downstream, and a shell fed a local file the gate can read |
 | `policy-surface-write` | every route an agent has to harness policy and state — a shell redirect, an interpreter, a heredoc program, or a write tool — in the project and under the runtime home, plus the mutating `tlc harness` subcommands from inside a session | reading them with a proven reader (`cat`, `head`, `grep`, `jq`, `ls`, `stat`, `test`), and `tlc harness handoff` for the handoff state |
+| `wiring-tamper` | a shell redirect, in-place edit, or delete into a registered provider's wiring target (`~/.claude/settings.json`, `.cursor/hooks.json`), and a direct `Edit`/`Write`/`MultiEdit` tool call against the same path — overwriting it silences every hook the harness has for that host | reading the same path with a proven reader or a read tool |
 
 <!-- /generated -->
 
