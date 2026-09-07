@@ -30,6 +30,14 @@ npm link                                  # optional: puts `tlc` on PATH from th
 
 Same commands on Linux, macOS and Windows. Needs Node 24+ and Bun (the bundler).
 
+### Scaffolding a new provider
+
+`node tools/dev/new-provider.ts <name>` writes the stub files under `src/providers/<name>/`, a doc skeleton
+under `docs/providers/`, and appends the registry line — from your clone, before you hand-write the real
+adapter. It is not a published CLI command: an installed `tlc`'s runtime home is fully rebuilt on every `tlc
+harness update`, with no durable place for a scaffolded provider to survive
+([/decisions/ad-126.md](/decisions/ad-126.md)).
+
 ## Checks
 
 The gate is a single command:
