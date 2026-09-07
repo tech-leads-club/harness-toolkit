@@ -23,7 +23,7 @@ const BOOLEAN_CAPABILITY_FLAGS: readonly (keyof ProviderCapabilities)[] = [
 
 const CAPABILITY_FLAG_COUNT = BOOLEAN_CAPABILITY_FLAGS.length + 2;
 
-function assertSatisfiesContract(provider: ProviderPort): void {
+export function assertSatisfiesContract(provider: ProviderPort): void {
   assert.equal(typeof provider.name, "string", "name is a string");
   assert.ok(provider.name.length > 0, "name is non-empty");
   assert.equal(typeof provider.detect, "function");
