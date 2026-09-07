@@ -20,6 +20,10 @@ const NO_HUMAN_PREFIX = "No operator is answering prompts in this permission mod
 const NO_HUMAN_MODES = new Set(["bypassPermissions", "dontAsk"]);
 const ADVISORY_PREFIX = "ADVISORY — this provider cannot enforce: ";
 const TRUNCATION_MARKER = "\n…(truncated — over context budget)";
+// why: the model already saw the masked output verbatim on a host where rewrite is unsupported for this event —
+// a `context` notice cannot erase that, so it names the constraint instead of pretending the value is gone.
+const REWRITE_OUTPUT_UNAVAILABLE_NOTICE =
+  "A secret-shaped value was masked in this tool's output and must not be repeated.";
 
 function isEnforcing(decision: Decision): boolean {
   return (
@@ -131,6 +135,16 @@ export function degrade(
       // transport limit that produced it. It is the one rule this layer owns.
       rule: DEGRADE_RULES.rewriteUnavailable,
     };
+  }
+
+  if (decision.kind === "rewriteOutput") {
+    if (capabilities.toolOutputRewriteOn.includes(event.event)) {
+      return decision;
+    }
+    // why: a degraded rewriteOutput becomes exactly a context decision, and recursing here — instead of
+    // duplicating the handling below — is what runs it through the same canCarryContext/budget logic every
+    // other context decision already gets, with no special case for this one.
+    return degrade({ kind: "context", text: REWRITE_OUTPUT_UNAVAILABLE_NOTICE }, event, capabilities, options);
   }
 
   if (decision.kind === "context") {
