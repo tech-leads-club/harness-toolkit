@@ -12,10 +12,8 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import { fileURLToPath } from "node:url";
 import {
   acceptPolicy,
-  appendProviderToRegistry,
   attestJson,
   attestText,
   buildTestSteps,
@@ -43,7 +41,6 @@ import {
   resolveExecutable,
   resolveProjectRoot,
   route,
-  runNewProvider,
   runTestSteps,
   runtimeRevision,
   setGateCommand,
@@ -469,9 +466,11 @@ describe("route — dispatch table", () => {
     assert.deepEqual(route(["nonsense"]), { kind: "unknown", cmd: "nonsense" });
   });
 
-  test("new-provider routes with the name, and requires one", () => {
-    assert.deepEqual(route(["new-provider", "acme"]), { kind: "new-provider", name: "acme" });
-    assert.throws(() => route(["new-provider"]), UsageError);
+  // why: new-provider was a published-CLI subcommand that scaffolded files a real install's runtime home
+  // wipes on every update ([/decisions/ad-126.md](/decisions/ad-126.md)) — removed entirely, so it now routes
+  // exactly like any other unrecognized command, not a command-specific case.
+  test("new-provider is not a recognized subcommand — routes to 'unknown', same as any other unrecognized input", () => {
+    assert.deepEqual(route(["new-provider", "acme"]), { kind: "unknown", cmd: "new-provider" });
   });
 });
 
@@ -1314,77 +1313,4 @@ test("resolveProjectRoot discovers the project from a subdirectory", () => {
     }
     rmSync(root, { recursive: true, force: true });
   }
-});
-
-describe("appendProviderToRegistry", () => {
-  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-
-  test("appends the new provider after the existing two, unchanged in order", () => {
-    const current = readFileSync(join(repoRoot, "src", "providers", "provider.registry.ts"), "utf8");
-    assert.match(current, /export const providers: ProviderPort\[\] = \[cursorProvider, claudeProvider\];/);
-
-    const next = appendProviderToRegistry(current, "acme");
-
-    assert.match(next, /import \{ acmeProvider \} from "\.\/acme\/index\.ts";/);
-    assert.match(
-      next,
-      /export const providers: ProviderPort\[\] = \[cursorProvider, claudeProvider, acmeProvider\];/,
-    );
-    // why: cursor/claude's own imports are untouched — only a new line and the array literal changed.
-    assert.match(next, /import \{ claudeProvider \} from "\.\/claude\/index\.ts";/);
-    assert.match(next, /import \{ cursorProvider \} from "\.\/cursor\/index\.ts";/);
-  });
-
-  test("throws naming the gap when the type-import anchor is missing", () => {
-    assert.throws(() => appendProviderToRegistry("no imports here", "acme"), /could not find/);
-  });
-});
-
-describe("runNewProvider", () => {
-  function scratchWithRegistry(): string {
-    const root = mkdtempSync(join(tmpdir(), "tlc-new-provider-"));
-    mkdirSync(join(root, "src", "providers"), { recursive: true });
-    writeFileSync(
-      join(root, "src", "providers", "provider.registry.ts"),
-      [
-        'import { claudeProvider } from "./claude/index.ts";',
-        'import { cursorProvider } from "./cursor/index.ts";',
-        'import type { ProviderPort } from "./provider.port.ts";',
-        "",
-        "export const providers: ProviderPort[] = [cursorProvider, claudeProvider];",
-        "",
-      ].join("\n"),
-      "utf8",
-    );
-    return root;
-  }
-
-  test("scaffolds the stubs and appends the registry line, in that order", () => {
-    const root = scratchWithRegistry();
-    try {
-      const result = runNewProvider("acme", root);
-      assert.deepEqual(result, { ok: true });
-      assert.ok(existsSync(join(root, "src", "providers", "acme", "acme.detect.ts")));
-      const registry = readFileSync(join(root, "src", "providers", "provider.registry.ts"), "utf8");
-      assert.match(
-        registry,
-        /export const providers: ProviderPort\[\] = \[cursorProvider, claudeProvider, acmeProvider\];/,
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  test("a refused scaffold (unsafe name) never touches the registry", () => {
-    const root = scratchWithRegistry();
-    try {
-      const before = readFileSync(join(root, "src", "providers", "provider.registry.ts"), "utf8");
-      const result = runNewProvider("bad name", root);
-      assert.equal(result.ok, false);
-      const after = readFileSync(join(root, "src", "providers", "provider.registry.ts"), "utf8");
-      assert.equal(after, before);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
 });

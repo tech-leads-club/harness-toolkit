@@ -1,11 +1,12 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// hazard: this file lived at tools/dev/new-provider.ts (two levels below root) until it moved to tools/ —
-// tools/dev/ is excluded from the published package, and bin/tlc-cli.ts's `new-provider` subcommand imports
-// this module at runtime, so a real install had no file to import at all.
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// hazard: this was briefly reachable as a published CLI subcommand — a real install's runtime home wipes
+// src/providers/<name>/ on every update, so nothing scaffolded there ever survived
+// ([/decisions/ad-126.md](/decisions/ad-126.md)). Contributor-only:
+// run from a repo clone as `node tools/dev/new-provider.ts <name>`, never via an installed `tlc`.
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 // invariant: mirrors provider.contract.test.ts's own safety check ("provider name is safe as a state-file
 // key segment") — no whitespace, no slashes. Reserved names collide with this scaffold's own file layout
@@ -130,7 +131,7 @@ import { ${name}Render } from "./${name}.outbound.ts";
 import { ${name}PolicyDefaults } from "./${name}.policy-defaults.ts";
 import { ${name}Wiring, ${name}WiringTargets } from "./${name}.wiring.ts";
 
-// why: assembled here so \`tlc harness new-provider\` has one ProviderPort to import into provider.registry.ts.
+// why: assembled here so the scaffold has one ProviderPort to append into provider.registry.ts.
 export const ${name}Provider: ProviderPort = {
   name: "${name}",
   detect: detect${cap},
@@ -205,8 +206,8 @@ export function scaffoldFiles(name: string): ScaffoldFile[] {
     { path: join(dir, `${name}.wiring.ts`), content: wiringStub(name) },
     // why: SPEC_DEVIATION — emits 8 files, not the 6 named in design.md/tasks.md, adding `<name>.outbound.ts` and
     // `index.ts`. Reason: ProviderPort requires a `render` field and an assembled object, the same two-extra-file
-    // shape claude/index.ts and cursor/index.ts already use — without them there is no ProviderPort value for T6
-    // to register or T7 to run through assertSatisfiesContract (see commit 20da58e).
+    // shape claude/index.ts and cursor/index.ts already use — without them there is no ProviderPort value for
+    // runNewProvider to register or for a contract test to run through assertSatisfiesContract (see commit 20da58e).
     { path: join(dir, `${name}.outbound.ts`), content: outboundStub(name) },
     { path: join(dir, "index.ts"), content: indexStub(name) },
     { path: join("docs", "providers", `${name}.md`), content: docSkeleton(name) },
@@ -230,6 +231,44 @@ export function scaffold(name: string, root = repoRoot): NameValidity {
   return { ok: true };
 }
 
+const REGISTRY_TYPE_IMPORT = 'import type { ProviderPort } from "./provider.port.ts";\n';
+const REGISTRY_ARRAY = /export const providers: ProviderPort\[\] = \[([^\]]*)\];/;
+
+// invariant: an append, never a reorder — the new entry always lands last in `providers`, so every existing
+// provider's detection-order position is unchanged.
+export function appendProviderToRegistry(text: string, name: string): string {
+  if (!text.includes(REGISTRY_TYPE_IMPORT)) {
+    throw new Error("provider.registry.ts: could not find the ProviderPort type-import anchor line");
+  }
+  const withImport = text.replace(
+    REGISTRY_TYPE_IMPORT,
+    `import { ${name}Provider } from "./${name}/index.ts";\n${REGISTRY_TYPE_IMPORT}`,
+  );
+
+  const match = REGISTRY_ARRAY.exec(withImport);
+  if (!match) {
+    throw new Error("provider.registry.ts: could not find the providers array literal");
+  }
+  const existing = (match[1] ?? "").trim();
+  const appended = existing.length > 0 ? `${existing}, ${name}Provider` : `${name}Provider`;
+  return withImport.replace(REGISTRY_ARRAY, `export const providers: ProviderPort[] = [${appended}];`);
+}
+
+/**
+ * The full scaffold flow: scaffold() first, then a real import appended to provider.registry.ts — in that
+ * order, so a refused scaffold never touches the registry.
+ */
+export function runNewProvider(name: string, root: string): { ok: true } | { ok: false; reason: string } {
+  const scaffolded = scaffold(name, root);
+  if (!scaffolded.ok) {
+    return scaffolded;
+  }
+  const registryPath = join(root, "src", "providers", "provider.registry.ts");
+  const current = readFileSync(registryPath, "utf8");
+  writeFileSync(registryPath, appendProviderToRegistry(current, name), "utf8");
+  return { ok: true };
+}
+
 export function main(argv: string[], root = repoRoot): void {
   const name = argv[0];
   if (!name) {
@@ -237,13 +276,15 @@ export function main(argv: string[], root = repoRoot): void {
     process.exitCode = 1;
     return;
   }
-  const result = scaffold(name, root);
+  const result = runNewProvider(name, root);
   if (!result.ok) {
     console.error(`new-provider: refusing — ${result.reason}`);
     process.exitCode = 1;
     return;
   }
-  console.log(`new-provider: scaffolded src/providers/${name}/ and docs/providers/${name}.md`);
+  console.log(
+    `new-provider: scaffolded src/providers/${name}/, docs/providers/${name}.md, and appended ${name}Provider to provider.registry.ts`,
+  );
 }
 
 if (import.meta.main) {

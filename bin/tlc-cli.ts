@@ -30,7 +30,6 @@ import {
 } from "../src/platform/paths.ts";
 import { type Row, render, type Screen, type Section } from "../src/platform/screen.ts";
 import { createStyle, PLAIN, type Style } from "../src/platform/style.ts";
-import { scaffold } from "../tools/new-provider.ts";
 
 export class UsageError extends Error {}
 
@@ -862,43 +861,6 @@ export function setGateCommand(root: string, field: GateField, argv: string[], i
   return `grind.${field}Command = ${JSON.stringify(argv)}`;
 }
 
-const REGISTRY_TYPE_IMPORT = 'import type { ProviderPort } from "./provider.port.ts";\n';
-const REGISTRY_ARRAY = /export const providers: ProviderPort\[\] = \[([^\]]*)\];/;
-
-// invariant: an append, never a reorder — the new entry always lands last in `providers`, so every existing provider's detection-order position is unchanged.
-export function appendProviderToRegistry(text: string, name: string): string {
-  if (!text.includes(REGISTRY_TYPE_IMPORT)) {
-    throw new Error("provider.registry.ts: could not find the ProviderPort type-import anchor line");
-  }
-  const withImport = text.replace(
-    REGISTRY_TYPE_IMPORT,
-    `import { ${name}Provider } from "./${name}/index.ts";\n${REGISTRY_TYPE_IMPORT}`,
-  );
-
-  const match = REGISTRY_ARRAY.exec(withImport);
-  if (!match) {
-    throw new Error("provider.registry.ts: could not find the providers array literal");
-  }
-  const existing = (match[1] ?? "").trim();
-  const appended = existing.length > 0 ? `${existing}, ${name}Provider` : `${name}Provider`;
-  return withImport.replace(REGISTRY_ARRAY, `export const providers: ProviderPort[] = [${appended}];`);
-}
-
-/**
- * The full `tlc harness new-provider` flow: T5's scaffold, then a real import appended to
- * provider.registry.ts — in that order, so a refused scaffold never touches the registry.
- */
-export function runNewProvider(name: string, root: string): { ok: true } | { ok: false; reason: string } {
-  const scaffolded = scaffold(name, root);
-  if (!scaffolded.ok) {
-    return scaffolded;
-  }
-  const registryPath = join(root, "src", "providers", "provider.registry.ts");
-  const current = readFileSync(registryPath, "utf8");
-  writeFileSync(registryPath, appendProviderToRegistry(current, name), "utf8");
-  return { ok: true };
-}
-
 export function helpScreen(): Screen {
   return {
     title: "tlc harness",
@@ -1205,7 +1167,6 @@ export type Action =
   | { kind: "prices-lookup"; modelId: string; provider: string }
   | { kind: "entry"; entry: string; args: string[] }
   | { kind: "install"; args: string[] }
-  | { kind: "new-provider"; name: string }
   | { kind: "unknown"; cmd: string };
 
 export function route(args: string[]): Action {
@@ -1334,13 +1295,6 @@ export function route(args: string[]): Action {
       return { kind: "entry", entry: "init-project", args: args.slice(1) };
     case "install":
       return { kind: "install", args: args.slice(1) };
-    case "new-provider": {
-      const name = args[1];
-      if (!name) {
-        throw new UsageError("usage: tlc harness new-provider <name>");
-      }
-      return { kind: "new-provider", name };
-    }
     // why: the exit has to be as easy to find as the entrance. An operator who cannot get the harness off their
     // machine without hand-editing settings.json will not try it on a second one
     // ([/decisions/ad-066.md](/decisions/ad-066.md)).
@@ -1863,17 +1817,6 @@ async function main(argv: string[]): Promise<void> {
     case "install":
       runInstall(action.args, root);
       break;
-    case "new-provider": {
-      const result = runNewProvider(action.name, process.cwd());
-      if (!result.ok) {
-        console.error(`new-provider: refusing — ${result.reason}`);
-        process.exit(1);
-      }
-      console.log(
-        `new-provider: scaffolded src/providers/${action.name}/, docs/providers/${action.name}.md, and appended ${action.name}Provider to provider.registry.ts`,
-      );
-      break;
-    }
     case "entry":
       runEntry(action.entry, json ? [...action.args, JSON_FLAG] : action.args, root);
       break;
