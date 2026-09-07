@@ -91,7 +91,6 @@ export function ${name}ToEvent(_raw: Record<string, unknown>): HarnessEvent | nu
 }
 
 function wiringStub(name: string): string {
-  const cap = capitalize(name);
   return `import type { ProviderWiring, RuntimePaths } from "../../contracts/index.ts";
 
 // why: a placeholder path, until the real file this provider's host reads hooks from is named.

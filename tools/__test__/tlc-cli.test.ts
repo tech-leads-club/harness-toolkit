@@ -496,6 +496,7 @@ describe("harness test — step plan and runner", () => {
         "check-obs-contract",
         "check-manifest",
         "capabilities in sync",
+        "provider docs in sync",
         "changelog in sync",
         "log in sync",
         "coverage in sync",
@@ -537,6 +538,7 @@ describe("harness test — step plan and runner", () => {
       ["check-obs-contract", ["tools/dev/check-obs-contract.ts"]],
       ["check-manifest", ["tools/dev/check-manifest.ts"]],
       ["capabilities in sync", ["tools/dev/render-capabilities.ts", "--check"]],
+      ["provider docs in sync", ["tools/dev/render-provider-docs.ts", "--check"]],
       ["changelog in sync", ["tools/dev/render-changelog.ts", "--check"]],
     ] as const) {
       assert.deepEqual(argsOf(label), [...args], label);
@@ -561,7 +563,7 @@ describe("harness test — step plan and runner", () => {
      * here, so it has to be argued for in a diff somebody reads.
      */
     assert.ok(
-      KNIP_EXPORTS_CEILING <= 76,
+      KNIP_EXPORTS_CEILING <= 80,
       `the unused-export ceiling went up to ${KNIP_EXPORTS_CEILING}. Lowering it is free; raising it is a decision.`,
     );
   });

@@ -38,7 +38,7 @@ The gate is a single command:
 tlc harness test
 ```
 
-Eighteen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
+Nineteen steps, in order. The list lives in `harnessTestSteps` in `bin/tlc-cli.ts` — that function is the
 source of truth, and this table is here to say what each step is for.
 
 | # | Step | Fails on |
@@ -58,9 +58,10 @@ source of truth, and this table is here to say what each step is for.
 | 13 | `check-obs-contract` | a kind a consumer counts and no producer emits, or one landing on a plane the consumer does not read |
 | 14 | `check-manifest` | a `package.json` npm would rewrite on publish, or a `bin` entry pointing at a file that is not there |
 | 15 | `render-capabilities --check` | a generated README region that no longer matches `capabilities/catalog.json` |
-| 16 | `render-changelog --check` | a `CHANGELOG.md` that no longer matches `docs/decisions/` |
-| 17 | `render-log --check` | a `docs/log.md` that no longer matches `docs/decisions/` |
-| 18 | `render-coverage --check` | a control named in `docs/coverage.md` that is neither a floor rule nor a capability id, or a row short of `covered` that states no limit |
+| 16 | `render-provider-docs --check` | a provider doc's generated capability/event-mapping table that no longer matches its own `<name>.capabilities.ts`/`<name>.inbound.ts` |
+| 17 | `render-changelog --check` | a `CHANGELOG.md` that no longer matches `docs/decisions/` |
+| 18 | `render-log --check` | a `docs/log.md` that no longer matches `docs/decisions/` |
+| 19 | `render-coverage --check` | a control named in `docs/coverage.md` that is neither a floor rule nor a capability id, or a row short of `covered` that states no limit |
 
 Equivalent by hand, for local debugging:
 
@@ -78,6 +79,7 @@ node tools/dev/check-screens.ts
 node tools/dev/check-obs-contract.ts
 node tools/dev/check-manifest.ts
 node tools/dev/render-capabilities.ts --check
+node tools/dev/render-provider-docs.ts --check
 node tools/dev/render-changelog.ts --check
 node tools/dev/render-log.ts --check
 node tools/dev/render-coverage.ts --check
@@ -132,7 +134,7 @@ a short-lived OIDC token per run and npm checks it against the registered publis
 workflow filename, environment name — so there is no stored secret to steal and nothing to rotate. Provenance is
 generated from that same identity ([/decisions/ad-102.md](/decisions/ad-102.md)).
 
-**What makes it safe is the gate, not a gate-keeper:** eighteen steps on four platforms, then the packed tarball
+**What makes it safe is the gate, not a gate-keeper:** nineteen steps on four platforms, then the packed tarball
 installed and driven as a real command on Linux, macOS and Windows, then a human approval, and only then
 `npm publish`. After it, the version that reached the registry is installed from the registry on the same three
 platforms — which cannot prevent anything, and turns "an operator finds it days later" into "the run goes red in

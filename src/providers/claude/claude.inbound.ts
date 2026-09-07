@@ -16,7 +16,7 @@ export const EVENT_KIND_BY_HOOK: Record<string, HarnessEventKind> = {
 
 const MCP_TOOL_NAME = /^mcp__/;
 
-export type ToolNameFanOutRule = { match: RegExp | string; kind: HarnessEventKind };
+type ToolNameFanOutRule = { match: RegExp | string; kind: HarnessEventKind };
 
 // why: PreToolUse fans out by tool_name — Claude has no dedicated shell/MCP/read event.
 export const PRE_TOOL_USE_FAN_OUT: readonly ToolNameFanOutRule[] = [
