@@ -131,6 +131,8 @@ Handoff section and a link back to this index.
 | [AD-121](/decisions/ad-121.md) | command(<pattern>) matches a bare word against a path ending in it, not only an exact word | active |
 | [AD-122](/decisions/ad-122.md) | Handoff continuity is scoped per session, and a live neighbour is never a source | active |
 | [AD-123](/decisions/ad-123.md) | Policy stays declarative; no custom executable policy code, ever | active |
+| [AD-124](/decisions/ad-124.md) | A provider's wiring target is a floor surface; secret-shaped tool output is a rail | active |
+| [AD-125](/decisions/ad-125.md) | A provider's docs and file scaffold are generated from its own code, never hand-maintained | active |
 
 ## Archived
 
