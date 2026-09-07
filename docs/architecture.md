@@ -122,15 +122,19 @@ loaded, and `degrade` guarantees the answer fits what the provider can actually 
 
 ## Degradation, not detection
 
-When a core `Decision` (`allow | deny | ask | context | continue | rewriteInput | abstain`) cannot be
-expressed on a given provider, `src/providers/provider.degrade.ts` degrades it based on the capability
-descriptor:
+When a core `Decision` (`allow | deny | ask | context | continue | rewriteInput | rewriteOutput | abstain`)
+cannot be expressed on a given provider, `src/providers/provider.degrade.ts` degrades it based on the
+capability descriptor:
 
 - Provider cannot enforce hooks at all → any enforcing decision becomes an `ADVISORY —` context message.
 - `ask` where `askSupportedOn` does not include the current event → becomes `deny` (a provider that cannot
   ask must not silently allow).
 - `rewriteInput` where `toolInputRewrite` is false → becomes `ask`, carrying the proposed input in the
   reason text.
+- `rewriteOutput` where the current event is absent from `toolOutputRewriteOn` → becomes a `context` notice
+  naming the masking constraint, never the masked value itself — the model already saw the original output on
+  a host with no real rewrite for this event, so the notice states the limit instead of pretending it erased
+  anything.
 - `context` truncates to a caller-supplied character budget, dropping `env` if `sessionEnv` is false.
 
 This is what lets a hookless or partially-capable provider be a new adapter file rather than a core
