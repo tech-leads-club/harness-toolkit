@@ -9,6 +9,8 @@ doctor reports against your own configuration.
 ## v0.11.0
 
 - **AD-123** — Policy stays declarative; no custom executable policy code, ever
+- **AD-124** — A provider's wiring target is a floor surface; secret-shaped tool output is a rail
+- **AD-125** — A provider's docs and file scaffold are generated from its own code, never hand-maintained
 
 ## v0.10.6
 

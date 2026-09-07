@@ -13,6 +13,11 @@ Generated from `docs/decisions/` — do not edit by hand. Run `node tools/render
 A reserved file of the [OKF v0.1](/decisions/ad-013.md) bundle: entries grouped under ISO 8601 headings,
 newest first. For what landed in which npm release, see `CHANGELOG.md` at the repository root.
 
+## 2026-09-07
+
+- **AD-124** — A provider's wiring target is a floor surface; secret-shaped tool output is a rail ([/decisions/ad-124.md](/decisions/ad-124.md))
+- **AD-125** — A provider's docs and file scaffold are generated from its own code, never hand-maintained ([/decisions/ad-125.md](/decisions/ad-125.md))
+
 ## 2026-09-06
 
 - **AD-123** — Policy stays declarative; no custom executable policy code, ever ([/decisions/ad-123.md](/decisions/ad-123.md))
