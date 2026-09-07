@@ -17,6 +17,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 
 - **AD-124** — A provider's wiring target is a floor surface; secret-shaped tool output is a rail ([/decisions/ad-124.md](/decisions/ad-124.md))
 - **AD-125** — A provider's docs and file scaffold are generated from its own code, never hand-maintained ([/decisions/ad-125.md](/decisions/ad-125.md))
+- **AD-126** — The provider scaffold is a contributor tool; it never belonged on the published CLI ([/decisions/ad-126.md](/decisions/ad-126.md))
 
 ## 2026-09-06
 

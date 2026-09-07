@@ -10,6 +10,7 @@ doctor reports against your own configuration.
 
 - **AD-124** — A provider's wiring target is a floor surface; secret-shaped tool output is a rail
 - **AD-125** — A provider's docs and file scaffold are generated from its own code, never hand-maintained
+- **AD-126** — The provider scaffold is a contributor tool; it never belonged on the published CLI
 
 ## v0.11.0
 
