@@ -141,11 +141,11 @@ function namesSurface(projectDir: string, segment: ShellSegment): boolean {
 // direction is what catches `rm -rf .tlc/harness/state`, which removes the flags without ever naming one.
 // hazard: the project root also contains the surface. Counting it would deny `find .` and `grep -r x .`,
 // so the root is excluded and destruction of the whole project stays the concern of the existing rules.
-function overlapsSurface(projectDir: string, resolved: string): boolean {
+function overlapsSurface(projectDir: string, resolved: string, extraSurfacePaths: readonly string[]): boolean {
   if (resolved === resolve(projectDir)) {
     return false;
   }
-  if (isPolicySurface(projectDir, resolved)) {
+  if (isPolicySurface(projectDir, resolved, extraSurfacePaths)) {
     return true;
   }
   return [projectConfigPath(projectDir), projectStateDir(projectDir)].some(
@@ -153,7 +153,11 @@ function overlapsSurface(projectDir: string, resolved: string): boolean {
   );
 }
 
-function referencesSurface(projectDir: string, word: ShellWord): boolean {
+function referencesSurface(
+  projectDir: string,
+  word: ShellWord,
+  extraSurfacePaths: readonly string[],
+): boolean {
   if (word.text === "") {
     return false;
   }
@@ -161,9 +165,13 @@ function referencesSurface(projectDir: string, word: ShellWord): boolean {
   // literal portion catches `> .tlc/harness/$f`; a fully computed path stays out of reach and is what the
   // per-session integrity baseline exists to catch.
   if (word.unresolved) {
-    return normalizeSeparators(word.text).includes(harnessPrefix(projectDir));
+    const normalized = normalizeSeparators(word.text);
+    if (normalized.includes(harnessPrefix(projectDir))) {
+      return true;
+    }
+    return extraSurfacePaths.some((path) => normalized.includes(normalizeSeparators(path)));
   }
-  return overlapsSurface(projectDir, resolveTarget(projectDir, word.text));
+  return overlapsSurface(projectDir, resolveTarget(projectDir, word.text), extraSurfacePaths);
 }
 
 // why: a redirect target is not an argument of the head verb, so argument scanning alone would allow
@@ -206,9 +214,13 @@ function harnessSubcommand(args: ShellWord[]): string | null {
   return (operands[1]?.text ?? "status").toLowerCase();
 }
 
-function checkSegment(projectDir: string, segment: ShellSegment): PolicySurfaceVerdict {
+function checkSegment(
+  projectDir: string,
+  segment: ShellSegment,
+  extraSurfacePaths: readonly string[],
+): PolicySurfaceVerdict {
   for (const target of redirectTargets(segment.words)) {
-    if (referencesSurface(projectDir, target)) {
+    if (referencesSurface(projectDir, target, extraSurfacePaths)) {
       return deny(
         "a redirect in this command writes into the harness policy surface.",
         "redirect into the policy surface",
@@ -228,7 +240,7 @@ function checkSegment(projectDir: string, segment: ShellSegment): PolicySurfaceV
     }
   }
 
-  const references = segment.words.filter((word) => referencesSurface(projectDir, word));
+  const references = segment.words.filter((word) => referencesSurface(projectDir, word, extraSurfacePaths));
   if (references.length === 0 && !namesSurface(projectDir, segment)) {
     return ALLOW;
   }
@@ -305,9 +317,10 @@ export function checkPolicySurface(
   projectDir: string,
   command: string,
   segments: ShellSegment[],
+  extraSurfacePaths: readonly string[] = [],
 ): PolicySurfaceVerdict {
   for (const segment of segments) {
-    const verdict = checkSegment(projectDir, segment);
+    const verdict = checkSegment(projectDir, segment, extraSurfacePaths);
     if (verdict.kind === "deny") {
       return verdict;
     }
