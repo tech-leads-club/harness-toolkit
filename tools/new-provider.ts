@@ -2,7 +2,10 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+// hazard: this file lived at tools/dev/new-provider.ts (two levels below root) until it moved to tools/ —
+// tools/dev/ is excluded from the published package, and bin/tlc-cli.ts's `new-provider` subcommand imports
+// this module at runtime, so a real install had no file to import at all.
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // invariant: mirrors provider.contract.test.ts's own safety check ("provider name is safe as a state-file
 // key segment") — no whitespace, no slashes. Reserved names collide with this scaffold's own file layout

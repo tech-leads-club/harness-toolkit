@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertSatisfiesContract } from "../../src/providers/__test__/provider.contract.test.ts";
 import type { ProviderPort } from "../../src/providers/provider.port.ts";
-import { scaffold } from "../dev/new-provider.ts";
+import { scaffold } from "../new-provider.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 

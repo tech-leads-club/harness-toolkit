@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { scaffold, scaffoldFiles, validateProviderName } from "../dev/new-provider.ts";
+import { scaffold, scaffoldFiles, validateProviderName } from "../new-provider.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -91,7 +91,9 @@ test("scaffolded stubs compile under tsc --noEmit, and add no new package.json d
     const result = scaffold(THROWAWAY_NAME);
     assert.deepEqual(result, { ok: true });
 
-    const tsc = spawnSync("npx", ["tsc", "--noEmit"], { cwd: repoRoot, encoding: "utf8" });
+    // hazard: on Windows `npx` is `npx.cmd`, and spawnSync does not consult PATHEXT without a shell — the
+    // exit code reads back as `null` there while passing everywhere else ([/decisions/ad-097.md](/decisions/ad-097.md)).
+    const tsc = spawnSync("npx", ["tsc", "--noEmit"], { cwd: repoRoot, encoding: "utf8", shell: true });
     assert.equal(tsc.status, 0, `tsc --noEmit failed on the scaffolded stubs:\n${tsc.stdout}${tsc.stderr}`);
 
     const packageJsonAfter = readFileSync(join(repoRoot, "package.json"), "utf8");

@@ -30,7 +30,7 @@ import {
 } from "../src/platform/paths.ts";
 import { type Row, render, type Screen, type Section } from "../src/platform/screen.ts";
 import { createStyle, PLAIN, type Style } from "../src/platform/style.ts";
-import { scaffold } from "../tools/dev/new-provider.ts";
+import { scaffold } from "../tools/new-provider.ts";
 
 export class UsageError extends Error {}
 
