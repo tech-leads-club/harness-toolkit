@@ -27,7 +27,7 @@ Source: `src/providers/cursor/`.
 | `nativeLoopCounter` | `true` |
 | `dedicatedShellEvent` | `true` |
 | `toolInputRewrite` | `true` |
-| `toolOutputRewrite` | `true` |
+| `toolOutputRewriteOn` | `["mcp.after"]` — **not** `shell.after`/`edit.after`: `afterShellExecution`/`afterFileEdit` are documented as observation-only, with no `updated_mcp_tool_output` equivalent |
 | `contextAtToolBefore` | `false` |
 | `contextAtToolAfter` | `true` |
 | `contextAtStop` | `false` — the `stop` output schema carries `followup_message` and nothing else |

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Decision, HarnessEvent, ProviderCapabilities, Rendered } from "../../contracts/index.ts";
-import { isEffortLevel } from "../../contracts/index.ts";
+import { HARNESS_EVENT_KINDS, isEffortLevel } from "../../contracts/index.ts";
 import type { ProviderPort } from "../provider.port.ts";
 import { providers, resolveFromRegistry, resolveProvider } from "../provider.registry.ts";
 
@@ -11,7 +11,6 @@ const BOOLEAN_CAPABILITY_FLAGS: readonly (keyof ProviderCapabilities)[] = [
   "nativeLoopCounter",
   "dedicatedShellEvent",
   "toolInputRewrite",
-  "toolOutputRewrite",
   "contextAtToolBefore",
   "contextAtToolAfter",
   "contextAtStop",
@@ -22,7 +21,7 @@ const BOOLEAN_CAPABILITY_FLAGS: readonly (keyof ProviderCapabilities)[] = [
   "thoughtEvent",
 ];
 
-const CAPABILITY_FLAG_COUNT = BOOLEAN_CAPABILITY_FLAGS.length + 1;
+const CAPABILITY_FLAG_COUNT = BOOLEAN_CAPABILITY_FLAGS.length + 2;
 
 function assertSatisfiesContract(provider: ProviderPort): void {
   assert.equal(typeof provider.name, "string", "name is a string");
@@ -88,6 +87,21 @@ function assertSatisfiesContract(provider: ProviderPort): void {
   for (const kind of capabilities.askSupportedOn) {
     assert.equal(typeof kind, "string", `${provider.name}.capabilities().askSupportedOn entries are strings`);
   }
+  assert.ok(
+    Array.isArray(capabilities.toolOutputRewriteOn),
+    `${provider.name}.capabilities().toolOutputRewriteOn is an array`,
+  );
+  for (const kind of capabilities.toolOutputRewriteOn) {
+    assert.equal(
+      typeof kind,
+      "string",
+      `${provider.name}.capabilities().toolOutputRewriteOn entries are strings`,
+    );
+    assert.ok(
+      HARNESS_EVENT_KINDS.includes(kind),
+      `${provider.name}.capabilities().toolOutputRewriteOn entries are valid HarnessEventKind values`,
+    );
+  }
 
   const fabricated: HarnessEvent = {
     provider: provider.name,
@@ -121,7 +135,7 @@ function makeFixtureProvider(): ProviderPort {
     nativeLoopCounter: true,
     dedicatedShellEvent: true,
     toolInputRewrite: true,
-    toolOutputRewrite: true,
+    toolOutputRewriteOn: ["tool.after"],
     contextAtToolBefore: true,
     contextAtToolAfter: true,
     contextAtStop: true,

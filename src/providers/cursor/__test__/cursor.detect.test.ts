@@ -73,7 +73,7 @@ test("capabilities match the design table exactly", () => {
     nativeLoopCounter: true,
     dedicatedShellEvent: true,
     toolInputRewrite: true,
-    toolOutputRewrite: true,
+    toolOutputRewriteOn: ["mcp.after"],
     contextAtToolBefore: false,
     contextAtToolAfter: true,
     toolOutputAtAfter: true,

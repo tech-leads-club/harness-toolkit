@@ -10,7 +10,7 @@ const FULL_CAPS: ProviderCapabilities = {
   nativeLoopCounter: true,
   dedicatedShellEvent: true,
   toolInputRewrite: true,
-  toolOutputRewrite: true,
+  toolOutputRewriteOn: ["tool.after"],
   contextAtToolBefore: true,
   contextAtToolAfter: true,
   contextAtStop: true,

@@ -27,7 +27,7 @@ Source: `src/providers/claude/`.
 | `nativeLoopCounter` | `false` — `Stop` carries no loop counter; `core/turn` supplies it instead (see [/decisions/ad-014.md](/decisions/ad-014.md)) |
 | `dedicatedShellEvent` | `false` — shell is `PreToolUse`/`PostToolUse` with `tool_name: "Bash"` |
 | `toolInputRewrite` | `true` |
-| `toolOutputRewrite` | `true` |
+| `toolOutputRewriteOn` | `["tool.after", "tool.failure"]` — `updatedToolOutput` is documented on every `PostToolUse`/`PostToolUseFailure` event this adapter fires |
 | `contextAtToolBefore` | `true` |
 | `contextAtToolAfter` | `true` |
 | `contextAtStop` | `true` — `Stop` accepts `hookSpecificOutput.additionalContext` for feedback that continues the turn |

@@ -7,7 +7,14 @@ export type ProviderCapabilities = {
   nativeLoopCounter: boolean;
   dedicatedShellEvent: boolean;
   toolInputRewrite: boolean;
-  toolOutputRewrite: boolean;
+  /**
+   * The events on which a rewritten tool output actually reaches the model. Measured as per-event rather than
+   * per-host: Claude Code's `updatedToolOutput` is documented for every `PostToolUse`/`PostToolUseFailure` event
+   * it fires, while Cursor's equivalent (`updated_mcp_tool_output`) is scoped to `afterMCPExecution` only —
+   * `afterShellExecution`/`afterFileEdit` are observation-only ([/decisions/ad-009.md](/decisions/ad-009.md)'s
+   * `askSupportedOn` correction, applied to the same false per-host boolean here).
+   */
+  toolOutputRewriteOn: HarnessEventKind[];
   contextAtToolBefore: boolean;
   contextAtToolAfter: boolean;
   contextAtStop: boolean;
