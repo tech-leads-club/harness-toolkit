@@ -92,9 +92,9 @@ Three tiers, and which tier a check is in decides whether you can turn it off.
 |------|-------|--------------|------|
 | [Floor](#tier-1--the-floor-no-configuration-reaches-it) | 8 rules | Never | Before any policy is loaded, on every tool call, shell command and read |
 | [Always on](#tier-2--always-on-no-switch) | 3 checks | Never | After the floor, on every acting event |
-| [Rails](#tier-3--the-rails-you-choose) | 24 capabilities | Each one, individually | Where the table says |
+| [Rails](#tier-3--the-rails-you-choose) | 25 capabilities | Each one, individually | Where the table says |
 
-Nothing else runs. If a message on your screen is not from one of the thirty-five rows below, it is not the
+Nothing else runs. If a message on your screen is not from one of the thirty-six rows below, it is not the
 harness.
 
 ### Tier 1 — the floor, no configuration reaches it
@@ -168,6 +168,7 @@ trade-off when you ran the init wizard. `configPath` is the key in `.tlc/harness
 | **Plan gate (declared scope vs diff)**<br>`planGate.enabled` · off | Checks the files the turn changed against the scope it declared, and against any stated deviation. | `response.after`<br>`stop` | `block-stop` | tlc harness handoff — plan_paths, plan_at and plan_deviations |
 | **Observation mode (measure a rail with its rule off)**<br>`observe.enabled` · off | Runs a rail's checker while that rail is not enforcing, and records the reading without acting on it. | `stop`<br>`session.end` | `record` | tlc harness obs report — the observation readings, held apart from the refusal counters so those stay honest |
 | **Operator rules (your trigger, your proof)**<br>`rules.enabled` · off | Reads the rules you declare in markdown and enforces them: on this trigger, this must have happened. | `tool.before`<br>`stop` | `deny` | tlc harness doctor — each active rule, its tier, and any proof kind never observed here |
+| **Secret redaction (tool/shell output)**<br>`secrets.redactOutput` · **on** | Scans a tool's or shell command's output for a secret-shaped signature or high-entropy span and masks it. | `tool.after` | `context` | the masked placeholder itself, in the tool output — `[REDACTED:<kind>:<hash>]` |
 
 <!-- /generated -->
 

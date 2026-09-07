@@ -90,6 +90,9 @@ export const DEFAULTS: Policy = {
     stallDetection: false,
     stallRepeatThreshold: 3,
   },
+  secrets: {
+    redactOutput: true,
+  },
   intelligence: {
     gapFeedback: true,
     failureClassification: true,

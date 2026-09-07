@@ -259,6 +259,7 @@ detects a condition that a config field could otherwise switch off:
 | Plan gate (declared scope vs diff) | Blocks the stop when the turn changed files the declared HARNESS_PLAN did not name, so scope creep fails like a failing test instead of surviving as a review comment. | `planGate.enabled` |
 | Observation mode (measure a rail with its rule off) | Runs a rail's checker while that rail is not enforcing, so the record says whether the property held with the rule injected or without it. That is the reading that tells you a rail is unnecessary rather than merely quiet, and it is what makes deleting one a decision instead of a guess. | `observe.enabled` |
 | Operator rules (your trigger, your proof) | Turns a standing instruction into a gate. A rule names when it applies, what the harness must have observed, and what to do when it has not — so 'no pull request without a review' stops depending on the model remembering it. | `rules.enabled` |
+| Secret redaction (tool/shell output) | Masks an AWS access key, GitHub/Slack/Stripe token, PEM private-key block, JWT, or an unlabelled high-entropy string with a deterministic placeholder — the same value always yields the same placeholder within a session — instead of blocking the command that produced it. | `secrets.redactOutput` |
 
 <!-- /generated -->
 
