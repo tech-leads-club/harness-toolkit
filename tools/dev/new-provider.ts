@@ -200,6 +200,10 @@ export function scaffoldFiles(name: string): ScaffoldFile[] {
     { path: join(dir, `${name}.policy-defaults.ts`), content: policyDefaultsStub(name) },
     { path: join(dir, `${name}.inbound.ts`), content: inboundStub(name) },
     { path: join(dir, `${name}.wiring.ts`), content: wiringStub(name) },
+    // why: SPEC_DEVIATION — emits 8 files, not the 6 named in design.md/tasks.md, adding `<name>.outbound.ts` and
+    // `index.ts`. Reason: ProviderPort requires a `render` field and an assembled object, the same two-extra-file
+    // shape claude/index.ts and cursor/index.ts already use — without them there is no ProviderPort value for T6
+    // to register or T7 to run through assertSatisfiesContract (see commit 20da58e).
     { path: join(dir, `${name}.outbound.ts`), content: outboundStub(name) },
     { path: join(dir, "index.ts"), content: indexStub(name) },
     { path: join("docs", "providers", `${name}.md`), content: docSkeleton(name) },

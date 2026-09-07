@@ -49,7 +49,18 @@ test("scaffold refuses a second run for the same name, naming the existing path"
     const first = scaffold(THROWAWAY_NAME);
     assert.deepEqual(first, { ok: true });
     assert.ok(existsSync(join(repoRoot, "src", "providers", THROWAWAY_NAME, `${THROWAWAY_NAME}.detect.ts`)));
-    assert.ok(existsSync(join(repoRoot, "docs", "providers", `${THROWAWAY_NAME}.md`)));
+    const docPath = join(repoRoot, "docs", "providers", `${THROWAWAY_NAME}.md`);
+    assert.ok(existsSync(docPath));
+    const doc = readFileSync(docPath, "utf8");
+    for (const heading of [
+      "## Detection",
+      "## Capability descriptor",
+      "## Policy defaults",
+      "## Event mapping",
+      "## Wiring target",
+    ]) {
+      assert.ok(doc.includes(heading), `doc missing heading: ${heading}`);
+    }
 
     const second = scaffold(THROWAWAY_NAME);
     assert.equal(second.ok, false);
