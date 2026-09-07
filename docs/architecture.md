@@ -266,6 +266,13 @@ detects a condition that a config field could otherwise switch off:
 Operator posture (`mode`: `paired`, `solo`, `focus`) governs surfacing rather than capability, so it is not in
 the generated table.
 
+### Policy stays declarative
+
+The floor and the rails above grow by adding a `FloorRule` member, a `Policy` field, or an operator-rules
+trigger/proof pair — never by running operator- or third-party-supplied code inside the decision path. Custom
+policy functions and remote code-as-policy packs were evaluated and rejected; see
+[/decisions/ad-123.md](/decisions/ad-123.md) for the reasoning and the declarative alternative.
+
 ## See also
 
 - [/concepts.md](/concepts.md) — the same rails described from the operator's side

@@ -130,6 +130,7 @@ Handoff section and a link back to this index.
 | [AD-120](/decisions/ad-120.md) | A rule denial names the directory and sha it actually checked | active |
 | [AD-121](/decisions/ad-121.md) | command(<pattern>) matches a bare word against a path ending in it, not only an exact word | active |
 | [AD-122](/decisions/ad-122.md) | Handoff continuity is scoped per session, and a live neighbour is never a source | active |
+| [AD-123](/decisions/ad-123.md) | Policy stays declarative; no custom executable policy code, ever | active |
 
 ## Archived
 
