@@ -40,11 +40,27 @@ export function isRuntimePolicySurface(filePath: string): boolean {
   return target === resolve(machineConfigPath()) || isInside(runtimeStateDir(), target);
 }
 
+// why: a provider's wiring target (`~/.claude/settings.json`, `.cursor/hooks.json`) lives outside the
+// project and outside the runtime home, so neither existing branch of isPolicySurface would ever match it.
+// A protected path is matched by containment, not equality, so a provider that ever declares a directory
+// target covers every file written under it.
+export function isProtectedWiringTarget(target: string, protectedPaths: readonly string[]): boolean {
+  const resolved = resolve(target);
+  return protectedPaths.some((path) => isInside(resolve(path), resolved));
+}
+
 // invariant: the policy surface is defined here, next to the floor's other path predicates, because the
 // floor decides before any policy is read. Defining it inside the policy module would point the dependency
 // backwards — against the order the two actually run in.
-export function isPolicySurface(projectDir: string, filePath: string): boolean {
+export function isPolicySurface(
+  projectDir: string,
+  filePath: string,
+  extraSurfacePaths: readonly string[] = [],
+): boolean {
   if (isRuntimePolicySurface(filePath)) {
+    return true;
+  }
+  if (isProtectedWiringTarget(filePath, extraSurfacePaths)) {
     return true;
   }
   const target = normalizeSeparators(relative(projectDir, filePath) || filePath);
