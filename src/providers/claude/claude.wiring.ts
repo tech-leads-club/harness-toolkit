@@ -31,6 +31,10 @@ export function claudeSettingsPath(): string {
   return join(claudeConfigDir(), "settings.json");
 }
 
+export function claudeWiringTargets(): string[] {
+  return [claudeSettingsPath()];
+}
+
 // why: exec form only, on every platform — it bypasses shell tokenization, so there is no quoting variant to get wrong.
 export function claudeWiring(runtime: RuntimePaths): ProviderWiring {
   const entries: WiringEntry[] = ENTRY_SPECS.map((spec) => ({
