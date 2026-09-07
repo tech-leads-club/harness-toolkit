@@ -33,6 +33,7 @@ function assertSatisfiesContract(provider: ProviderPort): void {
   assert.equal(typeof provider.toEvent, "function");
   assert.equal(typeof provider.render, "function");
   assert.equal(typeof provider.wiring, "function");
+  assert.equal(typeof provider.wiringTargets, "function");
 
   const policyDefaults = provider.policyDefaults();
   /**
@@ -102,6 +103,14 @@ function assertSatisfiesContract(provider: ProviderPort): void {
   const wiring = provider.wiring({ launcherPath: "/tmp/tlc-exec.mjs" });
   assert.ok(wiring.target.length > 0, "wiring target is non-empty");
   assert.ok(wiring.strategy === "replace" || wiring.strategy === "merge", "strategy is replace or merge");
+
+  const wiringTargets = provider.wiringTargets();
+  assert.ok(Array.isArray(wiringTargets), `${provider.name}.wiringTargets() is an array`);
+  assert.ok(wiringTargets.length > 0, `${provider.name}.wiringTargets() is non-empty`);
+  for (const target of wiringTargets) {
+    assert.equal(typeof target, "string", `${provider.name}.wiringTargets() entries are strings`);
+    assert.ok(target.length > 0, `${provider.name}.wiringTargets() entries are non-empty`);
+  }
 }
 
 function makeFixtureProvider(): ProviderPort {
@@ -154,6 +163,9 @@ function makeFixtureProvider(): ProviderPort {
     },
     wiring() {
       return { target: "/tmp/fixture.json", strategy: "replace" as const, entries: [] };
+    },
+    wiringTargets() {
+      return ["/tmp/fixture.json"];
     },
   };
 }
