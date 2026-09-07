@@ -40,7 +40,7 @@ export function isRuntimePolicySurface(filePath: string): boolean {
   return target === resolve(machineConfigPath()) || isInside(runtimeStateDir(), target);
 }
 
-// why: a provider's wiring target (`~/.claude/settings.json`, `.cursor/hooks.json`) lives outside the
+// why: a provider's wiring target (its own editor's user-level hook/settings document) lives outside the
 // project and outside the runtime home, so neither existing branch of isPolicySurface would ever match it.
 // A protected path is matched by containment, not equality, so a provider that ever declares a directory
 // target covers every file written under it.

@@ -39,7 +39,7 @@
 <p align="center">
   Hooks fire on the editor's own events. The harness answers each one with a decision — <b>allow</b>, <b>ask</b>,
   <b>deny</b>, or text injected into the turn — and writes a record of what it decided and why.
-  <b>7 floor rules</b> no configuration can reach, <b>3 always-on checks</b>, and <b>24 rails</b> you choose.
+  <b>8 floor rules</b> no configuration can reach, <b>3 always-on checks</b>, and <b>24 rails</b> you choose.
 </p>
 
 - **[Everything it validates](#everything-it-validates)** — the whole list, one row per check
@@ -113,7 +113,7 @@ prints `rule=<name>`, and the name is the first column here.
 | `machine-control` | `shutdown`, `reboot`, `halt`, `poweroff` | — |
 | `unprovable-execution` | a program fetched over the network and handed to a shell — piped, process-substituted, or inside a shell's `-c`/`eval` substitution. The gate cannot read what would run | a fetch with no shell downstream, and a shell fed a local file the gate can read |
 | `policy-surface-write` | every route an agent has to harness policy and state — a shell redirect, an interpreter, a heredoc program, or a write tool — in the project and under the runtime home, plus the mutating `tlc harness` subcommands from inside a session | reading them with a proven reader (`cat`, `head`, `grep`, `jq`, `ls`, `stat`, `test`), and `tlc harness handoff` for the handoff state |
-| `wiring-tamper` | a shell redirect, in-place edit, or delete into a registered provider's wiring target (`~/.claude/settings.json`, `.cursor/hooks.json`), and a direct `Edit`/`Write`/`MultiEdit` tool call against the same path — overwriting it silences every hook the harness has for that host | reading the same path with a proven reader or a read tool |
+| `wiring-tamper` | a shell redirect, in-place edit, or delete into a registered provider's wiring target — the document its own editor reads to register the harness's hooks — and a direct `Edit`/`Write`/`MultiEdit` tool call against the same path — overwriting it silences every hook the harness has for that host | reading the same path with a proven reader or a read tool |
 
 <!-- /generated -->
 

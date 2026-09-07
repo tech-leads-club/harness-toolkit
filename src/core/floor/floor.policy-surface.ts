@@ -141,7 +141,11 @@ function namesSurface(projectDir: string, segment: ShellSegment): boolean {
 // direction is what catches `rm -rf .tlc/harness/state`, which removes the flags without ever naming one.
 // hazard: the project root also contains the surface. Counting it would deny `find .` and `grep -r x .`,
 // so the root is excluded and destruction of the whole project stays the concern of the existing rules.
-function overlapsSurface(projectDir: string, resolved: string, extraSurfacePaths: readonly string[]): boolean {
+function overlapsSurface(
+  projectDir: string,
+  resolved: string,
+  extraSurfacePaths: readonly string[],
+): boolean {
   if (resolved === resolve(projectDir)) {
     return false;
   }

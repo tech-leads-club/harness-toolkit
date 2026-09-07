@@ -287,28 +287,28 @@ test("the command that clears a policy divergence is refused from inside a sessi
  * protects the harness's own policy surface (EFH-01, EFH-02).
  */
 test("a redirect into an extra surface path is denied", () => {
-  const wiring = "/home/someone/.claude/settings.json";
+  const wiring = "/home/someone/.editor-x/settings.json";
   const command = `echo '{}' > ${wiring}`;
   const verdict = checkPolicySurface(PROJECT, command, tokenizeShell(command), [wiring]);
   assert.equal(verdict.kind, "deny");
 });
 
 test("an in-place edit of an extra surface path is denied", () => {
-  const wiring = "/home/someone/.claude/settings.json";
+  const wiring = "/home/someone/.editor-x/settings.json";
   const command = `sed -i s/a/b/ ${wiring}`;
   const verdict = checkPolicySurface(PROJECT, command, tokenizeShell(command), [wiring]);
   assert.equal(verdict.kind, "deny");
 });
 
 test("reading an extra surface path is still allowed", () => {
-  const wiring = "/home/someone/.claude/settings.json";
+  const wiring = "/home/someone/.editor-x/settings.json";
   const command = `cat ${wiring}`;
   const verdict = checkPolicySurface(PROJECT, command, tokenizeShell(command), [wiring]);
   assert.equal(verdict.kind, "allow");
 });
 
 test("with no extraSurfacePaths, an unrelated path is unaffected", () => {
-  const command = "cat /home/someone/.claude/settings.json";
+  const command = "cat /home/someone/.editor-x/settings.json";
   const verdict = checkPolicySurface(PROJECT, command, tokenizeShell(command));
   assert.equal(verdict.kind, "allow");
 });

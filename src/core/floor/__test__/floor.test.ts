@@ -175,7 +175,7 @@ test("writing a credential file is not a floor concern — only reading one is",
  * wiring-tamper (EFH-01, EFH-02, EFH-03, EFH-05, EFH-06) — a registered provider's wiring target is protected
  * the same way the harness's own policy surface already is, but under a distinct rule name.
  */
-const WIRING_TARGET = join(HOME, ".claude", "settings.json");
+const WIRING_TARGET = join(HOME, ".editor-x", "settings.json");
 
 test("a shell redirect into a protectedPaths entry is denied under wiring-tamper", () => {
   const decision = withEnv({ HOME, USERPROFILE: HOME }, () =>

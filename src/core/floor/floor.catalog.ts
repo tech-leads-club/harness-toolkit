@@ -51,7 +51,7 @@ export const FLOOR_RULES: Record<FloorRule, FloorRuleDoc> = {
   },
   "wiring-tamper": {
     denies:
-      "a shell redirect, in-place edit, or delete into a registered provider's wiring target (`~/.claude/settings.json`, `.cursor/hooks.json`), and a direct `Edit`/`Write`/`MultiEdit` tool call against the same path — overwriting it silences every hook the harness has for that host",
+      "a shell redirect, in-place edit, or delete into a registered provider's wiring target — the document its own editor reads to register the harness's hooks — and a direct `Edit`/`Write`/`MultiEdit` tool call against the same path — overwriting it silences every hook the harness has for that host",
     allows: "reading the same path with a proven reader or a read tool",
   },
 };
