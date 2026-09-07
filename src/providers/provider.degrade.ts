@@ -144,7 +144,12 @@ export function degrade(
     // why: a degraded rewriteOutput becomes exactly a context decision, and recursing here — instead of
     // duplicating the handling below — is what runs it through the same canCarryContext/budget logic every
     // other context decision already gets, with no special case for this one.
-    return degrade({ kind: "context", text: REWRITE_OUTPUT_UNAVAILABLE_NOTICE }, event, capabilities, options);
+    return degrade(
+      { kind: "context", text: REWRITE_OUTPUT_UNAVAILABLE_NOTICE },
+      event,
+      capabilities,
+      options,
+    );
   }
 
   if (decision.kind === "context") {

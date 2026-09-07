@@ -33,7 +33,12 @@ test("EFH-08: calling twice with the same matchedText in the same session return
 test("different matchedText values in the same session get distinct placeholders", () => {
   const root = newRoot();
   const first = placeholderFor(root, "session-a", "AKIAABCDEFGHIJKLMNOP", "aws-access-key");
-  const second = placeholderFor(root, "session-a", "ghp_1234567890abcdefghijklmnopqrstuvwxyz", "github-token");
+  const second = placeholderFor(
+    root,
+    "session-a",
+    "ghp_1234567890abcdefghijklmnopqrstuvwxyz",
+    "github-token",
+  );
   assert.notEqual(first, second);
 });
 

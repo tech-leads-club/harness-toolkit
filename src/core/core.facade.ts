@@ -179,6 +179,8 @@ import {
   recordObservation,
 } from "./rules/rules.store.ts";
 import { firingRules, triggerMatches } from "./rules/rules.trigger.ts";
+import { scanForSecrets } from "./secret-scan/secret-scan.service.ts";
+import { placeholderFor } from "./secret-scan/secret-scan.store.ts";
 import { evaluateShellCommand } from "./shell-policy/shell-policy.service.ts";
 import { clearShellStall } from "./shell-policy/shell-policy.stall.ts";
 import { coversHandler, decideShim } from "./shim/shim.precedence.ts";
@@ -518,6 +520,10 @@ export const coreFacade = {
   },
   floor: {
     evaluateFloor,
+  },
+  secretScan: {
+    scanForSecrets,
+    placeholderFor,
   },
   observe: {
     shouldObserve,
