@@ -116,6 +116,62 @@ describe("triggerMatches", () => {
     );
   });
 
+  /**
+   * AD-127 — a rule stayed silently unfired in production behind a transparent shell proxy, because the old
+   * matcher anchored to word 0. WRAP-01/WRAP-02: any prefix, any number of layers, still fires.
+   */
+  test("AD-127 WRAP-01/WRAP-02 pr-open fires behind one or more transparent wrapper prefixes", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "tool.before", command: "rtk gh pr create --fill" }),
+      true,
+      "one wrapper layer",
+    );
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "tool.before", command: "sudo -u ci rtk gh pr create" }),
+      true,
+      "multiple wrapper layers stacked",
+    );
+  });
+
+  /** AD-127 WRAP-03: commit and push fire the same way behind a wrapper. */
+  test("AD-127 WRAP-03 commit and push fire behind a wrapper too", () => {
+    assert.equal(
+      triggerMatches({ kind: "commit" }, { event: "tool.before", command: "time git commit -m x" }),
+      true,
+    );
+    assert.equal(
+      triggerMatches({ kind: "push" }, { event: "tool.before", command: "env FOO=bar git push origin main" }),
+      true,
+    );
+  });
+
+  /** AD-127 WRAP-04: the draft exclusion (AD-118) still holds once the command is wrapped. */
+  test("AD-127 WRAP-04 the draft exclusion still applies behind a wrapper", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "tool.before", command: "rtk gh pr create --draft" }),
+      false,
+    );
+  });
+
+  /** AD-127 WRAP-05: the wrapper tolerance composes with the AD-121 basename fallback. */
+  test("AD-127 WRAP-05 a wrapped command still gets the basename fallback for the real verb's path", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "tool.before", command: "time /usr/local/bin/gh pr create" },
+      ),
+      true,
+    );
+  });
+
+  /** AD-127 WRAP-07: position-agnostic scanning must not blur an unrelated command into `commit`/`push`. */
+  test("AD-127 WRAP-07 docker commit is not git commit", () => {
+    assert.equal(
+      triggerMatches({ kind: "commit" }, { event: "tool.before", command: "docker commit abc image" }),
+      false,
+    );
+  });
+
   test("commit and push fire on their own shapes and not on each other", () => {
     assert.equal(
       triggerMatches({ kind: "commit" }, { event: "tool.before", command: "git commit -m x" }),

@@ -63,18 +63,6 @@ function subCommands(command: string): string[][] {
     .filter((words) => words.length > 0);
 }
 
-/** why prefix rather than equality: `gh pr create --fill --base main` is the same act as `gh pr create`. */
-function startsWithShape(words: readonly string[], prefix: readonly string[]): boolean {
-  return prefix.every((token, index) => words[index] === token);
-}
-
-function matchesShape(words: readonly string[], shape: ShellShape): boolean {
-  if (!startsWithShape(words, shape.prefix)) {
-    return false;
-  }
-  return !shape.excludeIfAny?.some((flag) => words.includes(flag));
-}
-
 /**
  * why a basename fallback: a token with no `/` of its own names an act, not a location — `build.sh` is the
  * same script whether it runs as `build.sh`, `./scripts/build.sh` or `/home/user/tools/scripts/build.sh`.
@@ -94,15 +82,32 @@ function tokenMatches(word: string | undefined, token: string): boolean {
 }
 
 /**
+ * why any starting index, not only 0: a wrapper in front of the real command — a proxy, `sudo`, `time`, `env
+ * FOO=bar`, or one nobody has written yet — must not hide the act behind it. An anchored check goes silently
+ * dead the moment anything sits in front of the verb it expects at word 0; a real rule stayed dead for exactly
+ * that reason before this existed ([/decisions/ad-127.md](/decisions/ad-127.md)). Trailing words past the
+ * phrase don't matter either: `gh pr create --fill --base main` is the same act as `gh pr create`.
+ */
+function containsPhrase(words: readonly string[], tokens: readonly string[]): boolean {
+  if (tokens.length === 0) {
+    return false;
+  }
+  return words.some((_, start) => tokens.every((token, index) => tokenMatches(words[start + index], token)));
+}
+
+/**
  * why a phrase and not a word: an operator writes `command(gh pr review)`, meaning those words in that order.
  * Matching the raw string against the whole command would let a heredoc or an unrelated argument satisfy it.
  */
 export function matchesPhrase(words: readonly string[], pattern: string): boolean {
-  const phrase = pattern.trim().split(/\s+/);
-  if (phrase.length === 0) {
+  return containsPhrase(words, pattern.trim().split(/\s+/));
+}
+
+function matchesShape(words: readonly string[], shape: ShellShape): boolean {
+  if (!containsPhrase(words, shape.prefix)) {
     return false;
   }
-  return words.some((_, start) => phrase.every((token, index) => tokenMatches(words[start + index], token)));
+  return !shape.excludeIfAny?.some((flag) => words.includes(flag));
 }
 
 export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): boolean {
