@@ -145,7 +145,10 @@ describe("triggerMatches", () => {
     );
   });
 
-  /** AD-127 WRAP-04: the draft exclusion (AD-118) still holds once the command is wrapped. */
+  /**
+   * AD-127 WRAP-04: the draft exclusion still holds once the command is wrapped
+   * ([/decisions/ad-118.md](/decisions/ad-118.md)).
+   */
   test("AD-127 WRAP-04 the draft exclusion still applies behind a wrapper", () => {
     assert.equal(
       triggerMatches({ kind: "pr-open" }, { event: "tool.before", command: "rtk gh pr create --draft" }),

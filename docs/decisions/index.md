@@ -134,6 +134,7 @@ Handoff section and a link back to this index.
 | [AD-124](/decisions/ad-124.md) | A provider's wiring target is a floor surface; secret-shaped tool output is a rail | active |
 | [AD-125](/decisions/ad-125.md) | A provider's docs and file scaffold are generated from its own code, never hand-maintained | active — corrected by AD-126 |
 | [AD-126](/decisions/ad-126.md) | The provider scaffold is a contributor tool; it never belonged on the published CLI | active |
+| [AD-127](/decisions/ad-127.md) | A rule's shell triggers match the act at any word position, not only at word 0 | active |
 
 ## Archived
 
