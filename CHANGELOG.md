@@ -8,10 +8,13 @@ doctor reports against your own configuration.
 
 ## Unreleased
 
+- **AD-127** — A rule's shell triggers match the act at any word position, not only at word 0
+
+## v0.11.1
+
 - **AD-124** — A provider's wiring target is a floor surface; secret-shaped tool output is a rail
 - **AD-125** — A provider's docs and file scaffold are generated from its own code, never hand-maintained
 - **AD-126** — The provider scaffold is a contributor tool; it never belonged on the published CLI
-- **AD-127** — A rule's shell triggers match the act at any word position, not only at word 0
 
 ## v0.11.0
 
