@@ -329,7 +329,7 @@ rather than reporting nothing, because an inert mechanism and a working one othe
 
 ```markdown
 ---
-on: pr-open                            # pr-open | commit | push | stop | tool(<name>) | command(<pattern>)
+on: pr-open                            # pr-open | commit | push | pr-merge | stop | tool(<name>) | command(<pattern>)
 require:
   - subagent(the-jury) since HEAD      # subagent | command | gate | file, since HEAD or since session
 otherwise: deny                        # deny | ask | follow-up | warn
@@ -406,9 +406,22 @@ Posture reaches `ask` and nothing else: it interrupts under `paired` and hardens
 `focus`. `deny`, `follow-up` and `warn` are verification and are identical at all three
 ([/decisions/ad-025.md](/decisions/ad-025.md)).
 
-A pattern trigger is policy rather than containment. A script written to disk and executed later, a command name
-built at runtime, `gh api` instead of `gh pr create`, or a pull request opened in a browser all escape it — the
-rule covers the agent's shell path ([/decisions/ad-100.md](/decisions/ad-100.md)).
+A pattern trigger is policy rather than containment. `pr-open` and `push` recognize their `gh api` REST
+equivalent (`POST` to a path ending in `pulls`; `POST`/`PATCH` to a path touching `git/refs`) alongside the CLI
+shape, and `pr-merge` recognizes `gh pr merge` and `PUT` to a path ending in `merge` under `pulls`
+([/decisions/ad-128.md](/decisions/ad-128.md)) — but a script written to disk and executed later, a command
+name built at runtime, a GraphQL mutation, `curl` direct to the API, a `gh api` call that flips a pull request
+to ready without going through `gh pr ready`, or a pull request opened, approved, or merged in a browser all
+still escape every trigger this project has. The rule covers the agent's shell path
+([/decisions/ad-100.md](/decisions/ad-100.md)); it was never meant to cover more than that.
+
+**The durable, non-bypassable boundary is GitHub's own branch protection, not this mechanism.** A required
+status check (posted by whatever proof this project's rule already demands — the-jury's review, a gate
+passing) combined with "do not allow bypassing the above settings" turned on and no automation account holding
+admin closes the remainder, because it is enforced server-side at merge time regardless of which client
+attempted it. A `pr-open`/`push`/`pr-merge` rule here is a fast local nudge in front of that boundary — worth
+having, because it catches a cooperative agent's mistake before a round trip to GitHub, but not a substitute
+for configuring the boundary that actually holds against one that doesn't cooperate.
 
 `pr-open` does not fire on opening a **draft** pull request — only on a non-draft create and on converting a
 draft to ready. This matters when a `require:` proof itself depends on the pull request already existing (a
