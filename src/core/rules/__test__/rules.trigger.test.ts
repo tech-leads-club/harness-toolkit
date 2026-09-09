@@ -175,6 +175,30 @@ describe("triggerMatches", () => {
     );
   });
 
+  /** APIG-10 — `pr-merge`'s CLI shape, same `containsPhrase`/`matchesShape` machinery as every other shape. */
+  test("APIG-10 pr-merge fires on gh pr merge and not on gh pr view", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-merge" }, { event: "tool.before", command: "gh pr merge 42" }),
+      true,
+    );
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-merge" },
+        { event: "tool.before", command: "gh pr merge 42 --squash --auto" },
+      ),
+      true,
+      "flags do not change the act",
+    );
+    assert.equal(
+      triggerMatches({ kind: "pr-merge" }, { event: "tool.before", command: "gh pr view 42" }),
+      false,
+    );
+  });
+
+  test("a shell trigger with no command cannot fire pr-merge either", () => {
+    assert.equal(triggerMatches({ kind: "pr-merge" }, { event: "tool.before" }), false);
+  });
+
   test("commit and push fire on their own shapes and not on each other", () => {
     assert.equal(
       triggerMatches({ kind: "commit" }, { event: "tool.before", command: "git commit -m x" }),

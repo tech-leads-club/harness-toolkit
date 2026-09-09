@@ -38,13 +38,14 @@ type ShellShape = {
   readonly excludeIfAny?: readonly string[];
 };
 
-const SHELL_SHAPES: Record<"pr-open" | "commit" | "push", readonly ShellShape[]> = {
+const SHELL_SHAPES: Record<"pr-open" | "commit" | "push" | "pr-merge", readonly ShellShape[]> = {
   "pr-open": [
     { prefix: ["gh", "pr", "create"], excludeIfAny: ["--draft", "-d"] },
     { prefix: ["gh", "pr", "ready"] },
   ],
   commit: [{ prefix: ["git", "commit"] }],
   push: [{ prefix: ["git", "push"] }],
+  "pr-merge": [{ prefix: ["gh", "pr", "merge"] }],
 };
 
 /**
@@ -118,7 +119,8 @@ export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): b
       return context.toolName === trigger.name;
     case "pr-open":
     case "commit":
-    case "push": {
+    case "push":
+    case "pr-merge": {
       if (context.command === undefined) {
         return false;
       }
