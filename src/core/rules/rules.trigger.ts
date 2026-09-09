@@ -89,11 +89,113 @@ function tokenMatches(word: string | undefined, token: string): boolean {
  * that reason before this existed ([/decisions/ad-127.md](/decisions/ad-127.md)). Trailing words past the
  * phrase don't matter either: `gh pr create --fill --base main` is the same act as `gh pr create`.
  */
-function containsPhrase(words: readonly string[], tokens: readonly string[]): boolean {
+function findPhraseIndex(words: readonly string[], tokens: readonly string[]): number {
   if (tokens.length === 0) {
+    return -1;
+  }
+  return words.findIndex((_, start) =>
+    tokens.every((token, index) => tokenMatches(words[start + index], token)),
+  );
+}
+
+function containsPhrase(words: readonly string[], tokens: readonly string[]): boolean {
+  return findPhraseIndex(words, tokens) !== -1;
+}
+
+/**
+ * why a second matcher, not one more `ShellShape`: `gh pr create` and `gh api repos/{o}/{r}/pulls` are the same
+ * real-world act described in two different grammars — CLI subcommand words vs. a REST path and an HTTP method.
+ * A pattern trigger was already documented as policy, not containment, precisely because of this escape
+ * ([/decisions/ad-100.md](/decisions/ad-100.md)); this narrows the one instance of it this project has actually
+ * seen exploited, without pretending to close the class ([/decisions/ad-128.md](/decisions/ad-128.md)).
+ */
+type ApiShape = {
+  readonly lastSegment?: string;
+  readonly containsSegment?: string;
+  readonly adjacentPair?: readonly [string, string];
+  readonly methods: readonly string[];
+};
+
+const API_VALUE_FLAGS = new Set([
+  "-X",
+  "--method",
+  "-f",
+  "--raw-field",
+  "-F",
+  "--field",
+  "--input",
+  "-p",
+  "--preview",
+]);
+const API_BODY_FLAGS = new Set(["-f", "--raw-field", "-F", "--field", "--input"]);
+
+/** why strip scheme+host and query: `gh api` accepts a bare path, a leading-slash path, or a full URL alike. */
+function apiPathSegments(path: string): string[] {
+  const withoutQuery = (path.split("?")[0] ?? "").replace(/^https?:\/\/[^/]+/, "");
+  return withoutQuery.split("/").filter((segment) => segment.length > 0);
+}
+
+/**
+ * why a hand-rolled scan and not `.find`: a value-taking flag's value (`-X POST`) must not be mistaken for the
+ * endpoint, and `gh api` accepts both `<endpoint> [flags]` and `[flags] <endpoint>` — its own `--help` shows
+ * both orders.
+ */
+function apiPathArgument(words: readonly string[]): string | undefined {
+  const at = findPhraseIndex(words, ["gh", "api"]);
+  if (at === -1) {
+    return undefined;
+  }
+  const rest = words.slice(at + 2);
+  for (let index = 0; index < rest.length; index += 1) {
+    const word = rest[index];
+    if (word === undefined) {
+      continue;
+    }
+    if (API_VALUE_FLAGS.has(word)) {
+      index += 1;
+      continue;
+    }
+    if (word.startsWith("-")) {
+      continue;
+    }
+    return word;
+  }
+  return undefined;
+}
+
+/**
+ * why POST when a body flag is present with no explicit method: confirmed against `gh api --help`'s own text,
+ * not assumed — "The default HTTP request method is GET normally and POST if any parameters were added."
+ */
+function inferredApiMethod(words: readonly string[]): string {
+  const methodAt = words.findIndex((word) => word === "-X" || word === "--method");
+  const explicit = methodAt === -1 ? undefined : words[methodAt + 1];
+  if (explicit !== undefined) {
+    return explicit.toUpperCase();
+  }
+  return words.some((word) => API_BODY_FLAGS.has(word)) ? "POST" : "GET";
+}
+
+function matchesApiShape(words: readonly string[], shape: ApiShape): boolean {
+  const path = apiPathArgument(words);
+  if (path === undefined) {
     return false;
   }
-  return words.some((_, start) => tokens.every((token, index) => tokenMatches(words[start + index], token)));
+  const segments = apiPathSegments(path);
+  const last = segments[segments.length - 1];
+  if (shape.lastSegment !== undefined && last !== shape.lastSegment) {
+    return false;
+  }
+  if (shape.containsSegment !== undefined && !segments.includes(shape.containsSegment)) {
+    return false;
+  }
+  if (shape.adjacentPair !== undefined) {
+    const [a, b] = shape.adjacentPair;
+    if (!segments.some((segment, index) => segment === a && segments[index + 1] === b)) {
+      return false;
+    }
+  }
+  return shape.methods.includes(inferredApiMethod(words));
 }
 
 /**
@@ -111,6 +213,27 @@ function matchesShape(words: readonly string[], shape: ShellShape): boolean {
   return !shape.excludeIfAny?.some((flag) => words.includes(flag));
 }
 
+/**
+ * why partial and not total: `commit` has no REST-endpoint equivalent an agent's normal workflow ever produces
+ * — creating a commit through GitHub's git-database API is not a shape this project has observed in practice,
+ * unlike the `pr-open`/`push`/`pr-merge` cases this record exists to close
+ * ([/decisions/ad-128.md](/decisions/ad-128.md)).
+ */
+const API_SHAPES: Partial<Record<"pr-open" | "commit" | "push" | "pr-merge", readonly ApiShape[]>> = {
+  "pr-open": [{ lastSegment: "pulls", methods: ["POST"] }],
+};
+
+function matchesAnyShape(
+  words: readonly string[],
+  kind: "pr-open" | "commit" | "push" | "pr-merge",
+): boolean {
+  if (SHELL_SHAPES[kind].some((shape) => matchesShape(words, shape))) {
+    return true;
+  }
+  const apiShapes = API_SHAPES[kind] ?? [];
+  return apiShapes.some((shape) => matchesApiShape(words, shape));
+}
+
 export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): boolean {
   switch (trigger.kind) {
     case "stop":
@@ -124,8 +247,7 @@ export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): b
       if (context.command === undefined) {
         return false;
       }
-      const shapes = SHELL_SHAPES[trigger.kind];
-      return subCommands(context.command).some((words) => shapes.some((shape) => matchesShape(words, shape)));
+      return subCommands(context.command).some((words) => matchesAnyShape(words, trigger.kind));
     }
     default: {
       if (context.command === undefined) {

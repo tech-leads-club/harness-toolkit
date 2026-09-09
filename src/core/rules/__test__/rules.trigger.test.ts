@@ -175,6 +175,88 @@ describe("triggerMatches", () => {
     );
   });
 
+  /**
+   * AD-128 — the exact incident: `gh pr create` was blocked, the agent switched to `gh api` and the pull
+   * request opened ungated. APIG-01..06 close this specific, evidenced bypass.
+   */
+  test("APIG-01 pr-open fires on the gh api call that actually opened the incident's pull request", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        {
+          event: "tool.before",
+          command:
+            "gh api repos/AWB-Digital/topclip/pulls -f title='x' -f head='feat/x' -f base='main' -f body='y'",
+        },
+      ),
+      true,
+    );
+  });
+
+  test("APIG-02 pr-open fires the same way with an explicit -X POST / --method POST", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "tool.before", command: "gh api repos/o/r/pulls -X POST -f title=x -f head=y -f base=z" },
+      ),
+      true,
+    );
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "tool.before", command: "gh api --method POST repos/o/r/pulls -f title=x" },
+      ),
+      true,
+      "the method flag before the endpoint still resolves correctly",
+    );
+  });
+
+  test("APIG-03 pr-open does not fire on a bare GET listing pull requests", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "tool.before", command: "gh api repos/o/r/pulls" }),
+      false,
+    );
+  });
+
+  test("APIG-04 pr-open does not fire when params are present but --method GET forces a read", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "tool.before", command: "gh api repos/o/r/pulls -f q=is:open --method GET" },
+      ),
+      false,
+    );
+  });
+
+  test("APIG-05 pr-open via gh api still fires behind a wrapper prefix", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "tool.before", command: "rtk gh api repos/o/r/pulls -f title=x -f head=y -f base=z" },
+      ),
+      true,
+    );
+  });
+
+  test("APIG-06 pr-open via gh api fires with a leading-slash path or a full URL", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "tool.before", command: "gh api /repos/o/r/pulls -f title=x" },
+      ),
+      true,
+      "leading slash",
+    );
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "tool.before", command: "gh api https://api.github.com/repos/o/r/pulls -f title=x" },
+      ),
+      true,
+      "full URL",
+    );
+  });
+
   /** APIG-10 — `pr-merge`'s CLI shape, same `containsPhrase`/`matchesShape` machinery as every other shape. */
   test("APIG-10 pr-merge fires on gh pr merge and not on gh pr view", () => {
     assert.equal(
