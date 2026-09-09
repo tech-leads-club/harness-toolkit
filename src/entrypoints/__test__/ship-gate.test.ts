@@ -91,6 +91,7 @@ function cursorShip(root: string, command: string): string {
 const stdinOf = (text: string) => ({ readStdin: () => Promise.resolve(text) });
 
 const PUSH = "git push";
+const PR_MERGE = "gh pr merge 42";
 
 describe("ship-gate: commit/push/pr-open run the same battery stop would, before shipping", () => {
   test("AC lint failure denies push, identically on Claude and Cursor", async () => {
@@ -189,6 +190,20 @@ describe("ship-gate: commit/push/pr-open run the same battery stop would, before
 
     assert.notEqual(claude.decision.kind, "deny");
     assert.notEqual(cursor.decision.kind, "deny");
+  });
+
+  /** APIG-14 — pr-merge joins FULL_BATTERY_KINDS, so it pays the same battery push/pr-open already do. */
+  test("APIG-14 a pr-merge also pays the full battery, identically on both hosts", async () => {
+    const root = dirtyRepo();
+    writePolicy(root, { grind: { enabled: true, lintCommand: gate(1) } });
+
+    const claude = await runHandler(toolBeforeHandler, stdinOf(claudeShip(root, PR_MERGE)));
+    const cursor = await runHandler(toolBeforeHandler, stdinOf(cursorShip(root, PR_MERGE)));
+
+    assert.equal(claude.decision.kind, "deny");
+    assert.equal(cursor.decision.kind, "deny");
+    assert.equal(claude.decision.kind === "deny" ? claude.decision.rule : "", "ship-gate-lint");
+    assert.equal(cursor.decision.kind === "deny" ? cursor.decision.rule : "", "ship-gate-lint");
   });
 
   test("AC a bare commit does not pay for the full battery — only the cheap comment check applies", async () => {

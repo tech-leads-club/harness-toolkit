@@ -15,7 +15,10 @@ import {
   shaScopeRoot,
 } from "./support.ts";
 
-const FULL_BATTERY_KINDS = ["push", "pr-open"] as const;
+// why: pr-merge is the moment code actually lands on the shared branch. Usually no local diff exists at merge
+// time, so the battery abstains — the merged commits already paid it at push/pr-open time
+// ([/decisions/ad-128.md](/decisions/ad-128.md)).
+const FULL_BATTERY_KINDS = ["push", "pr-open", "pr-merge"] as const;
 
 function isShipCommand(event: HarnessEvent): boolean {
   if (event.command === undefined) {
