@@ -107,7 +107,7 @@ Handoff section and a link back to this index.
 | [AD-097](/decisions/ad-097.md) | The shell layer goes, and with it every platform branch that only existed because of it | active |
 | [AD-098](/decisions/ad-098.md) | Code splitting cut dist/ ninefold and broke three commands, so it is reverted until no library module self-executes | active |
 | [AD-099](/decisions/ad-099.md) | Reading a file claimed it, so a review agent locked the operator out of writing | active |
-| [AD-100](/decisions/ad-100.md) | The operator declares the trigger and the proof; the harness enforces it | active |
+| [AD-100](/decisions/ad-100.md) | The operator declares the trigger and the proof; the harness enforces it | active — corrected by AD-128 |
 | [AD-101](/decisions/ad-101.md) | Machine data belongs to the machine, not to the install | active |
 | [AD-102](/decisions/ad-102.md) | A green gate is not a working product, so four checks that look where it cannot | active |
 | [AD-103](/decisions/ad-103.md) | The artefact is proven where operators install it, and an inert scope has to be telling the truth | active |
@@ -135,6 +135,7 @@ Handoff section and a link back to this index.
 | [AD-125](/decisions/ad-125.md) | A provider's docs and file scaffold are generated from its own code, never hand-maintained | active — corrected by AD-126 |
 | [AD-126](/decisions/ad-126.md) | The provider scaffold is a contributor tool; it never belonged on the published CLI | active |
 | [AD-127](/decisions/ad-127.md) | A rule's shell triggers match the act at any word position, not only at word 0 | active |
+| [AD-128](/decisions/ad-128.md) | pr-open and push recognize their gh api equivalent, and pr-merge exists | active |
 
 ## Archived
 

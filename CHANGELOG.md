@@ -6,6 +6,10 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## Unreleased
+
+- **AD-128** — pr-open and push recognize their gh api equivalent, and pr-merge exists
+
 ## v0.11.2
 
 - **AD-127** — A rule's shell triggers match the act at any word position, not only at word 0
