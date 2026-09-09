@@ -185,8 +185,7 @@ describe("triggerMatches", () => {
         { kind: "pr-open" },
         {
           event: "tool.before",
-          command:
-            "gh api repos/AWB-Digital/topclip/pulls -f title='x' -f head='feat/x' -f base='main' -f body='y'",
+          command: "gh api repos/o/r/pulls -f title='x' -f head='feat/x' -f base='main' -f body='y'",
         },
       ),
       true,
@@ -320,6 +319,21 @@ describe("triggerMatches", () => {
         { event: "tool.before", command: "gh api repos/o/r/pulls/42/merge -X PUT" },
       ),
       true,
+    );
+  });
+
+  /**
+   * Verifier finding — the method check (`methods: ["PUT"]`) alone must not be enough; the `lastSegment`
+   * guard has to be exercised with the *right* method and the *wrong* path, or a mutant that deletes the
+   * `lastSegment` check survives behind the method check alone.
+   */
+  test("pr-merge does not fire on a PUT to the bare pull request path, only on one ending in /merge", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-merge" },
+        { event: "tool.before", command: "gh api repos/o/r/pulls/42 -X PUT" },
+      ),
+      false,
     );
   });
 
