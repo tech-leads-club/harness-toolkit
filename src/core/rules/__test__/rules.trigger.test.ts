@@ -257,6 +257,37 @@ describe("triggerMatches", () => {
     );
   });
 
+  /** APIG-07..09 — the same class of bypass for `push`, closed alongside `pr-open`'s, no evidenced incident yet. */
+  test("APIG-07 push fires on gh api updating a git ref (the API equivalent of pushing to an existing branch)", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "push" },
+        { event: "tool.before", command: "gh api repos/o/r/git/refs/heads/main -X PATCH -f sha=abc123" },
+      ),
+      true,
+    );
+  });
+
+  test("APIG-08 push fires on gh api creating a new git ref (implicit POST from the body flags)", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "push" },
+        { event: "tool.before", command: "gh api repos/o/r/git/refs -f ref=refs/heads/x -f sha=abc123" },
+      ),
+      true,
+    );
+  });
+
+  test("APIG-09 push does not fire on a bare GET reading a git ref", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "push" },
+        { event: "tool.before", command: "gh api repos/o/r/git/refs/heads/main" },
+      ),
+      false,
+    );
+  });
+
   /** APIG-10 — `pr-merge`'s CLI shape, same `containsPhrase`/`matchesShape` machinery as every other shape. */
   test("APIG-10 pr-merge fires on gh pr merge and not on gh pr view", () => {
     assert.equal(

@@ -221,6 +221,7 @@ function matchesShape(words: readonly string[], shape: ShellShape): boolean {
  */
 const API_SHAPES: Partial<Record<"pr-open" | "commit" | "push" | "pr-merge", readonly ApiShape[]>> = {
   "pr-open": [{ lastSegment: "pulls", methods: ["POST"] }],
+  push: [{ adjacentPair: ["git", "refs"], methods: ["POST", "PATCH"] }],
 };
 
 function matchesAnyShape(
