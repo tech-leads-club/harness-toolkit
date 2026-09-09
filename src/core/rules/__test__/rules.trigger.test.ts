@@ -312,6 +312,38 @@ describe("triggerMatches", () => {
     assert.equal(triggerMatches({ kind: "pr-merge" }, { event: "tool.before" }), false);
   });
 
+  /** APIG-11/12 — the gh api equivalent of gh pr merge: PUT to a path ending in /merge under pulls. */
+  test("APIG-11 pr-merge fires on the gh api merge endpoint", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-merge" },
+        { event: "tool.before", command: "gh api repos/o/r/pulls/42/merge -X PUT" },
+      ),
+      true,
+    );
+  });
+
+  test("APIG-12 pr-merge does not fire on gh api reading a single pull request", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-merge" }, { event: "tool.before", command: "gh api repos/o/r/pulls/42" }),
+      false,
+    );
+  });
+
+  /**
+   * Risks & Concerns (design.md) — the concrete distinguishing case: PATCH to /pulls/{n} edits metadata (a
+   * title, say) and must not be mistaken for a merge just because "pulls" appears in the path too.
+   */
+  test("pr-merge does not fire on an unrelated PATCH editing a pull request's title via gh api", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-merge" },
+        { event: "tool.before", command: "gh api repos/o/r/pulls/42 -X PATCH -f title='new title'" },
+      ),
+      false,
+    );
+  });
+
   test("commit and push fire on their own shapes and not on each other", () => {
     assert.equal(
       triggerMatches({ kind: "commit" }, { event: "tool.before", command: "git commit -m x" }),
