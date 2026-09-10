@@ -19,6 +19,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-131** — A ship-gate denial names what it checked and points at tlc harness why ([/decisions/ad-131.md](/decisions/ad-131.md))
 - **AD-132** — Git-root discovery replaces an exact-match guard, in the six functions and their consumers ([/decisions/ad-132.md](/decisions/ad-132.md))
 - **AD-133** — runCommand stops truncating; the one caller that needs a bound already had one ([/decisions/ad-133.md](/decisions/ad-133.md))
+- **AD-134** — runCommand moves to process.ts; listTrackedFiles never reaches for it again ([/decisions/ad-134.md](/decisions/ad-134.md))
 
 ## 2026-09-09
 

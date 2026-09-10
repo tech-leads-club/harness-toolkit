@@ -14,7 +14,6 @@ import {
   listTrackedFiles,
   localRepoRemote,
   parseOwnerRepo,
-  runCommand,
 } from "../git.ts";
 
 function git(cwd: string, args: string[]): void {
@@ -123,30 +122,6 @@ describe("filterTestTargets", () => {
   test("matches .test.ts and .spec.ts files", () => {
     const result = filterTestTargets(["src/foo.test.ts", "src/bar.spec.tsx", "src/foo.ts"]);
     assert.deepEqual(result, ["src/foo.test.ts", "src/bar.spec.tsx"]);
-  });
-});
-
-describe("runCommand", () => {
-  test("returns '(no output captured)' when the command produces no output", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "run-command-"));
-    const result = await runCommand(dir, ["node", "-e", ""]);
-    assert.equal(result.exitCode, 0);
-    assert.equal(result.output, "(no output captured)");
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  /**
-   * `runCommand` used to truncate to the last 8000 chars itself, duplicating
-   * `trimOutputTail`/`OUTPUT_TAIL_MAX` (`gate.artifact.ts`), the one caller that actually needs a bound
-   * already applies. `listTrackedFiles` (`git.ts`), the other caller, needs the full output — a complete
-   * file list has no "the tail matters more" property ([/decisions/ad-133.md](/decisions/ad-133.md)).
-   */
-  test("returns the full output untruncated, even past 8000 characters", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "run-command-"));
-    const result = await runCommand(dir, ["node", "-e", "process.stdout.write('x'.repeat(9000) + 'END')"]);
-    assert.equal(result.output.length, 9003);
-    assert.equal(result.output.endsWith("END"), true);
-    rmSync(dir, { recursive: true, force: true });
   });
 });
 
@@ -312,13 +287,61 @@ describe("localRepoRemote", () => {
   });
 });
 
+/**
+ * AD-134 — three real bugs (truncation dropping files, an empty repo reading as a phantom entry, a leading
+ * space eaten from a real filename) all traced to one cause: this function used to read through `runCommand`
+ * (`platform/process.ts`), a display-oriented helper, instead of `runProcess` directly. One consolidated suite
+ * proves the structural fix closes all three at once, plus the pre-existing AD-132 subdirectory guarantee.
+ */
 describe("listTrackedFiles", () => {
+  test("GCB-04 every tracked file survives even when the list exceeds the old 8000-char truncation threshold", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "a-marker.ts"), "export const marker = 1;\n");
+    for (let index = 0; index < 400; index += 1) {
+      writeFileSync(
+        join(dir, `generated-file-${String(index).padStart(4, "0")}.ts`),
+        "export const x = 1;\n",
+      );
+    }
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "large tree"]);
+
+    const lsFilesBytes = execFileSync("git", ["-C", dir, "ls-files", "-z"]).length;
+    assert.ok(lsFilesBytes > 8000, `test setup: expected >8000 bytes, got ${lsFilesBytes}`);
+
+    const tracked = await listTrackedFiles(dir);
+    assert.equal(tracked.length, 401);
+    assert.equal(tracked.includes("a-marker.ts"), true);
+    assert.equal(tracked.includes("generated-file-0399.ts"), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GCB-05 returns an empty array for a real repo with no tracked files, never a placeholder entry", async () => {
+    const dir = initRepo();
+    assert.deepEqual(await listTrackedFiles(dir), []);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GCB-06 a filename with a leading space survives intact", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, " leading-space.ts"), "export const a = 1;\n");
+    writeFileSync(join(dir, "zz.ts"), "export const b = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+
+    const tracked = await listTrackedFiles(dir);
+
+    assert.equal(tracked.includes(" leading-space.ts"), true);
+    assert.equal(tracked.includes("leading-space.ts"), false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   /**
-   * F2/AD-132 — `git ls-files` scopes its output to the cwd it runs from, unlike `git diff`/`git log`. Run
-   * from a real subdirectory it used to return subdirectory-relative names, disagreeing with every other
-   * function here that returns repo-root-relative ones.
+   * hazard: `git ls-files` scopes its output to the cwd it runs from, unlike `git diff`/`git log`. This
+   * regression guard makes sure the structural fix here never reopens the subdirectory bug
+   * ([/decisions/ad-132.md](/decisions/ad-132.md)) already closed.
    */
-  test("GRD-09 returns repo-root-relative paths whether called from the root or a real subdirectory", async () => {
+  test("GCB-07 returns repo-root-relative paths whether called from the root or a real subdirectory", async () => {
     const dir = initRepo();
     mkdirSync(join(dir, "apps", "web"), { recursive: true });
     mkdirSync(join(dir, "core"), { recursive: true });
@@ -341,44 +364,6 @@ describe("listTrackedFiles", () => {
     await assert.doesNotReject(async () => {
       assert.deepEqual(await listTrackedFiles(dir), []);
     });
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  /**
-   * Found by review of AD-133's own fix: `git ls-files -z` on a repo with no tracked files exits 0 with empty
-   * stdout, and `runCommand` substitutes `NO_OUTPUT_CAPTURED` for that empty string — a sentinel with no NUL
-   * byte, which `split("\0")` would otherwise return as a single phantom entry.
-   */
-  test("returns an empty array for a real repo with no tracked files, not a phantom entry", async () => {
-    const dir = initRepo();
-    assert.deepEqual(await listTrackedFiles(dir), []);
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  /**
-   * TFT-01 — the confirmed bug: `runCommand`'s old `slice(-8000)` truncation kept only the tail of `git
-   * ls-files -z`'s output, dropping whichever files sorted first. `a-marker.ts` sorts before every generated
-   * file below, so it is exactly the entry the old bug silently lost.
-   */
-  test("TFT-01 every tracked file survives even when the list exceeds the old 8000-char truncation", async () => {
-    const dir = initRepo();
-    writeFileSync(join(dir, "a-marker.ts"), "export const marker = 1;\n");
-    for (let index = 0; index < 400; index += 1) {
-      writeFileSync(
-        join(dir, `generated-file-${String(index).padStart(4, "0")}.ts`),
-        "export const x = 1;\n",
-      );
-    }
-    git(dir, ["add", "-A"]);
-    git(dir, ["commit", "-q", "-m", "large tree"]);
-
-    const lsFilesBytes = execFileSync("git", ["-C", dir, "ls-files", "-z"]).length;
-    assert.ok(lsFilesBytes > 8000, `test setup: expected >8000 bytes, got ${lsFilesBytes}`);
-
-    const tracked = await listTrackedFiles(dir);
-    assert.equal(tracked.length, 401);
-    assert.equal(tracked.includes("a-marker.ts"), true);
-    assert.equal(tracked.includes("generated-file-0399.ts"), true);
     rmSync(dir, { recursive: true, force: true });
   });
 });

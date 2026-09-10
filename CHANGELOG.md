@@ -9,6 +9,7 @@ doctor reports against your own configuration.
 ## v0.14.1
 
 - **AD-133** — runCommand stops truncating; the one caller that needs a bound already had one
+- **AD-134** — runCommand moves to process.ts; listTrackedFiles never reaches for it again
 
 ## v0.14.0
 

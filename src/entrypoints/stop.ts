@@ -9,9 +9,9 @@ import {
   listAddedLines,
   listChangedRepoFiles,
   listTrackedFiles,
-  runCommand,
 } from "../platform/git.ts";
 import { flagsDir } from "../platform/paths.ts";
+import { runCommand } from "../platform/process.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
 import {

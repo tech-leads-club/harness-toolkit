@@ -171,50 +171,26 @@ export function filterTestTargets(relativePaths: string[]): string[] {
   return relativePaths.filter((path) => /\.(spec|test)\.(ts|tsx|js|jsx)$/.test(path));
 }
 
-export type CommandResult = { exitCode: number; output: string; durationMs: number };
-
-export const NO_OUTPUT_CAPTURED = "(no output captured)";
-
-export async function runCommand(
-  projectDir: string,
-  command: string[],
-  extraArgs: string[] = [],
-  options: { env?: NodeJS.ProcessEnv } = {},
-): Promise<CommandResult> {
-  if (command.length === 0) {
-    return { exitCode: 0, output: "", durationMs: 0 };
-  }
-  const started = Date.now();
-  const result = await runProcess({
-    command: [...command, ...extraArgs],
-    cwd: projectDir,
-    env: options.env ? { ...process.env, ...options.env } : process.env,
-  });
-  const combined = (result.stdout + result.stderr).trim();
-  const output = combined.length === 0 ? NO_OUTPUT_CAPTURED : combined;
-  return {
-    exitCode: result.exitCode,
-    output,
-    durationMs: Date.now() - started,
-  };
-}
-
 /**
  * Every tracked file, so a duplication scan reads what the project owns and nothing it ignores.
  *
  * why: `git ls-files` already honours `.gitignore`, so `node_modules` and build output cost nothing to exclude
  * and no second ignore list has to be kept in step ([/decisions/ad-071.md](/decisions/ad-071.md)).
+ * hazard: reads `runProcess` directly, the same way `gitLines` does — never `runCommand`
+ * (`platform/process.ts`), which trims, truncates and placeholder-substitutes for human display. Three real
+ * defects came from this function reusing that helper for exact, structured, NUL-separated data instead
+ * ([/decisions/ad-134.md](/decisions/ad-134.md)).
  */
 export async function listTrackedFiles(projectDir: string): Promise<string[]> {
   const root = await gitRootOf(projectDir);
   if (root === null) {
     return [];
   }
-  const result = await runCommand(root, ["git", "ls-files", "-z"]);
-  if (result.exitCode !== 0 || result.output === NO_OUTPUT_CAPTURED) {
+  const result = await runProcess({ command: ["git", "ls-files", "-z"], cwd: root });
+  if (result.exitCode !== 0) {
     return [];
   }
-  return result.output.split("\0").filter((path) => path !== "");
+  return result.stdout.split("\0").filter((path) => path !== "");
 }
 
 export type RepoRef = { owner: string; repo: string };

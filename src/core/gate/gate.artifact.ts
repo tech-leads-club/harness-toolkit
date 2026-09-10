@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { setProjectScopedEnv } from "../../platform/env-scope.ts";
-import { NO_OUTPUT_CAPTURED } from "../../platform/git.ts";
 import { projectStateDir } from "../../platform/paths.ts";
+import { NO_OUTPUT_CAPTURED } from "../../platform/process.ts";
 import { findingsFromLines } from "./gate.findings.ts";
 import { GATE_SCHEMA, type GateFinding, type LastGateArtifact } from "./gate.types.ts";
 

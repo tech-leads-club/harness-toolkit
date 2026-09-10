@@ -98,3 +98,37 @@ export async function runProcess(args: {
     child.stdin.end();
   });
 }
+
+export type CommandResult = { exitCode: number; output: string; durationMs: number };
+
+export const NO_OUTPUT_CAPTURED = "(no output captured)";
+
+/**
+ * why: a gate command's output is read for a human — trimmed of surrounding noise, given a placeholder when
+ * there is nothing to show. `runProcess` stays the raw primitive; this is the one caller-facing policy layer
+ * on top of it, and the only one — no other function in this codebase shapes output for display
+ * ([/decisions/ad-134.md](/decisions/ad-134.md)).
+ */
+export async function runCommand(
+  projectDir: string,
+  command: string[],
+  extraArgs: string[] = [],
+  options: { env?: NodeJS.ProcessEnv } = {},
+): Promise<CommandResult> {
+  if (command.length === 0) {
+    return { exitCode: 0, output: "", durationMs: 0 };
+  }
+  const started = Date.now();
+  const result = await runProcess({
+    command: [...command, ...extraArgs],
+    cwd: projectDir,
+    env: options.env ? { ...process.env, ...options.env } : process.env,
+  });
+  const combined = (result.stdout + result.stderr).trim();
+  const output = combined.length === 0 ? NO_OUTPUT_CAPTURED : combined;
+  return {
+    exitCode: result.exitCode,
+    output,
+    durationMs: Date.now() - started,
+  };
+}
