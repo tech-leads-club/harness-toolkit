@@ -3,10 +3,11 @@
 // Cursor-shaped payload, because the whole point is identical behavior on both hosts.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, test } from "node:test";
+import { coreFacade } from "../../core/index.ts";
 import { projectConfigPath } from "../../platform/paths.ts";
 import { promptSubmitHandler } from "../prompt-submit.ts";
 import { runHandler } from "../run.ts";
@@ -186,6 +187,54 @@ describe("ship-gate: worktree scoping, AD-129", () => {
     const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
     assert.match(reason, /src\/app\.ts/, "names the file the worktree actually changed");
     assert.doesNotMatch(reason, /unrelated-stack/, "never reports the main checkout's unrelated file");
+  });
+
+  test("state stays at the main checkout even when git ops run in the worktree", async () => {
+    const main = cleanRepo();
+    const worktree = addWorktree(main, "feature-state");
+    writePolicy(main, { comments: { enabled: true, onViolation: "followup", mode: "declared" } });
+    // why: diverge the two HEADs before recording, so a wrong root records a different sha entirely.
+    pollutedMainCheckout(main);
+    const worktreeHead = execFileSync("git", ["-C", worktree, "rev-parse", "--short", "HEAD"])
+      .toString()
+      .trim();
+    const mainHead = execFileSync("git", ["-C", main, "rev-parse", "--short", "HEAD"]).toString().trim();
+    assert.notEqual(worktreeHead, mainHead, "test setup: the two checkouts must actually diverge");
+
+    await runHandler(promptSubmitHandler, stdinOf(claudePromptSubmitInWorktree(main, worktree)));
+
+    const sessionKey = "claude-sess-wt";
+    assert.equal(
+      existsSync(coreFacade.handoff.handoffSessionPath(main, sessionKey)),
+      true,
+      "handoff written at the main checkout, per AD-114",
+    );
+    assert.equal(
+      existsSync(coreFacade.handoff.handoffSessionPath(worktree, sessionKey)),
+      false,
+      "never written into the worktree's own state dir",
+    );
+    const stored = JSON.parse(
+      readFileSync(coreFacade.handoff.handoffSessionPath(main, sessionKey), "utf8"),
+    ) as {
+      slice: { turn_base_sha?: string };
+    };
+    assert.equal(
+      stored.slice.turn_base_sha,
+      worktreeHead,
+      "the sha value is the worktree's HEAD, not the main checkout's",
+    );
+
+    // why: a real read-side discriminator, not just a file-path assertion. Commit the violation in the
+    // worktree *after* turn_base_sha was captured — if computeTurnScope read the seal from the wrong root
+    // and fell back to "HEAD", this commit would already be indistinguishable from the base and vanish.
+    writeFileSync(join(worktree, "src", "app.ts"), "export const a = 1;\n// this explains nothing new\n");
+    git(worktree, "add", ".");
+    git(worktree, "commit", "-q", "-m", "commit the violation after turn_base_sha was captured");
+
+    const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShipInWorktree(main, worktree, PUSH)));
+    assert.equal(outcome.decision.kind, "deny", JSON.stringify(outcome.decision));
+    assert.equal(outcome.decision.kind === "deny" ? outcome.decision.rule : "", "ship-gate-comments");
   });
 
   test("WTS-02 identical scoping on Cursor's shell-event shape", async () => {
