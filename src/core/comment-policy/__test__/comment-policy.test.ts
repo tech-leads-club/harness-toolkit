@@ -196,6 +196,37 @@ test("a removed comment is not reported", async () => {
   }
 });
 
+/**
+ * GRD-08/AD-132 — `listAddedLines` (fixed to resolve the true repo root) and `diskLineReader` (fixed the same
+ * way) used to disagree on which directory `file` was relative to, whenever the scan ran from a real
+ * subdirectory: an attached, informative doc comment misread as undeclared and denied.
+ */
+test("GRD-08 an attached, informative doc comment is allowed when scanned from a real subdirectory", async () => {
+  const dir = repo();
+  try {
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+    writeFileSync(
+      join(dir, "apps", "web", "a.ts"),
+      "export function claudeToEvent(raw) {\n  return raw;\n}\n",
+    );
+    execFileSync("git", ["-C", dir, "add", "-A"], { stdio: "ignore" });
+    execFileSync("git", ["-C", dir, "commit", "-m", "base"], { stdio: "ignore" });
+
+    writeFileSync(
+      join(dir, "apps", "web", "a.ts"),
+      "/** Never throws on a malformed payload — returns null instead. */\nexport function claudeToEvent(raw) {\n  return raw;\n}\n",
+    );
+
+    const fromRoot = await scanAddedComments(dir, ["apps/web/a.ts"]);
+    const fromSubdir = await scanAddedComments(join(dir, "apps", "web"), ["apps/web/a.ts"]);
+
+    assert.deepEqual(fromRoot, []);
+    assert.deepEqual(fromSubdir, fromRoot);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a repo without git yields nothing rather than throwing", async () => {
   const dir = mkdtempSync(join(tmpdir(), "comment-nogit-"));
   try {

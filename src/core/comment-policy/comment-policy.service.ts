@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AddedLine } from "../../platform/git.ts";
-import { listAddedLines } from "../../platform/git.ts";
+import { gitRootOf, listAddedLines } from "../../platform/git.ts";
 import type { CommentMode } from "../policy/policy.types.ts";
 import type { CommentFinding } from "./comment-policy.types.ts";
 import { firstLeak, leakReason } from "./comment-resolvability.ts";
@@ -301,7 +301,8 @@ export async function scanAddedComments(
   base = "HEAD",
 ): Promise<CommentFinding[]> {
   const added = await listAddedLines(projectDir, relativePaths, base);
-  return findAddedComments(added, mode, diskLineReader(projectDir));
+  const gitRoot = (await gitRootOf(projectDir)) ?? projectDir;
+  return findAddedComments(added, mode, diskLineReader(gitRoot));
 }
 
 export function commentViolationMessage(hits: CommentFinding[], mode: CommentMode = "declared"): string {

@@ -5,6 +5,7 @@ import { coreFacade, type LastGateArtifact, type PendingLessonCredit, type Polic
 import {
   filterCodeTargets,
   filterTestTargets,
+  gitRootOf,
   listAddedLines,
   listChangedRepoFiles,
   listTrackedFiles,
@@ -709,12 +710,13 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
     const manifests = changedFiles.filter((path) => coreFacade.supplyChain.isManifest(path));
     if (manifests.length > 0) {
       const added = await listAddedLines(shaRoot, manifests, turnBase);
+      const gitRoot = (await gitRootOf(shaRoot)) ?? shaRoot;
       const outcome = coreFacade.supplyChain.inspectSupplyChain({
         changedFiles,
         added,
         readManifest: (relativePath) => {
           try {
-            return readFileSync(join(shaRoot, relativePath), "utf8");
+            return readFileSync(join(gitRoot, relativePath), "utf8");
           } catch {
             return null;
           }
@@ -744,11 +746,12 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   if (policy.duplication.enabled && codeTargets.length > 0) {
     const added = await listAddedLines(shaRoot, codeTargets, turnBase);
     const tracked = await listTrackedFiles(shaRoot);
+    const gitRoot = (await gitRootOf(shaRoot)) ?? shaRoot;
     const scan = coreFacade.duplication.scanProject(
       tracked,
       (relativePath) => {
         try {
-          return readFileSync(join(shaRoot, relativePath), "utf8");
+          return readFileSync(join(gitRoot, relativePath), "utf8");
         } catch {
           return null;
         }

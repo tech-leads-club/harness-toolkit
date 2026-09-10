@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
@@ -11,6 +11,7 @@ import {
   listAddedLines,
   listChangedRepoFiles,
   listCommitFileSets,
+  listTrackedFiles,
   localRepoRemote,
   parseOwnerRepo,
   runCommand,
@@ -305,17 +306,50 @@ describe("localRepoRemote", () => {
   });
 });
 
+describe("listTrackedFiles", () => {
+  /**
+   * F2/AD-132 — `git ls-files` scopes its output to the cwd it runs from, unlike `git diff`/`git log`. Run
+   * from a real subdirectory it used to return subdirectory-relative names, disagreeing with every other
+   * function here that returns repo-root-relative ones.
+   */
+  test("GRD-09 returns repo-root-relative paths whether called from the root or a real subdirectory", async () => {
+    const dir = initRepo();
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+    mkdirSync(join(dir, "core"), { recursive: true });
+    writeFileSync(join(dir, "core", "a.ts"), "export const a = 1;\n");
+    writeFileSync(join(dir, "apps", "web", "b.ts"), "export const b = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+
+    const fromRoot = await listTrackedFiles(dir);
+    const fromSubdir = await listTrackedFiles(join(dir, "apps", "web"));
+
+    assert.deepEqual([...fromSubdir].sort(), [...fromRoot].sort());
+    assert.equal(fromRoot.includes("apps/web/b.ts"), true);
+    assert.equal(fromRoot.includes("core/a.ts"), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns an empty array when .git is absent, without throwing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "no-git-"));
+    await assert.doesNotReject(async () => {
+      assert.deepEqual(await listTrackedFiles(dir), []);
+    });
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe("gitRootOf", () => {
   test("GRD-01 resolves the repo root when given the root itself", async () => {
     const dir = initRepo();
-    assert.equal(await gitRootOf(dir), dir);
+    assert.equal(await gitRootOf(dir), realpathSync(dir));
     rmSync(dir, { recursive: true, force: true });
   });
 
   test("GRD-01 resolves the same repo root when given a real subdirectory", async () => {
     const dir = initRepo();
     mkdirSync(join(dir, "apps", "web"), { recursive: true });
-    assert.equal(await gitRootOf(join(dir, "apps", "web")), dir);
+    assert.equal(await gitRootOf(join(dir, "apps", "web")), realpathSync(dir));
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -344,8 +378,8 @@ describe("gitRootOf", () => {
     git(main, ["worktree", "add", "-b", "feature-x", worktree]);
     mkdirSync(join(worktree, "apps", "web"), { recursive: true });
 
-    assert.equal(await gitRootOf(join(worktree, "apps", "web")), worktree);
-    assert.notEqual(await gitRootOf(join(worktree, "apps", "web")), main);
+    assert.equal(await gitRootOf(join(worktree, "apps", "web")), realpathSync(worktree));
+    assert.notEqual(await gitRootOf(join(worktree, "apps", "web")), realpathSync(main));
 
     git(main, ["worktree", "remove", "--force", worktree]);
     rmSync(main, { recursive: true, force: true });

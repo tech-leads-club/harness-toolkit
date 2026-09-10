@@ -8,7 +8,7 @@ doctor reports against your own configuration.
 
 ## Unreleased
 
-- **AD-132** — Six git-reading functions discover the true repo root instead of requiring an exact match
+- **AD-132** — Git-root discovery replaces an exact-match guard, in the six functions and their consumers
 
 ## v0.13.0
 

@@ -2,9 +2,10 @@
 // always shipped first and learned about the violation afterward. Same checks, before ship, identical
 // on Claude and Cursor — every input read here is host-neutral ([/decisions/ad-116.md](/decisions/ad-116.md)).
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Decision, HarnessEvent } from "../contracts/index.ts";
 import { coreFacade } from "../core/index.ts";
-import { listAddedLines, listTrackedFiles, localRepoRemote } from "../platform/git.ts";
+import { gitRootOf, listAddedLines, listTrackedFiles, localRepoRemote } from "../platform/git.ts";
 import type { HandlerContext } from "./run.ts";
 import { runLockedGate } from "./stop.ts";
 import {
@@ -174,11 +175,12 @@ export async function shipGateVerdict(event: HarnessEvent, ctx: HandlerContext):
   if (policy.duplication.enabled && scope.codeTargets.length > 0) {
     const added = await listAddedLines(shaRoot, scope.codeTargets, scope.turnBase);
     const tracked = await listTrackedFiles(shaRoot);
+    const gitRoot = (await gitRootOf(shaRoot)) ?? shaRoot;
     const scan = coreFacade.duplication.scanProject(
       tracked,
       (relativePath) => {
         try {
-          return readFileSync(`${shaRoot}/${relativePath}`, "utf8");
+          return readFileSync(join(gitRoot, relativePath), "utf8");
         } catch {
           return null;
         }

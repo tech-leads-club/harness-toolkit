@@ -210,7 +210,11 @@ export async function runCommand(
  * and no second ignore list has to be kept in step ([/decisions/ad-071.md](/decisions/ad-071.md)).
  */
 export async function listTrackedFiles(projectDir: string): Promise<string[]> {
-  const result = await runCommand(projectDir, ["git", "ls-files", "-z"]);
+  const root = await gitRootOf(projectDir);
+  if (root === null) {
+    return [];
+  }
+  const result = await runCommand(root, ["git", "ls-files", "-z"]);
   if (result.exitCode !== 0) {
     return [];
   }

@@ -17,7 +17,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 
 - **AD-130** — gh api pr-open/push/pr-merge detection is scoped to the local checkout's own remote ([/decisions/ad-130.md](/decisions/ad-130.md))
 - **AD-131** — A ship-gate denial names what it checked and points at tlc harness why ([/decisions/ad-131.md](/decisions/ad-131.md))
-- **AD-132** — Six git-reading functions discover the true repo root instead of requiring an exact match ([/decisions/ad-132.md](/decisions/ad-132.md))
+- **AD-132** — Git-root discovery replaces an exact-match guard, in the six functions and their consumers ([/decisions/ad-132.md](/decisions/ad-132.md))
 
 ## 2026-09-09
 
