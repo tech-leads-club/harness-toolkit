@@ -986,6 +986,106 @@ describe("operator rules", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  function withCommandRule(root: string): void {
+    writeProjectPolicy(root, { version: 1, rules: { enabled: true } });
+    const dir = join(root, ".tlc", "harness", "rules");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "review-before-pr.md"),
+      "---\non: pr-open\nrequire:\n  - command(post_review.py) since HEAD\notherwise: deny\n---\nReview first.",
+      "utf8",
+    );
+  }
+
+  function claudeShellAt(cwd: string, command: string): string {
+    return JSON.stringify({
+      hook_event_name: "PreToolUse",
+      cwd,
+      session_id: "sess-1",
+      tool_name: "Bash",
+      tool_input: { command },
+    });
+  }
+
+  /**
+   * GRD-02/AD-132 — the confirmed production shape: a `pr-open`-shaped `gh api` command run with the event's
+   * cwd at a real subdirectory of the project, not the root.
+   */
+  test("GRD-02 a pr-open rule fires from a real subdirectory of the project, not only the exact root", async () => {
+    const root = tempRoot();
+    const previousProjectDir = process.env.CLAUDE_PROJECT_DIR;
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: root });
+      execFileSync("git", ["config", "user.email", "t@t"], { cwd: root });
+      execFileSync("git", ["config", "user.name", "t"], { cwd: root });
+      writeFileSync(join(root, "a.ts"), "export const a = 1;\n");
+      execFileSync("git", ["add", "-A"], { cwd: root });
+      execFileSync("git", ["commit", "-q", "-m", "initial"], { cwd: root });
+      mkdirSync(join(root, "apps", "web"), { recursive: true });
+      withCommandRule(root);
+      process.env.CLAUDE_PROJECT_DIR = root;
+
+      const command = "gh api repos/acme/widgets/pulls -f title=x -f head=feat/x -f base=main";
+      const outcome = await runHandler(
+        toolBeforeHandler,
+        stdinOf(claudeShellAt(join(root, "apps", "web"), command)),
+      );
+
+      assert.equal(outcome.decision.kind, "deny", JSON.stringify(outcome.decision));
+      const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
+      assert.match(reason, /rule review-before-pr/);
+    } finally {
+      if (previousProjectDir === undefined) {
+        delete process.env.CLAUDE_PROJECT_DIR;
+      } else {
+        process.env.CLAUDE_PROJECT_DIR = previousProjectDir;
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("GRD-07 the same rule resolves against a worktree's own remote when cwd is a subdirectory of it", async () => {
+    const main = tempRoot();
+    const previousProjectDir = process.env.CLAUDE_PROJECT_DIR;
+    let worktree: string | undefined;
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: main });
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: main });
+      execFileSync("git", ["config", "user.email", "t@t"], { cwd: main });
+      execFileSync("git", ["config", "user.name", "t"], { cwd: main });
+      writeFileSync(join(main, "a.ts"), "export const a = 1;\n");
+      execFileSync("git", ["add", "-A"], { cwd: main });
+      execFileSync("git", ["commit", "-q", "-m", "initial"], { cwd: main });
+
+      worktree = `${main}-wt`;
+      execFileSync("git", ["worktree", "add", "-b", "feature-x", worktree], { cwd: main });
+      mkdirSync(join(worktree, "apps", "web"), { recursive: true });
+      withCommandRule(main);
+      process.env.CLAUDE_PROJECT_DIR = main;
+
+      const command = "gh api repos/acme/widgets/pulls -f title=x -f head=feat/x -f base=main";
+      const outcome = await runHandler(
+        toolBeforeHandler,
+        stdinOf(claudeShellAt(join(worktree, "apps", "web"), command)),
+      );
+
+      assert.equal(outcome.decision.kind, "deny", JSON.stringify(outcome.decision));
+      const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
+      assert.match(reason, /rule review-before-pr/);
+    } finally {
+      if (previousProjectDir === undefined) {
+        delete process.env.CLAUDE_PROJECT_DIR;
+      } else {
+        process.env.CLAUDE_PROJECT_DIR = previousProjectDir;
+      }
+      if (worktree !== undefined) {
+        execFileSync("git", ["worktree", "remove", "--force", worktree], { cwd: main });
+      }
+      rmSync(main, { recursive: true, force: true });
+    }
+  });
 });
 
 /**
