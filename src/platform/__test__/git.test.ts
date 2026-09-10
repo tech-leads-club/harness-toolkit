@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
@@ -339,17 +339,36 @@ describe("listTrackedFiles", () => {
   });
 });
 
+/**
+ * why a marker file instead of string equality: `git rev-parse --show-toplevel` and Node's own path
+ * normalization disagree on Windows CI — forward slashes and the long form (`runneradmin`) from git, backslashes
+ * and an 8.3 short form (`RUNNER~1`) from `mkdtempSync`/`realpathSync`. Both spellings name the same directory;
+ * a marker file readable through the resolved path proves that without caring how either side spells it.
+ */
+function sameLocation(resolved: string | null, marker: string, expectedContent: string): boolean {
+  if (resolved === null) {
+    return false;
+  }
+  try {
+    return readFileSync(join(resolved, marker), "utf8") === expectedContent;
+  } catch {
+    return false;
+  }
+}
+
 describe("gitRootOf", () => {
   test("GRD-01 resolves the repo root when given the root itself", async () => {
     const dir = initRepo();
-    assert.equal(await gitRootOf(dir), realpathSync(dir));
+    writeFileSync(join(dir, "marker.txt"), "root");
+    assert.equal(sameLocation(await gitRootOf(dir), "marker.txt", "root"), true);
     rmSync(dir, { recursive: true, force: true });
   });
 
   test("GRD-01 resolves the same repo root when given a real subdirectory", async () => {
     const dir = initRepo();
     mkdirSync(join(dir, "apps", "web"), { recursive: true });
-    assert.equal(await gitRootOf(join(dir, "apps", "web")), realpathSync(dir));
+    writeFileSync(join(dir, "marker.txt"), "root");
+    assert.equal(sameLocation(await gitRootOf(join(dir, "apps", "web")), "marker.txt", "root"), true);
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -372,14 +391,17 @@ describe("gitRootOf", () => {
     writeFileSync(join(main, "a.ts"), "export const a = 1;\n");
     git(main, ["add", "-A"]);
     git(main, ["commit", "-q", "-m", "initial"]);
+    writeFileSync(join(main, "marker.txt"), "main");
 
     const worktree = mkdtempSync(join(tmpdir(), "git-root-worktree-"));
     rmSync(worktree, { recursive: true, force: true });
     git(main, ["worktree", "add", "-b", "feature-x", worktree]);
     mkdirSync(join(worktree, "apps", "web"), { recursive: true });
+    writeFileSync(join(worktree, "marker.txt"), "worktree");
 
-    assert.equal(await gitRootOf(join(worktree, "apps", "web")), realpathSync(worktree));
-    assert.notEqual(await gitRootOf(join(worktree, "apps", "web")), realpathSync(main));
+    const resolved = await gitRootOf(join(worktree, "apps", "web"));
+    assert.equal(sameLocation(resolved, "marker.txt", "worktree"), true);
+    assert.equal(sameLocation(resolved, "marker.txt", "main"), false);
 
     git(main, ["worktree", "remove", "--force", worktree]);
     rmSync(main, { recursive: true, force: true });
