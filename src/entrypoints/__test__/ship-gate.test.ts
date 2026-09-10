@@ -326,6 +326,30 @@ describe("ship-gate: commit/push/pr-open run the same battery stop would, before
     assert.equal(cursor.decision.kind === "deny" ? cursor.decision.rule : "", "ship-gate-lint");
   });
 
+  /**
+   * TFT-04 — `runCommand` no longer truncates its own output; the operator-facing bound on a gate command's
+   * shown output now comes only from `trimOutputTail` downstream ([/decisions/ad-133.md](/decisions/ad-133.md)).
+   * This proves that move is lossless.
+   */
+  test("TFT-04 a lint failure's output stays bounded to the last 8000 characters, unaffected by the move", async () => {
+    const root = dirtyRepo();
+    const bigOutputLint = [
+      process.execPath,
+      "-e",
+      "process.stdout.write('x'.repeat(9000) + 'END'); process.exit(1);",
+    ];
+    writePolicy(root, { grind: { enabled: true, lintCommand: bigOutputLint } });
+
+    const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShip(root, PUSH)));
+
+    assert.equal(outcome.decision.kind, "deny", JSON.stringify(outcome.decision));
+    const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
+    const run = /x+END/.exec(reason);
+    assert.notEqual(run, null, reason);
+    const xCount = (run?.[0].length ?? 0) - "END".length;
+    assert.equal(xCount, 7997, "the shown output is exactly the last 8000 characters (7997 x's + END)");
+  });
+
   test("AC lint passing but test failing denies push, identically on both hosts", async () => {
     const root = dirtyRepo();
     writePolicy(root, { grind: { enabled: true, lintCommand: gate(0), testCommand: gate(1) } });

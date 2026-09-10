@@ -140,6 +140,7 @@ Handoff section and a link back to this index.
 | [AD-130](/decisions/ad-130.md) | gh api pr-open/push/pr-merge detection is scoped to the local checkout's own remote | active |
 | [AD-131](/decisions/ad-131.md) | A ship-gate denial names what it checked and points at tlc harness why | active |
 | [AD-132](/decisions/ad-132.md) | Git-root discovery replaces an exact-match guard, in the six functions and their consumers | active |
+| [AD-133](/decisions/ad-133.md) | runCommand stops truncating; the one caller that needs a bound already had one | active |
 
 ## Archived
 

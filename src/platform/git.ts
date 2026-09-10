@@ -189,13 +189,7 @@ export async function runCommand(
     env: options.env ? { ...process.env, ...options.env } : process.env,
   });
   const combined = (result.stdout + result.stderr).trim();
-  const maxChars = 8000;
-  const output =
-    combined.length === 0
-      ? "(no output captured)"
-      : combined.length <= maxChars
-        ? combined
-        : combined.slice(-maxChars);
+  const output = combined.length === 0 ? "(no output captured)" : combined;
   return {
     exitCode: result.exitCode,
     output,
