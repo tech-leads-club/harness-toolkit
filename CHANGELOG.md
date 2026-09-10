@@ -6,6 +6,10 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## Unreleased
+
+- **AD-132** — Six git-reading functions discover the true repo root instead of requiring an exact match
+
 ## v0.13.0
 
 - **AD-131** — A ship-gate denial names what it checked and points at tlc harness why
