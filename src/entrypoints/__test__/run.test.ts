@@ -176,12 +176,71 @@ test("a handler that throws records one adapter.error obs entry naming the provi
       stdinOf(JSON.stringify(payload)),
     );
     const records = obsRecords(root);
-    assert.equal(records.length, 1);
-    assert.equal(records[0]?.kind, "adapter.error");
-    const attrs = records[0]?.attrs as Record<string, unknown>;
+    assert.equal(records.length, 2, "hook.enter precedes adapter.error, AD-136");
+    assert.equal(records[0]?.kind, "hook.enter");
+    assert.equal(records[1]?.kind, "adapter.error");
+    const attrs = records[1]?.attrs as Record<string, unknown>;
     assert.equal(attrs.provider, "cursor");
     assert.equal(attrs.event, "tool.before");
     assert.match(String(attrs.message), /boom/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * AD-136 — the visibility gap this closes: a hook invocation that dies between starting and any existing
+ * record previously left nothing at all in `obs.jsonl`, indistinguishable from a hook that never ran.
+ */
+test("hook.enter is recorded before the handler runs, and precedes a deny's own policy.deny record", async () => {
+  const root = tempRoot();
+  try {
+    const payload = cursorPayload(root);
+    const outcome = await runHandler(
+      () => ({ kind: "deny", reason: "no", rule: "test-deny" }),
+      stdinOf(JSON.stringify(payload)),
+    );
+    assert.equal(outcome.decision.kind, "deny");
+    const records = obsRecords(root);
+    assert.equal(records.length, 2);
+    assert.equal(records[0]?.kind, "hook.enter");
+    const enterAttrs = records[0]?.attrs as Record<string, unknown>;
+    assert.equal(enterAttrs.event, "tool.before");
+    assert.equal(enterAttrs.toolName, "Read");
+    assert.equal(records[0]?.provider, "cursor");
+    assert.equal(records[1]?.kind, "policy.deny");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("hook.enter is not recorded when the event never resolves — nothing to attribute it to", async () => {
+  const root = tempRoot();
+  try {
+    await withCwd(root, () => runHandler(() => ({ kind: "allow" }), stdinOf(JSON.stringify({ foo: "bar" }))));
+    const records = obsRecords(root);
+    assert.equal(
+      records.every((record) => record.kind !== "hook.enter"),
+      true,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a write failure recording hook.enter does not affect the returned decision", async () => {
+  const root = tempRoot();
+  try {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const { dirname } = await import("node:path");
+    const blocker = join(root, ".tlc");
+    mkdirSync(dirname(blocker), { recursive: true });
+    writeFileSync(blocker, "not a directory", "utf8");
+
+    const payload = cursorPayload(root);
+    const outcome = await runHandler(() => ({ kind: "allow" }), stdinOf(JSON.stringify(payload)));
+
+    assert.equal(outcome.decision.kind, "allow", "the write failure is swallowed, not thrown");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

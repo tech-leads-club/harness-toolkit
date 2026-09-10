@@ -31,7 +31,7 @@ function readJsonl(path: string): Array<Record<string, unknown>> {
 }
 
 function obsRecords(root: string): Array<Record<string, unknown>> {
-  return readJsonl(join(projectStateDir(root), "obs.jsonl"));
+  return readJsonl(join(projectStateDir(root), "obs.jsonl")).filter((record) => record.kind !== "hook.enter");
 }
 
 function allRecords(root: string): Array<Record<string, unknown>> {

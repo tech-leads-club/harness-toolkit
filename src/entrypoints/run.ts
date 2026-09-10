@@ -62,17 +62,38 @@ function errorMessage(error: unknown): string {
 }
 
 // why: ObsKind is a closed union with no adapter-boundary member — these fire before a provider/session is known, so they bypass core's typed observability rather than widening that union from outside core.
-function recordAdapterEvent(root: string, kind: string, attrs: Record<string, unknown>): void {
+function recordAdapterEvent(
+  root: string,
+  kind: string,
+  attrs: Record<string, unknown>,
+  provider = "unknown",
+): void {
   try {
     appendRecord(join(projectStateDir(root), "obs.jsonl"), {
       schema: "harness.observability.v1",
-      provider: "unknown",
+      provider,
       kind,
       level: "signal",
       ts: new Date().toISOString(),
       attrs,
     });
   } catch {}
+}
+
+/**
+ * AD-136 — a hook invocation that never reaches the point where any existing record gets written (the handler
+ * killed mid-flight, a host-side timeout) previously left nothing in `obs.jsonl` at all — indistinguishable
+ * from a hook that never started. This is the earliest point after an event is known: before `loadPolicy`,
+ * before `handler` runs, before anything that could throw or take time. A future incident reads as "entered,
+ * no paired completion" instead of being reconstructed from raw provider traces after the fact.
+ */
+function recordHookEnter(event: HarnessEvent): void {
+  recordAdapterEvent(
+    event.projectDir,
+    "hook.enter",
+    { event: event.event, toolName: event.toolName ?? "none", sessionKey: event.sessionKey },
+    event.provider,
+  );
 }
 
 /**
@@ -155,6 +176,7 @@ export async function runHandler(handler: Handler, io: RunIo = {}): Promise<RunO
   }
 
   const capabilities = provider.capabilities();
+  recordHookEnter(event);
 
   try {
     const policy = coreFacade.policy.loadPolicy(event.projectDir);
