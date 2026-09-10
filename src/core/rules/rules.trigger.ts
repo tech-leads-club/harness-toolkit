@@ -27,6 +27,12 @@ export type TriggerContext = {
    * ([/decisions/ad-130.md](/decisions/ad-130.md)).
    */
   repoRemote?: { owner: string; repo: string } | null;
+  /**
+   * why optional, and read only by the MCP shape: a shell-triggered event never carries this, and the vast
+   * majority of MCP events are not pr-open-shaped either — populating it for every event would be work spent
+   * on a field almost nothing reads ([/decisions/ad-135.md](/decisions/ad-135.md)).
+   */
+  toolInput?: Record<string, unknown>;
 };
 
 /**
@@ -256,6 +262,81 @@ function matchesAnyShape(
   return apiShapes.some((shape) => matchesApiShape(words, shape, repoRemote));
 }
 
+/**
+ * why a structural strip, not a literal prefix list: an MCP server's name is operator-configured
+ * (`mcp__github__create_pull_request` vs. `mcp__gh__create_pull_request` name the same tool through two
+ * differently-configured servers), so a fixed string would miss every server name this project has not seen
+ * yet — the same "why a basename fallback" reasoning `tokenMatches` already applies to a script's own path
+ * ([/decisions/ad-121.md](/decisions/ad-121.md)).
+ */
+export function normalizeMcpToolName(toolName: string): string {
+  const withoutHostPrefix = toolName.startsWith("MCP:") ? toolName.slice(4) : toolName;
+  if (!withoutHostPrefix.startsWith("mcp__")) {
+    return withoutHostPrefix;
+  }
+  const afterMcp = withoutHostPrefix.slice("mcp__".length);
+  const lastSeparator = afterMcp.lastIndexOf("__");
+  return lastSeparator === -1 ? afterMcp : afterMcp.slice(lastSeparator + 2);
+}
+
+/**
+ * why a third grammar, not a widened `ApiShape`: an MCP tool call has no path or HTTP method to infer a verb
+ * from — the tool name already names the act, the way a CLI subcommand does. Reusing `ApiShape`'s fields
+ * would leave `lastSegment`/`methods` meaningless for this grammar ([/decisions/ad-135.md](/decisions/ad-135.md)).
+ */
+type McpShape = {
+  readonly toolName: string;
+  readonly ownerField: string;
+  readonly repoField: string;
+};
+
+const MCP_SHAPES: Partial<Record<"pr-open" | "commit" | "push" | "pr-merge", readonly McpShape[]>> = {
+  "pr-open": [{ toolName: "create_pull_request", ownerField: "owner", repoField: "repo" }],
+};
+
+function matchesMcpShape(
+  context: TriggerContext,
+  shape: McpShape,
+  repoRemote?: { owner: string; repo: string } | null,
+): boolean {
+  if (context.toolName === undefined || normalizeMcpToolName(context.toolName) !== shape.toolName) {
+    return false;
+  }
+  const owner = context.toolInput?.[shape.ownerField];
+  const repo = context.toolInput?.[shape.repoField];
+  if (typeof owner !== "string" || typeof repo !== "string") {
+    return true;
+  }
+  if (repoRemote === undefined) {
+    return true;
+  }
+  if (repoRemote === null) {
+    return false;
+  }
+  return owner === repoRemote.owner && repo === repoRemote.repo;
+}
+
+function matchesAnyMcpShape(
+  kind: "pr-open" | "commit" | "push" | "pr-merge",
+  context: TriggerContext,
+): boolean {
+  const mcpShapes = MCP_SHAPES[kind] ?? [];
+  return mcpShapes.some((shape) => matchesMcpShape(context, shape, context.repoRemote));
+}
+
+/**
+ * why exported, mirroring `mentionsGhApi`: the caller deciding whether `repoRemote` is worth a process spawn
+ * needs to know whether the MCP-shaped path could possibly be in play, without paying for `localRepoRemote`
+ * on every unrelated tool call ([/decisions/ad-130.md](/decisions/ad-130.md), [/decisions/ad-135.md](/decisions/ad-135.md)).
+ */
+export function mentionsMcpAct(toolName: string | undefined): boolean {
+  if (toolName === undefined) {
+    return false;
+  }
+  const normalized = normalizeMcpToolName(toolName);
+  return Object.values(MCP_SHAPES).some((shapes) => shapes.some((shape) => shape.toolName === normalized));
+}
+
 export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): boolean {
   switch (trigger.kind) {
     case "stop":
@@ -266,12 +347,13 @@ export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): b
     case "commit":
     case "push":
     case "pr-merge": {
-      if (context.command === undefined) {
-        return false;
+      const byCommand =
+        context.command !== undefined &&
+        subCommands(context.command).some((words) => matchesAnyShape(words, trigger.kind, context.repoRemote));
+      if (byCommand) {
+        return true;
       }
-      return subCommands(context.command).some((words) =>
-        matchesAnyShape(words, trigger.kind, context.repoRemote),
-      );
+      return matchesAnyMcpShape(trigger.kind, context);
     }
     default: {
       if (context.command === undefined) {

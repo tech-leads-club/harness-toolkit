@@ -94,7 +94,12 @@ function recordShellDecisionIfShell(event: HarnessEvent, ctx: HandlerContext, de
  */
 async function rulesDecision(event: HarnessEvent, ctx: HandlerContext): Promise<Decision> {
   const config = ctx.policy.rules;
-  const trigger = { event: event.event, toolName: event.toolName, command: event.command };
+  const trigger = {
+    event: event.event,
+    toolName: event.toolName,
+    command: event.command,
+    toolInput: event.toolInput,
+  };
   const shaRoot = shaScopeRoot(event);
   const dryRun = coreFacade.rules.decideAction(event.projectDir, config, trigger, {
     sha: null,
@@ -110,7 +115,10 @@ async function rulesDecision(event: HarnessEvent, ctx: HandlerContext): Promise<
   // ([/decisions/ad-130.md](/decisions/ad-130.md)) — a CLI shape or an unrelated trigger never reads it.
   const [sha, repoRemote] = await Promise.all([
     currentGitSha(shaRoot),
-    event.command && coreFacade.rules.mentionsGhApi(event.command) ? localRepoRemote(shaRoot) : undefined,
+    (event.command && coreFacade.rules.mentionsGhApi(event.command)) ||
+    coreFacade.rules.mentionsMcpAct(event.toolName)
+      ? localRepoRemote(shaRoot)
+      : undefined,
   ]);
   const verdict = coreFacade.rules.decideAction(
     event.projectDir,

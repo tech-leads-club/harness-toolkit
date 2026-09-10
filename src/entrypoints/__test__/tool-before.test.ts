@@ -93,6 +93,29 @@ function cursorMcp(root: string): string {
   });
 }
 
+/** AD-135 — the production shapes: Cursor's beforeMCPExecution sends the bare tool name. */
+function cursorMcpCreatePr(root: string, toolInput: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    hook_event_name: "beforeMCPExecution",
+    workspace_roots: [root],
+    conversation_id: "conv-1",
+    session_id: "sess-1",
+    tool_name: "create_pull_request",
+    tool_input: toolInput,
+  });
+}
+
+/** AD-135 — Claude Code's PreToolUse sends `mcp__<server>__<tool>`, fanned out to `mcp.before`. */
+function claudeMcpCreatePr(root: string, toolInput: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    hook_event_name: "PreToolUse",
+    cwd: root,
+    session_id: "sess-1",
+    tool_name: "mcp__github__create_pull_request",
+    tool_input: toolInput,
+  });
+}
+
 function cursorRead(root: string, filePath: string): string {
   return JSON.stringify({
     hook_event_name: "beforeReadFile",
@@ -882,6 +905,63 @@ describe("operator rules", () => {
       withRule(root, "Convene the jury.");
 
       const outcome = await runHandler(toolBeforeHandler, stdinOf(opensPr(root, "cursor", "npm test")));
+
+      assert.equal(outcome.decision.kind, "allow");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * AD-135 — the production gap: `mcp.before` never reached the operator's rule at all, so a `create_pull_request`
+   * MCP call opened a pull request the exact same `pr-open` rule already denied for `gh pr create` and
+   * `gh api .../pulls`. P3.3's end-to-end reproduction, on both providers.
+   */
+  test("AD-135 a create_pull_request MCP call with no proof is denied, same rule as gh pr create", async () => {
+    const root = tempRoot();
+    try {
+      withRule(root, "Convene the jury.");
+
+      const cursorOutcome = await runHandler(toolBeforeHandler, stdinOf(cursorMcpCreatePr(root)));
+      assert.equal(cursorOutcome.decision.kind, "deny", "cursor");
+      assert.equal(
+        cursorOutcome.decision.kind === "deny" ? cursorOutcome.decision.rule : "",
+        "rule:review-before-pr",
+      );
+
+      const claudeOutcome = await runHandler(toolBeforeHandler, stdinOf(claudeMcpCreatePr(root)));
+      assert.equal(claudeOutcome.decision.kind, "deny", "claude");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("AD-135 the same MCP call is allowed once the proof exists, same as the shell form", async () => {
+    const root = tempRoot();
+    try {
+      withRule(root, "Convene the jury.");
+      observe(root, "the-jury");
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(cursorMcpCreatePr(root)));
+
+      assert.equal(outcome.decision.kind, "allow");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** AD-135 P2 — an MCP call naming a different repository than this one does not fire the rule. */
+  test("AD-135 an MCP call scoped to a different repository is untouched", async () => {
+    const root = tempRoot();
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: root });
+    try {
+      withRule(root, "Convene the jury.");
+
+      const outcome = await runHandler(
+        toolBeforeHandler,
+        stdinOf(cursorMcpCreatePr(root, { owner: "acme", repo: "other-repo" })),
+      );
 
       assert.equal(outcome.decision.kind, "allow");
     } finally {

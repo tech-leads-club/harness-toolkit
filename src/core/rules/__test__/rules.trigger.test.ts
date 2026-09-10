@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { firingRules, mentionsGhApi, triggerMatches } from "../rules.trigger.ts";
+import { firingRules, mentionsGhApi, mentionsMcpAct, normalizeMcpToolName, triggerMatches } from "../rules.trigger.ts";
 import type { Rule } from "../rules.types.ts";
 
 function rule(overrides: Partial<Rule> = {}): Rule {
@@ -650,5 +650,152 @@ describe("mentionsGhApi", () => {
   test("ARS-05 false when the words appear only inside a heredoc body, same as every other shell trigger", () => {
     const command = "cat <<EOF > notes.md\nremember to run gh api later\nEOF";
     assert.equal(mentionsGhApi(command), false);
+  });
+});
+
+/**
+ * AD-135 — a third grammar for the same act: an MCP tool call, alongside the CLI words `SHELL_SHAPES` already
+ * reads and the REST path+method `API_SHAPES` already reads. Confirmed in production: `gh pr create` and
+ * `gh api .../pulls` attempts in one session were correctly denied by the operator's own `pr-open` rule; the
+ * GitHub MCP server's `create_pull_request` tool, invoked in the same session, reached `triggerMatches` with
+ * no `command` at all and was never evaluated.
+ */
+describe("normalizeMcpToolName", () => {
+  test("PMS-N1 a bare tool name (Cursor's beforeMCPExecution payload) passes through unchanged", () => {
+    assert.equal(normalizeMcpToolName("create_pull_request"), "create_pull_request");
+  });
+
+  test("PMS-N2 Claude Code's mcp__<server>__<tool> convention strips to the tool name", () => {
+    assert.equal(normalizeMcpToolName("mcp__github__create_pull_request"), "create_pull_request");
+  });
+
+  test("PMS-N3 a server name containing its own underscore still strips to the tool name", () => {
+    assert.equal(
+      normalizeMcpToolName("mcp__github_enterprise__create_pull_request"),
+      "create_pull_request",
+      "the split is on the LAST __, not the first",
+    );
+  });
+
+  test("PMS-N4 Cursor's host-prefixed generic-tool form strips to the tool name", () => {
+    assert.equal(normalizeMcpToolName("MCP:create_pull_request"), "create_pull_request");
+  });
+});
+
+describe("triggerMatches — MCP shape (pr-open)", () => {
+  test("PMS-01 a bare create_pull_request tool call fires pr-open", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "mcp.before", toolName: "create_pull_request" }),
+      true,
+    );
+  });
+
+  test("PMS-02 Claude Code's mcp__<server>__create_pull_request fires pr-open, any server name", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "mcp.before", toolName: "mcp__github__create_pull_request" }),
+      true,
+    );
+  });
+
+  test("PMS-03 Cursor's MCP:create_pull_request fires pr-open", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "mcp.before", toolName: "MCP:create_pull_request" }),
+      true,
+    );
+  });
+
+  test("PMS-04 an unrelated or merely-similar MCP tool name does not fire — exact match, not substring", () => {
+    for (const toolName of [
+      "create_pull_request_comment",
+      "list_pull_requests",
+      "mcp__github__update_pull_request",
+    ]) {
+      assert.equal(triggerMatches({ kind: "pr-open" }, { event: "mcp.before", toolName }), false, toolName);
+    }
+  });
+
+  test("PMS-05 a shell command still matches exactly as before — the MCP path is additive", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "shell.before", command: "gh pr create --fill" }),
+      true,
+    );
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "shell.before", command: "gh api repos/acme/widgets/pulls -X POST -f title=x" },
+      ),
+      true,
+    );
+  });
+
+  test("PMS-06 neither command nor toolName present — no act to recognize", () => {
+    assert.equal(triggerMatches({ kind: "pr-open" }, { event: "mcp.before" }), false);
+  });
+});
+
+describe("triggerMatches — MCP shape repo scope (pr-open)", () => {
+  const context = (toolInput: Record<string, unknown>, repoRemote?: { owner: string; repo: string } | null) => ({
+    event: "mcp.before",
+    toolName: "create_pull_request",
+    toolInput,
+    repoRemote,
+  });
+
+  test("PMS-07 toolInput names the local repository — fires", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        context({ owner: "acme", repo: "widgets" }, { owner: "acme", repo: "widgets" }),
+      ),
+      true,
+    );
+  });
+
+  test("PMS-08 toolInput names a different repository — does not fire", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        context({ owner: "acme", repo: "other-repo" }, { owner: "acme", repo: "widgets" }),
+      ),
+      false,
+    );
+  });
+
+  test("PMS-09 repoRemote resolved to null (no confirmable local repo) — fails the scoped match", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, context({ owner: "acme", repo: "widgets" }, null)),
+      false,
+    );
+  });
+
+  test("PMS-10 repoRemote never resolved (undefined) — fires without a scope check, matching matchesApiShape", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, context({ owner: "acme", repo: "widgets" })),
+      true,
+    );
+  });
+
+  test("PMS-11 toolInput carries no owner/repo fields — fires without a scope check", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        context({ title: "fix: something" }, { owner: "acme", repo: "widgets" }),
+      ),
+      true,
+    );
+  });
+});
+
+describe("mentionsMcpAct", () => {
+  test("PMS-12 true for every recognized MCP shape's tool name, in any provider's decoration", () => {
+    assert.equal(mentionsMcpAct("create_pull_request"), true);
+    assert.equal(mentionsMcpAct("mcp__github__create_pull_request"), true);
+    assert.equal(mentionsMcpAct("MCP:create_pull_request"), true);
+  });
+
+  test("PMS-13 false for an unrelated tool name or undefined", () => {
+    assert.equal(mentionsMcpAct("Read"), false);
+    assert.equal(mentionsMcpAct("mcp__github__list_pull_requests"), false);
+    assert.equal(mentionsMcpAct(undefined), false);
   });
 });
