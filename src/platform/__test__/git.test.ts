@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import {
   filterCodeTargets,
   filterTestTargets,
+  gitRootOf,
   listAddedLines,
   listChangedRepoFiles,
   localRepoRemote,
@@ -190,5 +191,52 @@ describe("localRepoRemote", () => {
     const dir = mkdtempSync(join(tmpdir(), "git-test-non-repo-"));
     assert.equal(await localRepoRemote(dir), null);
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("gitRootOf", () => {
+  test("GRD-01 resolves the repo root when given the root itself", async () => {
+    const dir = initRepo();
+    assert.equal(await gitRootOf(dir), dir);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GRD-01 resolves the same repo root when given a real subdirectory", async () => {
+    const dir = initRepo();
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+    assert.equal(await gitRootOf(join(dir, "apps", "web")), dir);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GRD-03 null when the directory has no git repository at all", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "git-root-non-repo-"));
+    assert.equal(await gitRootOf(dir), null);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GRD-03 null when the directory does not exist on disk", async () => {
+    assert.equal(await gitRootOf(join(tmpdir(), "does-not-exist-at-all-xyz")), null);
+  });
+
+  /**
+   * GRD-07 — a worktree's own subdirectory must resolve to that worktree's own root, never the main
+   * checkout's, preserving [/decisions/ad-129.md](/decisions/ad-129.md)'s existing guarantee.
+   */
+  test("GRD-07 a git worktree's own subdirectory resolves to the worktree's own root, not the main checkout's", async () => {
+    const main = initRepo();
+    writeFileSync(join(main, "a.ts"), "export const a = 1;\n");
+    git(main, ["add", "-A"]);
+    git(main, ["commit", "-q", "-m", "initial"]);
+
+    const worktree = mkdtempSync(join(tmpdir(), "git-root-worktree-"));
+    rmSync(worktree, { recursive: true, force: true });
+    git(main, ["worktree", "add", "-b", "feature-x", worktree]);
+    mkdirSync(join(worktree, "apps", "web"), { recursive: true });
+
+    assert.equal(await gitRootOf(join(worktree, "apps", "web")), worktree);
+    assert.notEqual(await gitRootOf(join(worktree, "apps", "web")), main);
+
+    git(main, ["worktree", "remove", "--force", worktree]);
+    rmSync(main, { recursive: true, force: true });
   });
 });

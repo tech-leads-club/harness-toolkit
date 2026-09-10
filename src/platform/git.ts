@@ -3,6 +3,34 @@ import { join } from "node:path";
 import { runProcess } from "./process.ts";
 import { normalizeSeparators } from "./sanitize.ts";
 
+/**
+ * why: `existsSync(join(dir, ".git"))` requires `.git` to exist *exactly* at `dir` — it does not discover a
+ * repository root the way git itself does, walking upward from any subdirectory. A directory genuinely inside
+ * a real repository read as "not a repository" by every caller that used that check, silently
+ * ([/decisions/ad-132.md](/decisions/ad-132.md)).
+ *
+ * invariant: `git rev-parse --show-toplevel` already handles every case this project would otherwise have to
+ * reimplement — a subdirectory, a worktree's own subdirectory, a missing path, a genuinely absent repository —
+ * so nothing here special-cases any of them.
+ */
+export async function gitRootOf(dir: string): Promise<string | null> {
+  // why: every other caller in this file used to check `existsSync` first, which absorbed a missing directory
+  // silently. This function is now the first thing that runs when the directory does not exist at all —
+  // `spawn` rejects instead of resolving a non-zero exit code for that case, a different failure shape than
+  // "not a repository" ([/decisions/ad-132.md](/decisions/ad-132.md)).
+  let result: { exitCode: number; stdout: string };
+  try {
+    result = await runProcess({ command: ["git", "rev-parse", "--show-toplevel"], cwd: dir });
+  } catch {
+    return null;
+  }
+  if (result.exitCode !== 0) {
+    return null;
+  }
+  const root = result.stdout.trim();
+  return root.length > 0 ? root : null;
+}
+
 async function gitLines(projectDir: string, args: string[]): Promise<string[]> {
   const result = await runProcess({ command: ["git", ...args], cwd: projectDir });
   if (result.exitCode !== 0) {
