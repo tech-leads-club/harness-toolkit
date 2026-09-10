@@ -173,6 +173,8 @@ export function filterTestTargets(relativePaths: string[]): string[] {
 
 export type CommandResult = { exitCode: number; output: string; durationMs: number };
 
+export const NO_OUTPUT_CAPTURED = "(no output captured)";
+
 export async function runCommand(
   projectDir: string,
   command: string[],
@@ -189,7 +191,7 @@ export async function runCommand(
     env: options.env ? { ...process.env, ...options.env } : process.env,
   });
   const combined = (result.stdout + result.stderr).trim();
-  const output = combined.length === 0 ? "(no output captured)" : combined;
+  const output = combined.length === 0 ? NO_OUTPUT_CAPTURED : combined;
   return {
     exitCode: result.exitCode,
     output,
@@ -209,7 +211,7 @@ export async function listTrackedFiles(projectDir: string): Promise<string[]> {
     return [];
   }
   const result = await runCommand(root, ["git", "ls-files", "-z"]);
-  if (result.exitCode !== 0) {
+  if (result.exitCode !== 0 || result.output === NO_OUTPUT_CAPTURED) {
     return [];
   }
   return result.output.split("\0").filter((path) => path !== "");

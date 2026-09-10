@@ -345,6 +345,17 @@ describe("listTrackedFiles", () => {
   });
 
   /**
+   * Found by review of AD-133's own fix: `git ls-files -z` on a repo with no tracked files exits 0 with empty
+   * stdout, and `runCommand` substitutes `NO_OUTPUT_CAPTURED` for that empty string — a sentinel with no NUL
+   * byte, which `split("\0")` would otherwise return as a single phantom entry.
+   */
+  test("returns an empty array for a real repo with no tracked files, not a phantom entry", async () => {
+    const dir = initRepo();
+    assert.deepEqual(await listTrackedFiles(dir), []);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /**
    * TFT-01 — the confirmed bug: `runCommand`'s old `slice(-8000)` truncation kept only the tail of `git
    * ls-files -z`'s output, dropping whichever files sorted first. `a-marker.ts` sorts before every generated
    * file below, so it is exactly the entry the old bug silently lost.
