@@ -94,9 +94,13 @@ export type TurnScope = {
  *
  * invariant: `turn_base_sha` falls back to `HEAD` when the handoff is absent or its seal diverged —
  * identical to `stop.ts`'s own fallback.
+ * why: `root` is state (worktree-stable, AD-114); `gitRoot` is where the turn's files actually are
+ * (`shaScopeRoot(event)`) — diffing a worktree-valid sha from the wrong directory read a whole unrelated
+ * branch as added ([/decisions/ad-129.md](/decisions/ad-129.md)).
  */
 export async function computeTurnScope(
   root: string,
+  gitRoot: string,
   provider: string,
   sessionKey: string,
   policy: Pick<Policy, "codePaths">,
@@ -104,7 +108,7 @@ export async function computeTurnScope(
   const seal = coreFacade.handoff.handoffInjectable(root, sessionKey);
   const handoff = seal.ok ? coreFacade.handoff.readHandoff(root, provider, sessionKey) : undefined;
   const turnBase = handoff?.turn_base_sha ?? "HEAD";
-  const changedFiles = await listChangedRepoFiles(root, turnBase);
+  const changedFiles = await listChangedRepoFiles(gitRoot, turnBase);
   const codeTargets = filterCodeTargets(changedFiles, policy.codePaths);
   const testTargets = filterTestTargets(changedFiles);
   const commentScope = changedFiles.filter((file) =>
@@ -128,6 +132,7 @@ export async function computeTurnScope(
  */
 export async function pendingCommentViolations(
   root: string,
+  gitRoot: string,
   provider: string,
   sessionKey: string,
   policy: Pick<Policy, "comments" | "codePaths">,
@@ -135,12 +140,12 @@ export async function pendingCommentViolations(
   if (!policy.comments.enabled || policy.comments.onViolation !== "followup") {
     return [];
   }
-  const scope = await computeTurnScope(root, provider, sessionKey, policy);
+  const scope = await computeTurnScope(root, gitRoot, provider, sessionKey, policy);
   if (scope.commentTargets.length === 0) {
     return [];
   }
   return coreFacade.commentPolicy.scanAddedComments(
-    root,
+    gitRoot,
     scope.commentTargets,
     policy.comments.mode,
     scope.turnBase,

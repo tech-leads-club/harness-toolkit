@@ -26,7 +26,13 @@ async function commentGateBeforeCommit(event: HarnessEvent, ctx: HandlerContext)
   if (!coreFacade.rules.triggerMatches({ kind: "commit" }, context)) {
     return { kind: "abstain" };
   }
-  const hits = await pendingCommentViolations(event.projectDir, event.provider, event.sessionKey, ctx.policy);
+  const hits = await pendingCommentViolations(
+    event.projectDir,
+    shaScopeRoot(event),
+    event.provider,
+    event.sessionKey,
+    ctx.policy,
+  );
   if (hits.length === 0) {
     return { kind: "abstain" };
   }

@@ -49,13 +49,13 @@ export async function shipGateVerdict(event: HarnessEvent, ctx: HandlerContext):
   }
   const { policy } = ctx;
   const root = event.projectDir;
+  const shaRoot = shaScopeRoot(event);
   const provider = event.provider;
   const sessionKey = event.sessionKey;
   const session = sessionIdFromKey(event);
-  const scope = await computeTurnScope(root, provider, sessionKey, policy);
-  const shaRoot = shaScopeRoot(event);
+  const scope = await computeTurnScope(root, shaRoot, provider, sessionKey, policy);
 
-  const commentHits = await pendingCommentViolations(root, provider, sessionKey, policy);
+  const commentHits = await pendingCommentViolations(root, shaRoot, provider, sessionKey, policy);
   if (commentHits.length > 0) {
     return {
       kind: "deny",
@@ -143,13 +143,13 @@ export async function shipGateVerdict(event: HarnessEvent, ctx: HandlerContext):
   }
 
   if (policy.duplication.enabled && scope.codeTargets.length > 0) {
-    const added = await listAddedLines(root, scope.codeTargets, scope.turnBase);
-    const tracked = await listTrackedFiles(root);
+    const added = await listAddedLines(shaRoot, scope.codeTargets, scope.turnBase);
+    const tracked = await listTrackedFiles(shaRoot);
     const scan = coreFacade.duplication.scanProject(
       tracked,
       (relativePath) => {
         try {
-          return readFileSync(`${root}/${relativePath}`, "utf8");
+          return readFileSync(`${shaRoot}/${relativePath}`, "utf8");
         } catch {
           return null;
         }
