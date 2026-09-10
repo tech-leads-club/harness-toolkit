@@ -36,6 +36,27 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+/**
+ * hazard: `beforeMCPExecution`'s own `tool_input` is documented as a JSON *string* ("JSON params string that
+ * will be passed to the tool"), not an object like `preToolUse`'s — `asRecord` alone left it `undefined` for
+ * every MCP call on this host, silently skipping any rule that reads `toolInput` fields
+ * ([/decisions/ad-135.md](/decisions/ad-135.md)).
+ */
+function mcpToolInput(value: unknown): Record<string, unknown> | undefined {
+  const direct = asRecord(value);
+  if (direct) {
+    return direct;
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  try {
+    return asRecord(JSON.parse(value));
+  } catch {
+    return undefined;
+  }
+}
+
 function asStatus(value: unknown): "completed" | "aborted" | "error" | undefined {
   return value === "completed" || value === "aborted" || value === "error" ? value : undefined;
 }
@@ -164,7 +185,7 @@ export function cursorToEvent(raw: Record<string, unknown>): HarnessEvent | null
       if (toolName) {
         event.toolName = toolName;
       }
-      const toolInput = asRecord(raw.tool_input);
+      const toolInput = mcpToolInput(raw.tool_input);
       if (toolInput) {
         event.toolInput = toolInput;
       }

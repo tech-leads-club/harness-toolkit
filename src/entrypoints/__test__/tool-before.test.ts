@@ -94,6 +94,7 @@ function cursorMcp(root: string): string {
 }
 
 /** AD-135 — the production shapes: Cursor's beforeMCPExecution sends the bare tool name. */
+/** AD-135 F2 — `tool_input` is a JSON *string* on this host's real `beforeMCPExecution` payload, not an object. */
 function cursorMcpCreatePr(root: string, toolInput: Record<string, unknown> = {}): string {
   return JSON.stringify({
     hook_event_name: "beforeMCPExecution",
@@ -101,7 +102,7 @@ function cursorMcpCreatePr(root: string, toolInput: Record<string, unknown> = {}
     conversation_id: "conv-1",
     session_id: "sess-1",
     tool_name: "create_pull_request",
-    tool_input: toolInput,
+    tool_input: JSON.stringify(toolInput),
   });
 }
 
@@ -953,9 +954,9 @@ describe("operator rules", () => {
   /** AD-135 P2 — an MCP call naming a different repository than this one does not fire the rule. */
   test("AD-135 an MCP call scoped to a different repository is untouched", async () => {
     const root = tempRoot();
-    execFileSync("git", ["init", "-q"], { cwd: root });
-    execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: root });
     try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: root });
       withRule(root, "Convene the jury.");
 
       const outcome = await runHandler(
@@ -977,9 +978,9 @@ describe("operator rules", () => {
    */
   test("AD-135 an MCP call naming this repository, resolved through a real git remote, is denied", async () => {
     const root = tempRoot();
-    execFileSync("git", ["init", "-q"], { cwd: root });
-    execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: root });
     try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: root });
       withRule(root, "Convene the jury.");
 
       const outcome = await runHandler(
