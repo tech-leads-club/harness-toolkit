@@ -20,6 +20,8 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-132** — Git-root discovery replaces an exact-match guard, in the six functions and their consumers ([/decisions/ad-132.md](/decisions/ad-132.md))
 - **AD-133** — runCommand stops truncating; the one caller that needs a bound already had one ([/decisions/ad-133.md](/decisions/ad-133.md))
 - **AD-134** — runCommand moves to process.ts; listTrackedFiles never reaches for it again ([/decisions/ad-134.md](/decisions/ad-134.md))
+- **AD-135** — pr-open recognizes its MCP surface ([/decisions/ad-135.md](/decisions/ad-135.md))
+- **AD-136** — hook.enter makes a hook invocation observable before any decision is made ([/decisions/ad-136.md](/decisions/ad-136.md))
 
 ## 2026-09-09
 
