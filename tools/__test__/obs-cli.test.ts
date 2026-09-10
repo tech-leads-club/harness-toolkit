@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, test } from "node:test";
 import type { ObsEvent } from "../../src/core/observability/observability.types.ts";
 import { projectStateDir } from "../../src/platform/paths.ts";
-import { latestSessionId, limitFrom, liveJson, liveText, NO_EVENTS } from "../obs-cli.ts";
+import { latestSessionId, limitFrom, liveEvents, liveJson, liveText, NO_EVENTS } from "../obs-cli.ts";
 
 const cleanupRoots: string[] = [];
 
@@ -36,6 +36,60 @@ function event(kind: ObsEvent["kind"], ts: string): ObsEvent {
     attrs: { note: "x" },
   };
 }
+
+function writeObsLines(root: string, events: readonly ObsEvent[]): void {
+  const dir = projectStateDir(root);
+  mkdirSync(dir, { recursive: true });
+  const lines = events.map((e) => JSON.stringify(e)).join("\n");
+  writeFileSync(join(dir, "obs.jsonl"), lines ? `${lines}\n` : "");
+}
+
+/**
+ * AD-136 F1 — the exact incident shape: a real denial, followed by enough non-allowlisted noise
+ * (`hook.enter`) to fill a naive tail truncated before filtering.
+ */
+describe("liveEvents", () => {
+  test("a policy.deny stays visible behind a flood of non-allowlisted noise", () => {
+    const root = newRoot();
+    const base = Date.parse("2026-01-01T00:00:00.000Z");
+    const events: ObsEvent[] = [event("policy.deny", new Date(base).toISOString())];
+    for (let i = 0; i < 60; i += 1) {
+      events.push(event("hook.enter" as ObsEvent["kind"], new Date(base + (i + 1) * 1000).toISOString()));
+    }
+    writeObsLines(root, events);
+
+    const live = liveEvents(root, 40);
+
+    assert.ok(
+      live.some((e) => e.kind === "policy.deny"),
+      "the denial must survive the flood",
+    );
+  });
+
+  test("the tail is still cut to the requested limit once filtered", () => {
+    const root = newRoot();
+    const base = Date.parse("2026-01-01T00:00:00.000Z");
+    const events: ObsEvent[] = [];
+    for (let i = 0; i < 100; i += 1) {
+      events.push(event("session.start", new Date(base + i * 1000).toISOString()));
+    }
+    writeObsLines(root, events);
+
+    const live = liveEvents(root, 10);
+
+    assert.equal(live.length, 10);
+    assert.equal(live[live.length - 1]?.ts, new Date(base + 99 * 1000).toISOString());
+  });
+
+  test("a kind not on the allowlist is excluded even when nothing else competes for the window", () => {
+    const root = newRoot();
+    writeObsLines(root, [event("hook.enter" as ObsEvent["kind"], "2026-01-01T00:00:00.000Z")]);
+
+    const live = liveEvents(root, 40);
+
+    assert.equal(live.length, 0);
+  });
+});
 
 describe("liveText", () => {
   test("names the empty case instead of printing a blank line", () => {

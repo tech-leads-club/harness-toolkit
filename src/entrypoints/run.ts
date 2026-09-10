@@ -82,6 +82,12 @@ function recordAdapterEvent(
   } catch {}
 }
 
+// hazard: unscoped, one record per hook invocation of any kind flooded the signal plane and pushed
+// `prompt.submit`/`policy.deny` out of two readers' fixed-count tails ([/decisions/ad-136.md](/decisions/ad-136.md)).
+function isGateRelevantHookEvent(event: HarnessEvent): boolean {
+  return event.event === "shell.before" || event.event === "mcp.before";
+}
+
 /**
  * AD-136 — a hook invocation that never reaches the point where any existing record gets written (the handler
  * killed mid-flight, a host-side timeout) previously left nothing in `obs.jsonl` at all — indistinguishable
@@ -90,6 +96,9 @@ function recordAdapterEvent(
  * no paired completion" instead of being reconstructed from raw provider traces after the fact.
  */
 function recordHookEnter(event: HarnessEvent): void {
+  if (!isGateRelevantHookEvent(event)) {
+    return;
+  }
   recordAdapterEvent(
     event.projectDir,
     "hook.enter",

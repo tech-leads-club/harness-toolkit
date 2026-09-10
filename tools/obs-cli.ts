@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { coreFacade } from "../src/core/index.ts";
 import { readSignalEvents } from "../src/core/observability/observability.store.ts";
-import { DEFAULT_OBS, type ObsEvent } from "../src/core/observability/observability.types.ts";
+import { DEFAULT_OBS, LIVE_ALLOWLIST, type ObsEvent } from "../src/core/observability/observability.types.ts";
 import { loadPolicy } from "../src/core/policy/policy.loader.ts";
 import { emitJson, takeJsonFlag } from "../src/platform/cli-output.ts";
 import { projectStateDir } from "../src/platform/paths.ts";
@@ -29,6 +29,16 @@ export function liveJson(events: readonly ObsEvent[]): { count: number; events: 
 export function limitFrom(raw: string | undefined, fallback: number): number {
   const parsed = Number(raw ?? fallback);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+// hazard: filtering a tail already truncated to `limit` leaves a noise kind (`hook.enter`, one record per
+// gate-relevant hook call) able to push every allowlisted event out of the window the operator actually reads
+// — the window has to be read wide, filtered, then cut to `limit`, never the other order
+// ([/decisions/ad-136.md](/decisions/ad-136.md)).
+export function liveEvents(root: string, limit: number, readWide = 20): readonly ObsEvent[] {
+  const wide = readSignalEvents(root, DEFAULT_OBS.signalPath, Math.max(limit * readWide, limit));
+  const allowed = wide.filter((event) => LIVE_ALLOWLIST.has(event.kind));
+  return allowed.slice(-limit);
 }
 
 /**
@@ -67,7 +77,7 @@ function main(argv: string[]): void {
   const arg = rest[1];
 
   if (cmd === "live") {
-    const events = readSignalEvents(root, DEFAULT_OBS.signalPath, limitFrom(arg, 40));
+    const events = liveEvents(root, limitFrom(arg, 40));
     if (json) {
       emitJson(liveJson(events));
     } else {
