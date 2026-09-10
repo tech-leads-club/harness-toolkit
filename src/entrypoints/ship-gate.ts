@@ -44,13 +44,20 @@ async function isShipCommand(event: HarnessEvent, gitRoot: string): Promise<bool
   );
 }
 
-function gateFailureMessage(gate: string, command: readonly string[], outputTail: string): string {
+function gateFailureMessage(
+  gate: string,
+  command: readonly string[],
+  outputTail: string,
+  diag: ReturnType<typeof coreFacade.diagnostics.rootDiagnostic>,
+): string {
   return [
     `BLOCKED: ${gate} failed before shipping — a review or a deploy would have seen this next.`,
     `TRIED: ${command.join(" ")}`,
     `NEED: fix the ${gate} findings, then retry the commit/push/PR.`,
     "",
     outputTail,
+    "",
+    diag.footer,
   ].join("\n");
 }
 
@@ -70,13 +77,16 @@ export async function shipGateVerdict(event: HarnessEvent, ctx: HandlerContext):
   const sessionKey = event.sessionKey;
   const session = sessionIdFromKey(event);
   const scope = await computeTurnScope(root, shaRoot, provider, sessionKey, policy);
+  const rootDiag = coreFacade.diagnostics.rootDiagnostic(shaRoot);
 
   const commentHits = await pendingCommentViolations(root, shaRoot, provider, sessionKey, policy);
   if (commentHits.length > 0) {
+    const diag = coreFacade.diagnostics.diffDiagnostic(shaRoot, await currentGitSha(shaRoot), commentHits);
     return {
       kind: "deny",
-      reason: coreFacade.commentPolicy.commentViolationMessage(commentHits, policy.comments.mode),
+      reason: `${coreFacade.commentPolicy.commentViolationMessage(commentHits, policy.comments.mode)}\n\n${diag.footer}`,
       rule: "ship-gate-comments",
+      diagnostic: diag.summary,
     };
   }
 
@@ -99,8 +109,9 @@ export async function shipGateVerdict(event: HarnessEvent, ctx: HandlerContext):
     if (run.kind === "ran" && !run.artifact.passed) {
       return {
         kind: "deny",
-        reason: gateFailureMessage("lint", run.artifact.command, run.artifact.outputTail),
+        reason: gateFailureMessage("lint", run.artifact.command, run.artifact.outputTail, rootDiag),
         rule: "ship-gate-lint",
+        diagnostic: rootDiag.summary,
       };
     }
   }
@@ -129,8 +140,9 @@ export async function shipGateVerdict(event: HarnessEvent, ctx: HandlerContext):
     if (run.kind === "ran" && !run.artifact.passed) {
       return {
         kind: "deny",
-        reason: gateFailureMessage("test", run.artifact.command, run.artifact.outputTail),
+        reason: gateFailureMessage("test", run.artifact.command, run.artifact.outputTail, rootDiag),
         rule: "ship-gate-test",
+        diagnostic: rootDiag.summary,
       };
     }
   }
@@ -152,8 +164,9 @@ export async function shipGateVerdict(event: HarnessEvent, ctx: HandlerContext):
     if (run.kind === "ran" && !run.artifact.passed) {
       return {
         kind: "deny",
-        reason: gateFailureMessage("docs", run.artifact.command, run.artifact.outputTail),
+        reason: gateFailureMessage("docs", run.artifact.command, run.artifact.outputTail, rootDiag),
         rule: "ship-gate-docs",
+        diagnostic: rootDiag.summary,
       };
     }
   }
@@ -174,10 +187,12 @@ export async function shipGateVerdict(event: HarnessEvent, ctx: HandlerContext):
     );
     const hits = coreFacade.duplication.findDuplications(added, scan.index, policy.duplication.minRun);
     if (hits.length > 0) {
+      const diag = coreFacade.diagnostics.diffDiagnostic(shaRoot, await currentGitSha(shaRoot), hits);
       return {
         kind: "deny",
-        reason: coreFacade.duplication.duplicationMessage(hits),
+        reason: `${coreFacade.duplication.duplicationMessage(hits)}\n\n${diag.footer}`,
         rule: "ship-gate-duplication",
+        diagnostic: diag.summary,
       };
     }
   }

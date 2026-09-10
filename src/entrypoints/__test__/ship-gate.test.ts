@@ -436,6 +436,77 @@ describe("ship-gate: commit/push/pr-open run the same battery stop would, before
 });
 
 /**
+ * AD-131 — the class of incident AD-129/AD-130 each took a human reading source code to diagnose: a denial
+ * that names its own verdict but not what it checked to reach it. A comment/duplication/gate-failure denial
+ * now names the directory, the sha and (for a diff-based check) a reproduction command, mirroring what
+ * AD-120 already did for an operator rule's `since HEAD` denial.
+ */
+describe("ship-gate: denials name what they checked, AD-131", () => {
+  test("DIAG-01 a comment-gate denial names the checked root, the sha, a reproduction command and the why pointer", async () => {
+    const root = dirtyRepo();
+    writeFileSync(join(root, "src", "app.ts"), "export const a = 1;\n// this explains nothing new\n");
+    writePolicy(root, { comments: { enabled: true, onViolation: "followup", mode: "declared" } });
+    const sha = execFileSync("git", ["-C", root, "rev-parse", "--short", "HEAD"]).toString().trim();
+
+    const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShip(root, PUSH)));
+
+    assert.equal(outcome.decision.kind, "deny", JSON.stringify(outcome.decision));
+    assert.equal(outcome.decision.kind === "deny" ? outcome.decision.rule : "", "ship-gate-comments");
+    const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
+    assert.equal(reason.includes(`Checked ${root} at ${sha}.`), true, reason);
+    assert.equal(reason.includes(`Reproduce: git diff ${sha} -- src/app.ts`), true, reason);
+    assert.equal(reason.includes("Run `tlc harness why` for the full diagnostic."), true, reason);
+    assert.equal(
+      outcome.decision.kind === "deny" ? outcome.decision.diagnostic : undefined,
+      `Checked ${root} at ${sha} · Reproduce: git diff ${sha} -- src/app.ts`,
+    );
+  });
+
+  test("DIAG-02 a duplication-gate denial names the checked root, the sha and a reproduction command", async () => {
+    const root = newDir("tlc-ship-gate-diag-dup-");
+    git(root, "init", "-q");
+    writeFileSync(join(root, ".gitignore"), ".tlc/\n");
+    mkdirSync(join(root, "src"), { recursive: true });
+    const LOGIC = [
+      "const resolved = resolveHome(env);",
+      'if (resolved === null) { throw new Error("no home"); }',
+      "const config = readConfig(resolved);",
+      "const merged = mergeDefaults(config, DEFAULTS);",
+    ].join("\n");
+    writeFileSync(join(root, "src", "old.ts"), `${LOGIC}\n`);
+    git(root, "add", ".");
+    git(root, "commit", "-q", "-m", "initial");
+    writePolicy(root, { duplication: { enabled: true, minRun: 4 } });
+    writeFileSync(join(root, "src", "new.ts"), `${LOGIC}\n`);
+    const sha = execFileSync("git", ["-C", root, "rev-parse", "--short", "HEAD"]).toString().trim();
+
+    const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShip(root, PUSH)));
+
+    assert.equal(outcome.decision.kind, "deny", JSON.stringify(outcome.decision));
+    assert.equal(outcome.decision.kind === "deny" ? outcome.decision.rule : "", "ship-gate-duplication");
+    const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
+    assert.equal(reason.includes(`Checked ${root} at ${sha}.`), true, reason);
+    assert.equal(reason.includes(`Reproduce: git diff ${sha} -- src/new.ts`), true, reason);
+    assert.equal(reason.includes("Run `tlc harness why` for the full diagnostic."), true, reason);
+  });
+
+  test("DIAG-03 a lint-gate failure names the checked root and the why pointer, without a sha or a reproduction line", async () => {
+    const root = dirtyRepo();
+    writePolicy(root, { grind: { enabled: true, lintCommand: gate(1) } });
+
+    const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShip(root, PUSH)));
+
+    assert.equal(outcome.decision.kind, "deny", JSON.stringify(outcome.decision));
+    assert.equal(outcome.decision.kind === "deny" ? outcome.decision.rule : "", "ship-gate-lint");
+    const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
+    assert.equal(reason.includes(`Checked ${root}.`), true, reason);
+    assert.equal(reason.includes("Run `tlc harness why` for the full diagnostic."), true, reason);
+    assert.equal(reason.includes("Reproduce:"), false, reason);
+    assert.equal(outcome.decision.kind === "deny" ? outcome.decision.diagnostic : undefined, `Checked ${root}`);
+  });
+});
+
+/**
  * AD-130 — the exact production incident: a `gh api` push targeting an unrelated repository was gated by
  * this repo's own stale local state. The full battery must never fire for a repo this checkout's remote
  * does not name.
