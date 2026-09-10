@@ -1,5 +1,4 @@
-import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { statSync } from "node:fs";
 import type { EffortLevel, HarnessEvent } from "../contracts/index.ts";
 import {
   type CommentFinding,
@@ -9,7 +8,7 @@ import {
   type PendingLessonCredit,
   type Policy,
 } from "../core/index.ts";
-import { filterCodeTargets, filterTestTargets, listChangedRepoFiles } from "../platform/git.ts";
+import { filterCodeTargets, filterTestTargets, gitRootOf, listChangedRepoFiles } from "../platform/git.ts";
 import { runProcess } from "../platform/process.ts";
 import { type ProviderPort, renderClaudeLessonsView, renderCursorLessonsView } from "../providers/index.ts";
 
@@ -55,10 +54,11 @@ export function sessionIdFromKey(event: HarnessEvent): string {
 }
 
 export async function currentGitBranch(root: string): Promise<string | null> {
-  if (!existsSync(join(root, ".git"))) {
+  const gitRoot = await gitRootOf(root);
+  if (gitRoot === null) {
     return null;
   }
-  const result = await runProcess({ command: ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd: root });
+  const result = await runProcess({ command: ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd: gitRoot });
   if (result.exitCode !== 0) {
     return null;
   }
@@ -153,10 +153,11 @@ export async function pendingCommentViolations(
 }
 
 export async function currentGitSha(root: string): Promise<string | null> {
-  if (!existsSync(join(root, ".git"))) {
+  const gitRoot = await gitRootOf(root);
+  if (gitRoot === null) {
     return null;
   }
-  const result = await runProcess({ command: ["git", "rev-parse", "--short", "HEAD"], cwd: root });
+  const result = await runProcess({ command: ["git", "rev-parse", "--short", "HEAD"], cwd: gitRoot });
   if (result.exitCode !== 0) {
     return null;
   }
