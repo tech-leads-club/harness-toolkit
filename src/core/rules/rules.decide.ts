@@ -6,6 +6,7 @@
  * feature exists to remove ([/decisions/ad-025.md](/decisions/ad-025.md) item 4).
  */
 import type { Decision } from "../../contracts/decision.ts";
+import { WHY_POINTER } from "../diagnostics/diagnostics.message.ts";
 import type { OperatorMode } from "../policy/policy.types.ts";
 import { missingProofs, type Observation, type ProofContext, proofLabel } from "./rules.proof.ts";
 import type { Rule, RuleVerdict } from "./rules.types.ts";
@@ -33,7 +34,7 @@ export function ruleMessage(
   shaRoot: string,
   sha: string | null,
 ): string {
-  const head = `rule ${rule.name} (${rule.tier}): missing ${missing.join(", ")} — checked ${shaRoot} at ${sha ?? "no HEAD"}`;
+  const head = `rule ${rule.name} (${rule.tier}): missing ${missing.join(", ")} — checked ${shaRoot} at ${sha ?? "no HEAD"}\n${WHY_POINTER}`;
   return rule.body.trim() === "" ? head : `${head}\n\n${rule.body.trim()}`;
 }
 
