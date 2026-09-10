@@ -191,7 +191,7 @@ export function filterTestTargets(relativePaths: string[]): string[] {
  *
  * why: `git ls-files` already honours `.gitignore`, so `node_modules` and build output cost nothing to exclude
  * and no second ignore list has to be kept in step ([/decisions/ad-071.md](/decisions/ad-071.md)).
- * hazard: reads through `gitPaths`, never `runCommand` (`platform/process.ts`), which trims, truncates and
+ * hazard: reads through `gitPaths`, never `runCommand` (`platform/process.ts`), which trims and
  * placeholder-substitutes for human display — three real defects came from this function reusing that helper
  * for exact, structured data instead ([/decisions/ad-134.md](/decisions/ad-134.md)).
  */

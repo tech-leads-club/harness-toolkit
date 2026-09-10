@@ -105,8 +105,9 @@ export const NO_OUTPUT_CAPTURED = "(no output captured)";
 
 /**
  * why: a gate command's output is read for a human — trimmed of surrounding noise, given a placeholder when
- * there is nothing to show. `runProcess` stays the raw primitive; this is the one caller-facing policy layer
- * on top of it, and the only one — no other function in this codebase shapes output for display
+ * there is nothing to show. `runProcess` stays the raw primitive; this is the shaping layer directly on top
+ * of it. `trimOutputTail` (`core/gate/gate.artifact.ts`) applies a second, narrower policy downstream — the
+ * operator-facing 8000-char bound — on the output this function already produced
  * ([/decisions/ad-134.md](/decisions/ad-134.md)).
  */
 export async function runCommand(
