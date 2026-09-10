@@ -411,11 +411,15 @@ equivalent (`POST` to a path ending in `pulls`; `POST`/`PATCH` to a path touchin
 shape, and `pr-merge` recognizes `gh pr merge` and `PUT` to a path ending in `merge` under `pulls`
 ([/decisions/ad-128.md](/decisions/ad-128.md)) — scoped to the local checkout's own remote, so a `gh api` push
 to an unrelated repository (a template repo, a sibling project) is never gated by this project's own local
-state ([/decisions/ad-130.md](/decisions/ad-130.md)) — but a script written to disk and executed later, a
-command name built at runtime, a GraphQL mutation, `curl` direct to the API, a `gh api` call that flips a pull
-request to ready without going through `gh pr ready`, or a pull request opened, approved, or merged in a
-browser all still escape every trigger this project has. The rule covers the agent's shell path
-([/decisions/ad-100.md](/decisions/ad-100.md)); it was never meant to cover more than that.
+state ([/decisions/ad-130.md](/decisions/ad-130.md)). `pr-open` also recognizes the GitHub MCP server's
+`create_pull_request` tool call, on both `mcp__<server>__create_pull_request` (Claude Code, any server name)
+and the bare or host-prefixed form Cursor sends, with the same repository scoping
+([/decisions/ad-135.md](/decisions/ad-135.md)) — but that is the one evidenced MCP tool name, not MCP as a
+class: a different MCP server or tool name performing the same act is not covered. A script written to disk
+and executed later, a command name built at runtime, a GraphQL mutation, `curl` direct to the API, a `gh api`
+call that flips a pull request to ready without going through `gh pr ready`, or a pull request opened,
+approved, or merged in a browser all still escape every trigger this project has
+([/decisions/ad-100.md](/decisions/ad-100.md)).
 
 **The durable, non-bypassable boundary is GitHub's own branch protection, not this mechanism.** A required
 status check (posted by whatever proof this project's rule already demands — the-jury's review, a gate
