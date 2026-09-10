@@ -6,6 +6,10 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## Unreleased
+
+- **AD-131** — A ship-gate denial names what it checked and points at tlc harness why
+
 ## v0.12.2
 
 - **AD-130** — gh api pr-open/push/pr-merge detection is scoped to the local checkout's own remote

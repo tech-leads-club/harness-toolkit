@@ -138,6 +138,7 @@ Handoff section and a link back to this index.
 | [AD-128](/decisions/ad-128.md) | pr-open and push recognize their gh api equivalent, and pr-merge exists | active |
 | [AD-129](/decisions/ad-129.md) | Turn-scope git diffing runs at the event's own working directory, not the project root | active |
 | [AD-130](/decisions/ad-130.md) | gh api pr-open/push/pr-merge detection is scoped to the local checkout's own remote | active |
+| [AD-131](/decisions/ad-131.md) | A ship-gate denial names what it checked and points at tlc harness why | active |
 
 ## Archived
 

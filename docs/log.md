@@ -16,6 +16,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 ## 2026-09-10
 
 - **AD-130** — gh api pr-open/push/pr-merge detection is scoped to the local checkout's own remote ([/decisions/ad-130.md](/decisions/ad-130.md))
+- **AD-131** — A ship-gate denial names what it checked and points at tlc harness why ([/decisions/ad-131.md](/decisions/ad-131.md))
 
 ## 2026-09-09
 
