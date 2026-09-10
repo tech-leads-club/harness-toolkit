@@ -204,6 +204,50 @@ describe("the turn's base, not the HEAD at stop", () => {
     }
     rmSync(dir, { recursive: true, force: true });
   });
+
+  test("GRD-06 a tracked file's added lines are identical from a subdirectory as from the root", async () => {
+    const dir = initRepo();
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+    writeFileSync(join(dir, "apps", "web", "a.ts"), "export const a = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+    const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    writeFileSync(join(dir, "apps", "web", "a.ts"), "// narration\nexport const a = 1;\n");
+
+    const fromRoot = await listAddedLines(dir, ["apps/web/a.ts"], base);
+    const fromSubdir = await listAddedLines(join(dir, "apps", "web"), ["apps/web/a.ts"], base);
+
+    assert.deepEqual(fromSubdir, fromRoot);
+    assert.deepEqual(
+      fromRoot.map((line) => line.text),
+      ["// narration"],
+    );
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GRD-06 an untracked file's lines are identical from a subdirectory as from the root", async () => {
+    const dir = initRepo();
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+    writeFileSync(join(dir, "apps", "web", "new.ts"), "export const b = 1;\nexport const c = 2;\n");
+
+    const fromRoot = await listAddedLines(dir, ["apps/web/new.ts"]);
+    const fromSubdir = await listAddedLines(join(dir, "apps", "web"), ["apps/web/new.ts"]);
+
+    assert.deepEqual(fromSubdir, fromRoot);
+    assert.deepEqual(
+      fromRoot.map((line) => line.text),
+      ["export const b = 1;", "export const c = 2;", ""],
+    );
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GRD-06 returns an empty array when .git is absent, without throwing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "no-git-"));
+    await assert.doesNotReject(async () => {
+      assert.deepEqual(await listAddedLines(dir, ["a.ts"]), []);
+    });
+    rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 describe("parseOwnerRepo", () => {

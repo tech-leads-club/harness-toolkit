@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runProcess } from "./process.ts";
 import { normalizeSeparators } from "./sanitize.ts";
@@ -110,17 +110,21 @@ export async function listAddedLines(
   relativePaths: string[],
   base = "HEAD",
 ): Promise<AddedLine[]> {
-  if (!existsSync(join(projectDir, ".git")) || relativePaths.length === 0) {
+  if (relativePaths.length === 0) {
     return [];
   }
-  const tracked = new Set(await gitLines(projectDir, ["ls-files", "--", ...relativePaths]));
+  const root = await gitRootOf(projectDir);
+  if (root === null) {
+    return [];
+  }
+  const tracked = new Set(await gitLines(root, ["ls-files", "--", ...relativePaths]));
   const out: AddedLine[] = [];
 
   for (const file of relativePaths) {
     if (!tracked.has(file)) {
       let raw = "";
       try {
-        raw = readFileSync(join(projectDir, file), "utf8");
+        raw = readFileSync(join(root, file), "utf8");
       } catch {
         continue;
       }
@@ -129,7 +133,7 @@ export async function listAddedLines(
       });
       continue;
     }
-    const diff = await gitLines(projectDir, ["diff", "--unified=0", base, "--", file]);
+    const diff = await gitLines(root, ["diff", "--unified=0", base, "--", file]);
     let lineNo = 0;
     for (const row of diff) {
       const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(row);
