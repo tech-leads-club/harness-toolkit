@@ -31,6 +31,7 @@ import {
   scanAddedComments,
 } from "./comment-policy/comment-policy.service.ts";
 import { KNOWN_EXTENSION_COUNT, unknownExtensions } from "./comment-policy/comment-syntax.store.ts";
+import { diffDiagnostic, rootDiagnostic, WHY_POINTER } from "./diagnostics/diagnostics.message.ts";
 import {
   duplicationMessage,
   findDuplications,
@@ -459,6 +460,11 @@ export const coreFacade = {
     findDuplications,
     duplicationMessage,
     MIN_RUN,
+  },
+  diagnostics: {
+    diffDiagnostic,
+    rootDiagnostic,
+    WHY_POINTER,
   },
   commentPolicy: {
     scanAddedComments,
