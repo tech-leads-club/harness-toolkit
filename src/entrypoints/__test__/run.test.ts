@@ -214,6 +214,7 @@ test("hook.enter is recorded before the handler runs, and precedes a deny's own 
     assert.equal(enterAttrs.sessionKey, "cursor-conv-1");
     assert.equal(records[0]?.provider, "cursor");
     assert.equal(records[1]?.kind, "policy.deny");
+    assert.equal(records[0]?.trace_id, records[1]?.trace_id, "same trace_id as the record it pairs with");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
