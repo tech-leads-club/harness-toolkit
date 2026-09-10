@@ -667,11 +667,11 @@ describe("mentionsGhApi", () => {
  * no `command` at all and was never evaluated.
  */
 describe("normalizeMcpToolName", () => {
-  test("PMS-N1 a bare tool name (Cursor's beforeMCPExecution payload) passes through unchanged", () => {
+  test("PMS-N1 a bare tool name (one host's beforeMCPExecution payload) passes through unchanged", () => {
     assert.equal(normalizeMcpToolName("create_pull_request"), "create_pull_request");
   });
 
-  test("PMS-N2 Claude Code's mcp__<server>__<tool> convention strips to the tool name", () => {
+  test("PMS-N2 the mcp__<server>__<tool> convention (one host's own naming) strips to the tool name", () => {
     assert.equal(normalizeMcpToolName("mcp__github__create_pull_request"), "create_pull_request");
   });
 
@@ -683,7 +683,7 @@ describe("normalizeMcpToolName", () => {
     );
   });
 
-  test("PMS-N4 Cursor's host-prefixed generic-tool form strips to the tool name", () => {
+  test("PMS-N4 a host-prefixed generic-tool form (MCP:<tool>) strips to the tool name", () => {
     assert.equal(normalizeMcpToolName("MCP:create_pull_request"), "create_pull_request");
   });
 });
@@ -696,7 +696,7 @@ describe("triggerMatches — MCP shape (pr-open)", () => {
     );
   });
 
-  test("PMS-02 Claude Code's mcp__<server>__create_pull_request fires pr-open, any server name", () => {
+  test("PMS-02 the mcp__<server>__create_pull_request form fires pr-open, any server name", () => {
     assert.equal(
       triggerMatches(
         { kind: "pr-open" },
@@ -706,7 +706,7 @@ describe("triggerMatches — MCP shape (pr-open)", () => {
     );
   });
 
-  test("PMS-03 Cursor's MCP:create_pull_request fires pr-open", () => {
+  test("PMS-03 the host-prefixed MCP:create_pull_request form fires pr-open", () => {
     assert.equal(
       triggerMatches({ kind: "pr-open" }, { event: "mcp.before", toolName: "MCP:create_pull_request" }),
       true,
