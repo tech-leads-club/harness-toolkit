@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { firingRules, mentionsGhApi, mentionsMcpAct, normalizeMcpToolName, triggerMatches } from "../rules.trigger.ts";
+import {
+  firingRules,
+  mentionsGhApi,
+  mentionsMcpAct,
+  normalizeMcpToolName,
+  triggerMatches,
+} from "../rules.trigger.ts";
 import type { Rule } from "../rules.types.ts";
 
 function rule(overrides: Partial<Rule> = {}): Rule {
@@ -692,7 +698,10 @@ describe("triggerMatches — MCP shape (pr-open)", () => {
 
   test("PMS-02 Claude Code's mcp__<server>__create_pull_request fires pr-open, any server name", () => {
     assert.equal(
-      triggerMatches({ kind: "pr-open" }, { event: "mcp.before", toolName: "mcp__github__create_pull_request" }),
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "mcp.before", toolName: "mcp__github__create_pull_request" },
+      ),
       true,
     );
   });
@@ -734,7 +743,10 @@ describe("triggerMatches — MCP shape (pr-open)", () => {
 });
 
 describe("triggerMatches — MCP shape repo scope (pr-open)", () => {
-  const context = (toolInput: Record<string, unknown>, repoRemote?: { owner: string; repo: string } | null) => ({
+  const context = (
+    toolInput: Record<string, unknown>,
+    repoRemote?: { owner: string; repo: string } | null,
+  ) => ({
     event: "mcp.before",
     toolName: "create_pull_request",
     toolInput,
@@ -769,10 +781,7 @@ describe("triggerMatches — MCP shape repo scope (pr-open)", () => {
   });
 
   test("PMS-10 repoRemote never resolved (undefined) — fires without a scope check, matching matchesApiShape", () => {
-    assert.equal(
-      triggerMatches({ kind: "pr-open" }, context({ owner: "acme", repo: "widgets" })),
-      true,
-    );
+    assert.equal(triggerMatches({ kind: "pr-open" }, context({ owner: "acme", repo: "widgets" })), true);
   });
 
   test("PMS-11 toolInput carries no owner/repo fields — fires without a scope check", () => {

@@ -349,7 +349,9 @@ export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): b
     case "pr-merge": {
       const byCommand =
         context.command !== undefined &&
-        subCommands(context.command).some((words) => matchesAnyShape(words, trigger.kind, context.repoRemote));
+        subCommands(context.command).some((words) =>
+          matchesAnyShape(words, trigger.kind, context.repoRemote),
+        );
       if (byCommand) {
         return true;
       }
