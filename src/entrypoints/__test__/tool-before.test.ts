@@ -989,6 +989,83 @@ describe("operator rules", () => {
 });
 
 /**
+ * AD-131 — a denial's `diagnostic` summary reaches the obs record that fed it, the same way `rule` already
+ * does, so `tlc harness why` can render it later without re-deriving it from a stale reason string.
+ */
+describe("a denial's diagnostic reaches its obs record, AD-131", () => {
+  test("DIAG-06 a self-diagnosing shell denial's diagnostic reaches the recorded shell decision", async () => {
+    const root = tempRoot();
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      writeFileSync(join(root, ".gitignore"), ".tlc/\n");
+      mkdirSync(join(root, "src"), { recursive: true });
+      writeFileSync(join(root, "src", "app.ts"), "export const a = 1;\n");
+      execFileSync("git", ["add", "."], { cwd: root });
+      execFileSync("git", ["commit", "-q", "-m", "initial"], {
+        cwd: root,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "t",
+          GIT_AUTHOR_EMAIL: "t@t",
+          GIT_COMMITTER_NAME: "t",
+          GIT_COMMITTER_EMAIL: "t@t",
+        },
+      });
+      writeFileSync(join(root, "src", "app.ts"), "export const a = 1;\n// this explains nothing new\n");
+      writeProjectPolicy(root, { comments: { enabled: true, onViolation: "followup", mode: "declared" } });
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShell(root, "git commit -am 'wip'")));
+      assert.equal(outcome.decision.kind, "deny", JSON.stringify(outcome.decision));
+      const expectedDiagnostic = outcome.decision.kind === "deny" ? outcome.decision.diagnostic : undefined;
+      assert.notEqual(expectedDiagnostic, undefined, "test setup: the denial must carry a diagnostic");
+
+      const recorded = coreFacade.observability
+        .readSignalEvents(root, "obs.jsonl", 50)
+        .find((event) => event.kind === "shell.start");
+      assert.equal(recorded?.attrs.diagnostic, expectedDiagnostic);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("DIAG-06 a shell denial with no diagnostic records none, unchanged from before this feature", async () => {
+    const root = tempRoot();
+    try {
+      const outcome = await runHandler(
+        toolBeforeHandler,
+        stdinOf(claudeShell(root, "python3 -c \"open('.tlc/harness/config.json','w')\"")),
+      );
+      assert.equal(outcome.decision.kind, "deny");
+
+      const recorded = coreFacade.observability
+        .readSignalEvents(root, "obs.jsonl", 50)
+        .find((event) => event.kind === "shell.start");
+      assert.equal(recorded?.attrs.rule, "policy-surface-write");
+      assert.equal(recorded?.attrs.diagnostic, "none");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("DIAG-07 a non-shell refusal with no diagnostic records none, unchanged from before this feature", async () => {
+    const root = tempRoot();
+    try {
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(cursorRead(root, "~/.ssh/id_rsa")));
+      assert.equal(outcome.decision.kind, "deny");
+
+      const refusals = coreFacade.observability
+        .readSignalEvents(root, "obs.jsonl", 50)
+        .filter((event) => event.kind === "policy.deny");
+      assert.equal(refusals.length, 1);
+      assert.equal(refusals[0]?.attrs.rule, "secret-access");
+      assert.equal(refusals[0]?.attrs.diagnostic, "none");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
  * AD-131 — the commit-time comment gate (`comment-policy-before-ship`, AD-115) gets the same treatment as
  * ship-gate's comment denial: the checked root, the sha and a reproduction command, not only the finding.
  */

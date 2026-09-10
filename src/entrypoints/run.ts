@@ -104,6 +104,7 @@ function recordRefusal(event: HarnessEvent, policy: Policy, decision: Decision):
       permission: decision.kind,
       // why: unattributed rather than guessed. A refusal an operator cannot trace to a rule is noise.
       rule: decision.rule ?? "none",
+      diagnostic: decision.diagnostic ?? "none",
     },
   });
 }

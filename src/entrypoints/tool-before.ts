@@ -76,6 +76,7 @@ function recordShellDecision(event: HarnessEvent, ctx: HandlerContext, decision:
       // why: unattributed rather than guessed. A rate an operator cannot trace to a switch is a number, not a
       // signal.
       rule: "rule" in decision && decision.rule ? decision.rule : "none",
+      diagnostic: "diagnostic" in decision && decision.diagnostic ? decision.diagnostic : "none",
     },
   });
 }
