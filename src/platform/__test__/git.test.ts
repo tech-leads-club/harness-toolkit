@@ -73,6 +73,42 @@ describe("listChangedRepoFiles", () => {
     assert.equal(fromRoot.includes("apps/web/untracked.ts"), true);
     rmSync(dir, { recursive: true, force: true });
   });
+
+  /**
+   * hazard: found by review of AD-134's own fix — git quotes and octal-escapes any path containing a
+   * non-ASCII byte unless run with `-z` (`"café.ts"` becomes `"caf\303\251.ts"` on the wire), and a leading
+   * space survives git's own quoting but not a naive `.trim()`. Both corrupted names miss
+   * `filterCodeTargets`'s extension check and vanish from every gate silently
+   * ([/decisions/ad-134.md](/decisions/ad-134.md)).
+   */
+  test("a modified file with a non-ASCII name and one with a leading space both survive intact", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "café.ts"), "export const a = 1;\n");
+    writeFileSync(join(dir, " leading-space.ts"), "export const b = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+
+    writeFileSync(join(dir, "café.ts"), "export const a = 2;\n");
+    writeFileSync(join(dir, " leading-space.ts"), "export const b = 2;\n");
+
+    const changed = await listChangedRepoFiles(dir);
+    assert.equal(changed.includes("café.ts"), true);
+    assert.equal(changed.includes(" leading-space.ts"), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a new untracked file with a non-ASCII name survives intact", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+
+    writeFileSync(join(dir, "新しい.ts"), "export const b = 1;\n");
+
+    const changed = await listChangedRepoFiles(dir);
+    assert.equal(changed.includes("新しい.ts"), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 describe("listCommitFileSets", () => {
@@ -164,6 +200,29 @@ describe("the turn's base, not the HEAD at stop", () => {
     assert.deepEqual(
       added.map((line) => line.text),
       ["// narration", "export const a = 2;"],
+    );
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /**
+   * hazard: the tracked-file check used to read through `gitLines`, whose quoting/`.trim()` corruption made
+   * a non-ASCII or leading-space filename mismatch the exact string `relativePaths` passed in — `tracked.has`
+   * came back false for an actually-tracked file, misreading its whole current content as newly added instead
+   * of diffing it against `base` ([/decisions/ad-134.md](/decisions/ad-134.md)).
+   */
+  test("a tracked file with a non-ASCII name is diffed against base, not misread as untracked", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "café.ts"), "export const a = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+    const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+
+    writeFileSync(join(dir, "café.ts"), "export const a = 1;\n// narration\n");
+
+    const added = await listAddedLines(dir, ["café.ts"], base);
+    assert.deepEqual(
+      added.map((line) => line.text),
+      ["// narration"],
     );
     rmSync(dir, { recursive: true, force: true });
   });

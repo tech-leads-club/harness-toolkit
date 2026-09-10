@@ -43,6 +43,21 @@ async function gitLines(projectDir: string, args: string[]): Promise<string[]> {
 }
 
 /**
+ * hazard: `gitLines`' `\n`-split and per-line `.trim()` both corrupt a file path — git quotes and
+ * octal-escapes any name with a non-ASCII byte when not run with `-z` (`"café.ts"` becomes
+ * `"caf\303\251.ts"`), and `.trim()` separately eats a real leading space. Every call site here that reads
+ * paths passes its own `-z` (position matters: before any `--` pathspec separator, never after) and splits on
+ * NUL instead ([/decisions/ad-134.md](/decisions/ad-134.md)).
+ */
+async function gitPaths(projectDir: string, args: string[]): Promise<string[]> {
+  const result = await runProcess({ command: ["git", ...args], cwd: projectDir });
+  if (result.exitCode !== 0) {
+    return [];
+  }
+  return result.stdout.split("\0").filter((path) => path !== "");
+}
+
+/**
  * why: `base` is the revision the turn started at, not `HEAD`. A turn that commits moves `HEAD` past its own
  * changes, so every gate reading this list saw an empty diff and skipped — measured on a real turn whose task
  * was named "schema v2 + tests + commit" ([/decisions/ad-058.md](/decisions/ad-058.md)).
@@ -56,9 +71,9 @@ export async function listChangedRepoFiles(projectDir: string, base = "HEAD"): P
   }
 
   const batches = await Promise.all([
-    gitLines(root, ["diff", "--name-only", base]),
-    gitLines(root, ["diff", "--name-only", "--cached"]),
-    gitLines(root, ["ls-files", "--others", "--exclude-standard"]),
+    gitPaths(root, ["diff", "--name-only", "-z", base]),
+    gitPaths(root, ["diff", "--name-only", "-z", "--cached"]),
+    gitPaths(root, ["ls-files", "-z", "--others", "--exclude-standard"]),
   ]);
 
   const paths = new Set<string>();
@@ -117,7 +132,7 @@ export async function listAddedLines(
   if (root === null) {
     return [];
   }
-  const tracked = new Set(await gitLines(root, ["ls-files", "--", ...relativePaths]));
+  const tracked = new Set(await gitPaths(root, ["ls-files", "-z", "--", ...relativePaths]));
   const out: AddedLine[] = [];
 
   for (const file of relativePaths) {
@@ -176,21 +191,16 @@ export function filterTestTargets(relativePaths: string[]): string[] {
  *
  * why: `git ls-files` already honours `.gitignore`, so `node_modules` and build output cost nothing to exclude
  * and no second ignore list has to be kept in step ([/decisions/ad-071.md](/decisions/ad-071.md)).
- * hazard: reads `runProcess` directly, the same way `gitLines` does — never `runCommand`
- * (`platform/process.ts`), which trims, truncates and placeholder-substitutes for human display. Three real
- * defects came from this function reusing that helper for exact, structured, NUL-separated data instead
- * ([/decisions/ad-134.md](/decisions/ad-134.md)).
+ * hazard: reads through `gitPaths`, never `runCommand` (`platform/process.ts`), which trims, truncates and
+ * placeholder-substitutes for human display — three real defects came from this function reusing that helper
+ * for exact, structured data instead ([/decisions/ad-134.md](/decisions/ad-134.md)).
  */
 export async function listTrackedFiles(projectDir: string): Promise<string[]> {
   const root = await gitRootOf(projectDir);
   if (root === null) {
     return [];
   }
-  const result = await runProcess({ command: ["git", "ls-files", "-z"], cwd: root });
-  if (result.exitCode !== 0) {
-    return [];
-  }
-  return result.stdout.split("\0").filter((path) => path !== "");
+  return gitPaths(root, ["ls-files", "-z"]);
 }
 
 export type RepoRef = { owner: string; repo: string };
