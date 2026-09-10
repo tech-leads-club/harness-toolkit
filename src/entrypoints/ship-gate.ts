@@ -33,6 +33,11 @@ async function isShipCommand(event: HarnessEvent, gitRoot: string): Promise<bool
   if (!FULL_BATTERY_KINDS.some((kind) => coreFacade.rules.triggerMatches({ kind }, context))) {
     return false;
   }
+  // why: a CLI shape (`gh pr create`, `git push`) never reads `repoRemote` — only a `gh api` call can, so a
+  // command that never mentions one already has its final answer.
+  if (!coreFacade.rules.mentionsGhApi(event.command)) {
+    return true;
+  }
   const repoRemote = await localRepoRemote(gitRoot);
   return FULL_BATTERY_KINDS.some((kind) =>
     coreFacade.rules.triggerMatches({ kind }, { ...context, repoRemote }),

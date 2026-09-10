@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { firingRules, triggerMatches } from "../rules.trigger.ts";
+import { firingRules, mentionsGhApi, triggerMatches } from "../rules.trigger.ts";
 import type { Rule } from "../rules.types.ts";
 
 function rule(overrides: Partial<Rule> = {}): Rule {
@@ -419,6 +419,21 @@ describe("triggerMatches", () => {
       );
     });
 
+    test("ARS-02 the same owner but a different repository still does not match — both segments are checked", () => {
+      assert.equal(
+        triggerMatches(
+          { kind: "push" },
+          {
+            event: "tool.before",
+            command: "gh api -X PATCH repos/acme/some-other-repo/git/refs/heads/main -f sha=abc",
+            repoRemote: SAME_REPO,
+          },
+        ),
+        false,
+        "acme matches, but widgets !== some-other-repo",
+      );
+    });
+
     test("ARS-03 a resolved-but-absent local remote (null) fails every gh api shape, not just a mismatch", () => {
       assert.equal(
         triggerMatches(
@@ -603,5 +618,37 @@ describe("firingRules", () => {
     });
 
     assert.deepEqual(firing, []);
+  });
+});
+
+/**
+ * ARS-05/06 — `isShipCommand`/`rulesDecision` gate `localRepoRemote`'s process spawn behind this exact
+ * check: a command that cannot possibly match an API shape (`mentionsGhApi` false) never pays for the
+ * remote lookup at all, and one that does pays for it once. Node's `node:test` mock cannot reliably
+ * intercept a builtin module's function called through another module's named import in this runtime
+ * (confirmed by trying it, not assumed), so the actual "was the process spawned" property is proven here,
+ * on the pure decision the two callers act on, rather than by spying on the spawn itself
+ * ([/decisions/ad-130.md](/decisions/ad-130.md)).
+ */
+describe("mentionsGhApi", () => {
+  test("ARS-05 true for a gh api call, including behind a transparent wrapper", () => {
+    assert.equal(mentionsGhApi("gh api -X PATCH repos/acme/widgets/git/refs/heads/main -f sha=x"), true);
+    assert.equal(mentionsGhApi("rtk gh api repos/acme/widgets/pulls -f title=x"), true, "AD-127 composes");
+  });
+
+  test("ARS-05 false for the CLI shapes — they never read repoRemote, so nothing needs to resolve it", () => {
+    assert.equal(mentionsGhApi("git push origin main"), false);
+    assert.equal(mentionsGhApi("gh pr create --fill"), false);
+    assert.equal(mentionsGhApi("gh pr merge 42"), false);
+  });
+
+  test("ARS-05 false for a command with no relation to gh at all", () => {
+    assert.equal(mentionsGhApi("ls -la"), false);
+    assert.equal(mentionsGhApi("npm test"), false);
+  });
+
+  test("ARS-05 false when the words appear only inside a heredoc body, same as every other shell trigger", () => {
+    const command = "cat <<EOF > notes.md\nremember to run gh api later\nEOF";
+    assert.equal(mentionsGhApi(command), false);
   });
 });

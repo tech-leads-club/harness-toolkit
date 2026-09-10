@@ -101,10 +101,13 @@ async function rulesDecision(event: HarnessEvent, ctx: HandlerContext): Promise<
   if (dryRun.outcomes.length === 0) {
     return { kind: "abstain" };
   }
-  // why: the first pass answers whether any rule fired at all, which costs no git. Only then are the sha
-  // and the local remote worth a process each — the remote so a gh api call naming a different repository
-  // ([/decisions/ad-130.md](/decisions/ad-130.md)) cannot satisfy this project's own rules.
-  const [sha, repoRemote] = await Promise.all([currentGitSha(shaRoot), localRepoRemote(shaRoot)]);
+  // why: the first pass answers whether any rule fired at all, which costs no git. The remote is a second
+  // process, spent only when the command could possibly be a gh api call naming a different repository
+  // ([/decisions/ad-130.md](/decisions/ad-130.md)) — a CLI shape or an unrelated trigger never reads it.
+  const [sha, repoRemote] = await Promise.all([
+    currentGitSha(shaRoot),
+    event.command && coreFacade.rules.mentionsGhApi(event.command) ? localRepoRemote(shaRoot) : undefined,
+  ]);
   const verdict = coreFacade.rules.decideAction(
     event.projectDir,
     config,

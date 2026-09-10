@@ -286,3 +286,13 @@ export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): b
 export function firingRules(rules: readonly Rule[], context: TriggerContext): Rule[] {
   return rules.filter((rule) => rule.enabled && triggerMatches(rule.on, context));
 }
+
+/**
+ * why exported: a caller deciding whether `repoRemote` is worth a process spawn only needs to know whether
+ * the API-shaped path (the only one that ever reads it) could possibly be in play — a CLI shape never
+ * matches this phrase, so resolving the remote first would spend a spawn no verdict can use
+ * ([/decisions/ad-130.md](/decisions/ad-130.md)).
+ */
+export function mentionsGhApi(command: string): boolean {
+  return subCommands(command).some((words) => findPhraseIndex(words, ["gh", "api"]) !== -1);
+}

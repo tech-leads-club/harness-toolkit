@@ -178,7 +178,7 @@ import {
   readRuleSources,
   recordObservation,
 } from "./rules/rules.store.ts";
-import { firingRules, triggerMatches } from "./rules/rules.trigger.ts";
+import { firingRules, mentionsGhApi, triggerMatches } from "./rules/rules.trigger.ts";
 import { scanForSecrets } from "./secret-scan/secret-scan.service.ts";
 import { placeholderFor } from "./secret-scan/secret-scan.store.ts";
 import { evaluateShellCommand } from "./shell-policy/shell-policy.service.ts";
@@ -500,6 +500,7 @@ export const coreFacade = {
     build: buildRuleSet,
     firing: firingRules,
     triggerMatches,
+    mentionsGhApi,
     observations: readObservations,
     record: recordObservation,
     observationFrom,
