@@ -490,7 +490,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
    * says so once at the end instead of three times ([/decisions/ad-073.md](/decisions/ad-073.md)).
    */
   const deferred: string[] = [];
-  const changedFiles = await listChangedRepoFiles(root, turnBase);
+  const changedFiles = await listChangedRepoFiles(shaRoot, turnBase);
   const codeTargets = filterCodeTargets(changedFiles, policy.codePaths);
   const testTargets = filterTestTargets(changedFiles);
   // why: the comment rail scopes by the syntax catalog (40+ languages), not `codeTargets`'s nine-extension
@@ -653,7 +653,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
     coreFacade.observe.shouldObserve(policy.observe, "comments", policy.comments.enabled)
   ) {
     const hits = await coreFacade.commentPolicy.scanAddedComments(
-      root,
+      shaRoot,
       commentTargets,
       policy.comments.mode,
       turnBase,
@@ -680,7 +680,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
 
   if (policy.comments.enabled && policy.comments.onViolation === "followup" && commentTargets.length > 0) {
     const hits = await coreFacade.commentPolicy.scanAddedComments(
-      root,
+      shaRoot,
       commentTargets,
       policy.comments.mode,
       turnBase,
@@ -708,13 +708,13 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   if (policy.supplyChain.enabled && changedFiles.length > 0) {
     const manifests = changedFiles.filter((path) => coreFacade.supplyChain.isManifest(path));
     if (manifests.length > 0) {
-      const added = await listAddedLines(root, manifests, turnBase);
+      const added = await listAddedLines(shaRoot, manifests, turnBase);
       const outcome = coreFacade.supplyChain.inspectSupplyChain({
         changedFiles,
         added,
         readManifest: (relativePath) => {
           try {
-            return readFileSync(join(root, relativePath), "utf8");
+            return readFileSync(join(shaRoot, relativePath), "utf8");
           } catch {
             return null;
           }
@@ -742,13 +742,13 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
    * ([/decisions/ad-071.md](/decisions/ad-071.md)).
    */
   if (policy.duplication.enabled && codeTargets.length > 0) {
-    const added = await listAddedLines(root, codeTargets, turnBase);
-    const tracked = await listTrackedFiles(root);
+    const added = await listAddedLines(shaRoot, codeTargets, turnBase);
+    const tracked = await listTrackedFiles(shaRoot);
     const scan = coreFacade.duplication.scanProject(
       tracked,
       (relativePath) => {
         try {
-          return readFileSync(join(root, relativePath), "utf8");
+          return readFileSync(join(shaRoot, relativePath), "utf8");
         } catch {
           return null;
         }

@@ -3,12 +3,13 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { test } from "node:test";
+import { describe, test } from "node:test";
 import { coreFacade } from "../../core/index.ts";
 
 import { projectConfigPath } from "../../platform/paths.ts";
 import { claudeWiring } from "../../providers/index.ts";
 
+import { promptSubmitHandler } from "../prompt-submit.ts";
 import { responseAfterHandler } from "../response-after.ts";
 import { type RunOutcome, runHandler } from "../run.ts";
 import { STOP_LOCK_WAIT_MS, stopHandler, stopLockWaitMs } from "../stop.ts";
@@ -1124,4 +1125,153 @@ test("the lock wait leaves the Stop hook room to run the gate it waited for", ()
   assert.equal(stopLockWaitMs({ TLC_TEST_GATE_LOCK_WAIT_MS: "150" }), 150);
   assert.equal(stopLockWaitMs({ TLC_TEST_GATE_LOCK_WAIT_MS: "nonsense" }), STOP_LOCK_WAIT_MS);
   assert.equal(stopLockWaitMs({ TLC_TEST_GATE_LOCK_WAIT_MS: "0" }), STOP_LOCK_WAIT_MS);
+});
+
+// why: reproduces the production shape — `CLAUDE_PROJECT_DIR` (event.projectDir) stays at the main checkout
+// per AD-114; `cwd` (event.cwd) tracks the worktree the turn's files actually live in
+// ([/decisions/ad-129.md](/decisions/ad-129.md)).
+function claudeStopInWorktree(worktreeRoot: string, overrides: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    hook_event_name: "Stop",
+    cwd: worktreeRoot,
+    session_id: "sess-wt",
+    status: "completed",
+    ...overrides,
+  });
+}
+
+function claudePromptSubmitInWorktree(worktreeRoot: string): string {
+  return JSON.stringify({
+    hook_event_name: "UserPromptSubmit",
+    cwd: worktreeRoot,
+    session_id: "sess-wt",
+    prompt: "continue",
+  });
+}
+
+function addWorktree(mainRoot: string, branch: string): string {
+  const worktreeRoot = mkdtempSync(join(tmpdir(), "tlc-stop-worktree-"));
+  rmSync(worktreeRoot, { recursive: true, force: true });
+  git(mainRoot, ["worktree", "add", "-b", branch, worktreeRoot]);
+  return worktreeRoot;
+}
+
+function pollutedMainCheckout(mainRoot: string): void {
+  mkdirSync(join(mainRoot, "unrelated-stack"), { recursive: true });
+  writeFileSync(join(mainRoot, "unrelated-stack", "main.tf"), 'resource "x" "y" {}\n');
+  git(mainRoot, ["add", "."]);
+  git(mainRoot, ["commit", "-q", "-m", "unrelated main-checkout work"]);
+}
+
+describe("stop: worktree scoping (AD-129)", () => {
+  test("WTS-05 the comment gate scans the worktree's tree at stop, not the main checkout's polluted one", async () => {
+    const main = cleanRepo();
+    const worktree = addWorktree(main, "feature-x");
+    writeProjectPolicy(main, { comments: { enabled: true, onViolation: "followup" } });
+    const previousProjectDir = process.env.CLAUDE_PROJECT_DIR;
+    process.env.CLAUDE_PROJECT_DIR = main;
+    try {
+      await runHandler(promptSubmitHandler, stdinOf(claudePromptSubmitInWorktree(worktree)));
+      pollutedMainCheckout(main);
+      writeFileSync(join(worktree, "readme.md"), "hello\n");
+      mkdirSync(join(worktree, "src"), { recursive: true });
+      writeFileSync(join(worktree, "src", "app.ts"), "// get the value\nexport const a = 2;\n");
+
+      const outcome = await runHandler(stopHandler, stdinOf(claudeStopInWorktree(worktree)));
+
+      assert.equal(outcome.decision.kind, "continue", JSON.stringify(outcome.decision));
+      if (outcome.decision.kind === "continue") {
+        assert.match(outcome.decision.text, /get the value/);
+        assert.doesNotMatch(outcome.decision.text, /unrelated-stack/);
+      }
+    } finally {
+      if (previousProjectDir === undefined) {
+        delete process.env.CLAUDE_PROJECT_DIR;
+      } else {
+        process.env.CLAUDE_PROJECT_DIR = previousProjectDir;
+      }
+      rmSync(main, { recursive: true, force: true });
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
+  test("WTS-06 duplication scanning at stop reads the worktree's tracked files, not the main checkout's", async () => {
+    const main = cleanRepo();
+    const worktree = addWorktree(main, "feature-dup");
+    writeProjectPolicy(main, { duplication: { enabled: true, minRun: 4 } });
+    const previousProjectDir = process.env.CLAUDE_PROJECT_DIR;
+    process.env.CLAUDE_PROJECT_DIR = main;
+    try {
+      const LOGIC = [
+        "const resolved = resolveHome(env);",
+        'if (resolved === null) { throw new Error("no home"); }',
+        "const config = readConfig(resolved);",
+        "const merged = mergeDefaults(config, DEFAULTS);",
+      ].join("\n");
+      mkdirSync(join(worktree, "src"), { recursive: true });
+      writeFileSync(join(worktree, "src", "old.ts"), `${LOGIC}\n`);
+      git(worktree, ["add", "."]);
+      git(worktree, ["commit", "-q", "-m", "add original logic, in the worktree only"]);
+
+      await runHandler(promptSubmitHandler, stdinOf(claudePromptSubmitInWorktree(worktree)));
+
+      writeFileSync(join(worktree, "src", "new.ts"), `${LOGIC}\n`);
+      pollutedMainCheckout(main);
+
+      const outcome = await runHandler(stopHandler, stdinOf(claudeStopInWorktree(worktree)));
+
+      assert.equal(outcome.decision.kind, "continue", JSON.stringify(outcome.decision));
+      if (outcome.decision.kind === "continue") {
+        assert.match(outcome.decision.text, /already exist/);
+        assert.match(outcome.decision.text, /src\/new\.ts/);
+      }
+    } finally {
+      if (previousProjectDir === undefined) {
+        delete process.env.CLAUDE_PROJECT_DIR;
+      } else {
+        process.env.CLAUDE_PROJECT_DIR = previousProjectDir;
+      }
+      rmSync(main, { recursive: true, force: true });
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
+  test("WTS-07 supply-chain scanning at stop reads the worktree's manifest, not the main checkout's", async () => {
+    const main = cleanRepo();
+    const worktree = addWorktree(main, "feature-supply");
+    writeProjectPolicy(main, { supplyChain: { enabled: true } });
+    const previousProjectDir = process.env.CLAUDE_PROJECT_DIR;
+    process.env.CLAUDE_PROJECT_DIR = main;
+    try {
+      writeFileSync(join(worktree, "package.json"), '{"name":"x","dependencies":{}}\n');
+      writeFileSync(join(worktree, "package-lock.json"), "{}\n");
+      git(worktree, ["add", "."]);
+      git(worktree, ["commit", "-q", "-m", "add manifest, in the worktree only"]);
+
+      await runHandler(promptSubmitHandler, stdinOf(claudePromptSubmitInWorktree(worktree)));
+
+      writeFileSync(
+        join(worktree, "package.json"),
+        ["{", '  "name": "x",', '  "dependencies": {', '    "left-pad": "1.0.0"', "  }", "}"].join("\n") +
+          "\n",
+      );
+      pollutedMainCheckout(main);
+
+      const outcome = await runHandler(stopHandler, stdinOf(claudeStopInWorktree(worktree)));
+
+      assert.equal(outcome.decision.kind, "continue", JSON.stringify(outcome.decision));
+      if (outcome.decision.kind === "continue") {
+        assert.match(outcome.decision.text, /\[unlocked\]/);
+        assert.match(outcome.decision.text, /package\.json/);
+      }
+    } finally {
+      if (previousProjectDir === undefined) {
+        delete process.env.CLAUDE_PROJECT_DIR;
+      } else {
+        process.env.CLAUDE_PROJECT_DIR = previousProjectDir;
+      }
+      rmSync(main, { recursive: true, force: true });
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
 });
