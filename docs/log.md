@@ -13,6 +13,10 @@ Generated from `docs/decisions/` — do not edit by hand. Run `node tools/render
 A reserved file of the [OKF v0.1](/decisions/ad-013.md) bundle: entries grouped under ISO 8601 headings,
 newest first. For what landed in which npm release, see `CHANGELOG.md` at the repository root.
 
+## 2026-09-10
+
+- **AD-130** — gh api pr-open/push/pr-merge detection is scoped to the local checkout's own remote ([/decisions/ad-130.md](/decisions/ad-130.md))
+
 ## 2026-09-09
 
 - **AD-128** — pr-open and push recognize their gh api equivalent, and pr-merge exists ([/decisions/ad-128.md](/decisions/ad-128.md))

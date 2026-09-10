@@ -409,10 +409,12 @@ Posture reaches `ask` and nothing else: it interrupts under `paired` and hardens
 A pattern trigger is policy rather than containment. `pr-open` and `push` recognize their `gh api` REST
 equivalent (`POST` to a path ending in `pulls`; `POST`/`PATCH` to a path touching `git/refs`) alongside the CLI
 shape, and `pr-merge` recognizes `gh pr merge` and `PUT` to a path ending in `merge` under `pulls`
-([/decisions/ad-128.md](/decisions/ad-128.md)) — but a script written to disk and executed later, a command
-name built at runtime, a GraphQL mutation, `curl` direct to the API, a `gh api` call that flips a pull request
-to ready without going through `gh pr ready`, or a pull request opened, approved, or merged in a browser all
-still escape every trigger this project has. The rule covers the agent's shell path
+([/decisions/ad-128.md](/decisions/ad-128.md)) — scoped to the local checkout's own remote, so a `gh api` push
+to an unrelated repository (a template repo, a sibling project) is never gated by this project's own local
+state ([/decisions/ad-130.md](/decisions/ad-130.md)) — but a script written to disk and executed later, a
+command name built at runtime, a GraphQL mutation, `curl` direct to the API, a `gh api` call that flips a pull
+request to ready without going through `gh pr ready`, or a pull request opened, approved, or merged in a
+browser all still escape every trigger this project has. The rule covers the agent's shell path
 ([/decisions/ad-100.md](/decisions/ad-100.md)); it was never meant to cover more than that.
 
 **The durable, non-bypassable boundary is GitHub's own branch protection, not this mechanism.** A required
