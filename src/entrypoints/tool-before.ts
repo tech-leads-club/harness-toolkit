@@ -27,9 +27,10 @@ async function commentGateBeforeCommit(event: HarnessEvent, ctx: HandlerContext)
   if (!coreFacade.rules.triggerMatches({ kind: "commit" }, context)) {
     return { kind: "abstain" };
   }
+  const shaRoot = shaScopeRoot(event);
   const hits = await pendingCommentViolations(
     event.projectDir,
-    shaScopeRoot(event),
+    shaRoot,
     event.provider,
     event.sessionKey,
     ctx.policy,
@@ -37,10 +38,12 @@ async function commentGateBeforeCommit(event: HarnessEvent, ctx: HandlerContext)
   if (hits.length === 0) {
     return { kind: "abstain" };
   }
+  const diag = coreFacade.diagnostics.diffDiagnostic(shaRoot, await currentGitSha(shaRoot), hits);
   return {
     kind: "deny",
-    reason: coreFacade.commentPolicy.commentViolationMessage(hits, ctx.policy.comments.mode),
+    reason: `${coreFacade.commentPolicy.commentViolationMessage(hits, ctx.policy.comments.mode)}\n\n${diag.footer}`,
     rule: "comment-policy-before-ship",
+    diagnostic: diag.summary,
   };
 }
 

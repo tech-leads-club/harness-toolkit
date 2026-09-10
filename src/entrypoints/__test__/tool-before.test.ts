@@ -987,3 +987,51 @@ describe("operator rules", () => {
     }
   });
 });
+
+/**
+ * AD-131 — the commit-time comment gate (`comment-policy-before-ship`, AD-115) gets the same treatment as
+ * ship-gate's comment denial: the checked root, the sha and a reproduction command, not only the finding.
+ */
+describe("comment-policy-before-ship names what it checked, AD-131", () => {
+  test("DIAG-04 a commit-time comment denial names the checked root, the sha, a reproduction command and the why pointer", async () => {
+    const root = tempRoot();
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      writeFileSync(join(root, ".gitignore"), ".tlc/\n");
+      mkdirSync(join(root, "src"), { recursive: true });
+      writeFileSync(join(root, "src", "app.ts"), "export const a = 1;\n");
+      execFileSync("git", ["add", "."], { cwd: root });
+      execFileSync("git", ["commit", "-q", "-m", "initial"], {
+        cwd: root,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "t",
+          GIT_AUTHOR_EMAIL: "t@t",
+          GIT_COMMITTER_NAME: "t",
+          GIT_COMMITTER_EMAIL: "t@t",
+        },
+      });
+      writeFileSync(join(root, "src", "app.ts"), "export const a = 1;\n// this explains nothing new\n");
+      writeProjectPolicy(root, { comments: { enabled: true, onViolation: "followup", mode: "declared" } });
+      const sha = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: root }).toString().trim();
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShell(root, "git commit -am 'wip'")));
+
+      assert.equal(outcome.decision.kind, "deny", JSON.stringify(outcome.decision));
+      assert.equal(
+        outcome.decision.kind === "deny" ? outcome.decision.rule : "",
+        "comment-policy-before-ship",
+      );
+      const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
+      assert.equal(reason.includes(`Checked ${root} at ${sha}.`), true, reason);
+      assert.equal(reason.includes(`Reproduce: git diff ${sha} -- src/app.ts`), true, reason);
+      assert.equal(reason.includes("Run `tlc harness why` for the full diagnostic."), true, reason);
+      assert.equal(
+        outcome.decision.kind === "deny" ? outcome.decision.diagnostic : undefined,
+        `Checked ${root} at ${sha} · Reproduce: git diff ${sha} -- src/app.ts`,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

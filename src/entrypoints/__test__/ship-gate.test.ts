@@ -502,7 +502,10 @@ describe("ship-gate: denials name what they checked, AD-131", () => {
     assert.equal(reason.includes(`Checked ${root}.`), true, reason);
     assert.equal(reason.includes("Run `tlc harness why` for the full diagnostic."), true, reason);
     assert.equal(reason.includes("Reproduce:"), false, reason);
-    assert.equal(outcome.decision.kind === "deny" ? outcome.decision.diagnostic : undefined, `Checked ${root}`);
+    assert.equal(
+      outcome.decision.kind === "deny" ? outcome.decision.diagnostic : undefined,
+      `Checked ${root}`,
+    );
   });
 });
 

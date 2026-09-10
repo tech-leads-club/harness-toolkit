@@ -33,7 +33,8 @@ export function diffDiagnostic(
   const head = sha === null ? `Checked ${shaRoot} — no HEAD yet.` : `Checked ${shaRoot} at ${sha}.`;
   const repro = sha === null ? [] : reproductionLines(sha, files);
   const footer = [head, ...repro, WHY_POINTER].join("\n");
-  const summary = repro[0] === undefined ? head.replace(/\.$/, "") : `${head.replace(/\.$/, "")} · ${repro[0]}`;
+  const summary =
+    repro[0] === undefined ? head.replace(/\.$/, "") : `${head.replace(/\.$/, "")} · ${repro[0]}`;
   return { footer, summary };
 }
 
