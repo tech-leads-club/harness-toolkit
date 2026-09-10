@@ -10,6 +10,7 @@ import {
   gitRootOf,
   listAddedLines,
   listChangedRepoFiles,
+  listCommitFileSets,
   localRepoRemote,
   parseOwnerRepo,
   runCommand,
@@ -49,6 +50,55 @@ describe("listChangedRepoFiles", () => {
     const changed = await listChangedRepoFiles(dir);
     assert.equal(changed.includes("committed.ts"), true);
     assert.equal(changed.includes("untracked.ts"), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /**
+   * GRD-05 — a subdirectory used to read as "not a repository" and return no files at all, silently, the same
+   * blind spot AD-132 fixes across every function in this file.
+   */
+  test("GRD-05 returns the identical file list whether called from the root or a real subdirectory", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "committed.ts"), "export const a = 1;\n");
+    git(dir, ["add", "committed.ts"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+    writeFileSync(join(dir, "committed.ts"), "export const a = 2;\n");
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+    writeFileSync(join(dir, "apps", "web", "untracked.ts"), "export const b = 2;\n");
+
+    const fromRoot = await listChangedRepoFiles(dir);
+    const fromSubdir = await listChangedRepoFiles(join(dir, "apps", "web"));
+
+    assert.deepEqual([...fromSubdir].sort(), [...fromRoot].sort());
+    assert.equal(fromRoot.includes("apps/web/untracked.ts"), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("listCommitFileSets", () => {
+  test("GRD-05 returns the identical commit history whether called from the root or a real subdirectory", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "first"]);
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+    writeFileSync(join(dir, "apps", "web", "b.ts"), "export const b = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "second"]);
+
+    const fromRoot = await listCommitFileSets(dir, 5);
+    const fromSubdir = await listCommitFileSets(join(dir, "apps", "web"), 5);
+
+    assert.deepEqual(fromSubdir, fromRoot);
+    assert.deepEqual(fromRoot[0], ["apps/web/b.ts"]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns an empty array when .git is absent, without throwing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "no-git-"));
+    await assert.doesNotReject(async () => {
+      assert.deepEqual(await listCommitFileSets(dir, 5), []);
+    });
     rmSync(dir, { recursive: true, force: true });
   });
 });

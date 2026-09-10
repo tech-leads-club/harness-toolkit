@@ -50,14 +50,15 @@ async function gitLines(projectDir: string, args: string[]): Promise<string[]> {
  * invariant: `HEAD` stays the default, so a caller with no recorded base behaves exactly as before.
  */
 export async function listChangedRepoFiles(projectDir: string, base = "HEAD"): Promise<string[]> {
-  if (!existsSync(join(projectDir, ".git"))) {
+  const root = await gitRootOf(projectDir);
+  if (root === null) {
     return [];
   }
 
   const batches = await Promise.all([
-    gitLines(projectDir, ["diff", "--name-only", base]),
-    gitLines(projectDir, ["diff", "--name-only", "--cached"]),
-    gitLines(projectDir, ["ls-files", "--others", "--exclude-standard"]),
+    gitLines(root, ["diff", "--name-only", base]),
+    gitLines(root, ["diff", "--name-only", "--cached"]),
+    gitLines(root, ["ls-files", "--others", "--exclude-standard"]),
   ]);
 
   const paths = new Set<string>();
@@ -74,18 +75,16 @@ export async function listChangedRepoFiles(projectDir: string, base = "HEAD"): P
  * over history without knowing how git formats anything.
  */
 export async function listCommitFileSets(projectDir: string, limit: number): Promise<string[][]> {
-  if (!existsSync(join(projectDir, ".git")) || limit <= 0) {
+  if (limit <= 0) {
+    return [];
+  }
+  const root = await gitRootOf(projectDir);
+  if (root === null) {
     return [];
   }
   // why: one git call for all commits. A separate call per commit is the obvious shape and is an order of
   // magnitude slower on the history sizes this is used for.
-  const lines = await gitLines(projectDir, [
-    "log",
-    `-${limit}`,
-    "--name-only",
-    "--no-renames",
-    "--format=%x00",
-  ]);
+  const lines = await gitLines(root, ["log", `-${limit}`, "--name-only", "--no-renames", "--format=%x00"]);
 
   const commits: string[][] = [];
   let current: string[] | null = null;
