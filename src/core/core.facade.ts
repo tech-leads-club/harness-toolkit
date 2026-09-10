@@ -99,6 +99,7 @@ import {
 } from "./observability/observability.report.ts";
 import {
   DEFAULT_OBS,
+  deriveTraceId,
   recordAudit,
   recordFromEvent,
   recordObs,
@@ -380,6 +381,7 @@ export const coreFacade = {
   observability: {
     DEFAULT_OBS,
     resolveObsLevel,
+    deriveTraceId,
     recordObs,
     recordFromEvent,
     recordAudit,

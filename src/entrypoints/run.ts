@@ -67,6 +67,7 @@ function recordAdapterEvent(
   kind: string,
   attrs: Record<string, unknown>,
   provider = "unknown",
+  top: Record<string, unknown> = {},
 ): void {
   try {
     appendRecord(join(projectStateDir(root), "obs.jsonl"), {
@@ -75,6 +76,7 @@ function recordAdapterEvent(
       kind,
       level: "signal",
       ts: new Date().toISOString(),
+      ...top,
       attrs,
     });
   } catch {}
@@ -93,6 +95,10 @@ function recordHookEnter(event: HarnessEvent): void {
     "hook.enter",
     { event: event.event, toolName: event.toolName ?? "none", sessionKey: event.sessionKey },
     event.provider,
+    {
+      trace_id: coreFacade.observability.deriveTraceId(event.sessionKey),
+      session_id: event.sessionKey,
+    },
   );
 }
 

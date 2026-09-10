@@ -969,6 +969,56 @@ describe("operator rules", () => {
     }
   });
 
+  /**
+   * AD-135 P2, end to end — the incident's own repo-scope claim, exercised against a real `git remote -v`
+   * resolution rather than a hand-built `TriggerContext`. Confirmed by a live Verifier's mutation sensor:
+   * forcing `repoRemote` to resolve as if unscoped on this exact path survived every test that stopped short
+   * of this reproduction.
+   */
+  test("AD-135 an MCP call naming this repository, resolved through a real git remote, is denied", async () => {
+    const root = tempRoot();
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: root });
+    try {
+      withRule(root, "Convene the jury.");
+
+      const outcome = await runHandler(
+        toolBeforeHandler,
+        stdinOf(cursorMcpCreatePr(root, { owner: "acme", repo: "widgets" })),
+      );
+
+      assert.equal(outcome.decision.kind, "deny");
+      assert.equal(outcome.decision.kind === "deny" ? outcome.decision.rule : "", "rule:review-before-pr");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * AD-136, end to end — the exact pairing the spec names: `hook.enter` precedes `shell.start`'s own `deny`
+   * record for the same session, for a real `pr-open` denial through `toolBeforeHandler`, not a stub handler.
+   */
+  test("AD-136 hook.enter precedes shell.start's deny record for a real pr-open denial", async () => {
+    const root = tempRoot();
+    try {
+      withRule(root, "Convene the jury.");
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(opensPr(root, "cursor")));
+      assert.equal(outcome.decision.kind, "deny");
+
+      const events = coreFacade.observability.readSignalEvents(root, "obs.jsonl", 50);
+      const enterIndex = events.findIndex((event) => (event.kind as string) === "hook.enter");
+      const shellIndex = events.findIndex((event) => event.kind === "shell.start");
+      assert.notEqual(enterIndex, -1, "hook.enter must be recorded");
+      assert.notEqual(shellIndex, -1, "shell.start must be recorded");
+      assert.ok(enterIndex < shellIndex, "hook.enter precedes shell.start");
+      assert.equal(events[shellIndex]?.attrs.permission, "deny");
+      assert.equal(events[enterIndex]?.session_id, events[shellIndex]?.session_id, "same session");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   /** AC1 — the capability off means the rule file is inert, not read-and-ignored. */
   test("AC1 with rules.enabled false the rule does not fire", async () => {
     const root = tempRoot();

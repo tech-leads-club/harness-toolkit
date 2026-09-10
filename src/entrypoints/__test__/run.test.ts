@@ -204,11 +204,30 @@ test("hook.enter is recorded before the handler runs, and precedes a deny's own 
     const records = obsRecords(root);
     assert.equal(records.length, 2);
     assert.equal(records[0]?.kind, "hook.enter");
+    assert.equal(records[0]?.level, "signal", "must land in obs.jsonl, not debug.jsonl");
+    assert.equal(records[0]?.session_id, "cursor-conv-1");
+    assert.equal(typeof records[0]?.trace_id, "string");
+    assert.notEqual(records[0]?.trace_id, "");
     const enterAttrs = records[0]?.attrs as Record<string, unknown>;
     assert.equal(enterAttrs.event, "tool.before");
     assert.equal(enterAttrs.toolName, "Read");
+    assert.equal(enterAttrs.sessionKey, "cursor-conv-1");
     assert.equal(records[0]?.provider, "cursor");
     assert.equal(records[1]?.kind, "policy.deny");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("hook.enter records toolName as 'none' when the event carries no tool", async () => {
+  const root = tempRoot();
+  try {
+    const payload = cursorPayload(root, { tool_name: undefined });
+    await runHandler(() => ({ kind: "allow" }), stdinOf(JSON.stringify(payload)));
+    const records = obsRecords(root);
+    const enter = records.find((record) => record.kind === "hook.enter");
+    const attrs = enter?.attrs as Record<string, unknown>;
+    assert.equal(attrs.toolName, "none");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

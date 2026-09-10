@@ -675,11 +675,12 @@ describe("normalizeMcpToolName", () => {
     assert.equal(normalizeMcpToolName("mcp__github__create_pull_request"), "create_pull_request");
   });
 
-  test("PMS-N3 a server name containing its own underscore still strips to the tool name", () => {
+  test("PMS-N3 a server name that itself contains __ still strips to the tool name", () => {
     assert.equal(
-      normalizeMcpToolName("mcp__github_enterprise__create_pull_request"),
+      normalizeMcpToolName("mcp__github__enterprise__create_pull_request"),
       "create_pull_request",
-      "the split is on the LAST __, not the first",
+      "two __ separators after the mcp__ prefix — indexOf would stop at the first and return " +
+        "'enterprise__create_pull_request'; only lastIndexOf gives the tool name",
     );
   });
 
@@ -791,6 +792,17 @@ describe("triggerMatches — MCP shape repo scope (pr-open)", () => {
         context({ title: "fix: something" }, { owner: "acme", repo: "widgets" }),
       ),
       true,
+    );
+  });
+
+  test("PMS-14 toolInput carries only owner, no repo — a partial claim is treated as none, fires", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        context({ owner: "acme" }, { owner: "other-owner", repo: "other-repo" }),
+      ),
+      true,
+      "no repo field means there is no owner/repo pair to compare, not half a mismatch",
     );
   });
 });
