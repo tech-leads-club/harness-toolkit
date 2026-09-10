@@ -192,6 +192,23 @@ describe("localRepoRemote", () => {
     assert.equal(await localRepoRemote(dir), null);
     rmSync(dir, { recursive: true, force: true });
   });
+
+  /**
+   * GRD-02 — the exact production incident: this check silently returned null for a real subdirectory of a
+   * real repository, letting a pr-open rule never evaluate at all ([/decisions/ad-132.md](/decisions/ad-132.md)).
+   */
+  test("GRD-02 resolves the same owner/repo from a real subdirectory, not only the exact root", async () => {
+    const dir = initRepo();
+    git(dir, ["remote", "add", "origin", "https://github.com/acme/widgets.git"]);
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+
+    const fromRoot = await localRepoRemote(dir);
+    const fromSubdir = await localRepoRemote(join(dir, "apps", "web"));
+
+    assert.deepEqual(fromRoot, { owner: "acme", repo: "widgets" });
+    assert.deepEqual(fromSubdir, fromRoot);
+    rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 describe("gitRootOf", () => {

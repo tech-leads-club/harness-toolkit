@@ -232,9 +232,10 @@ export function parseOwnerRepo(url: string): RepoRef | null {
  * ([/decisions/ad-130.md](/decisions/ad-130.md)).
  */
 export async function localRepoRemote(projectDir: string, remoteName = "origin"): Promise<RepoRef | null> {
-  if (!existsSync(join(projectDir, ".git"))) {
+  const root = await gitRootOf(projectDir);
+  if (root === null) {
     return null;
   }
-  const result = await runProcess({ command: ["git", "remote", "get-url", remoteName], cwd: projectDir });
+  const result = await runProcess({ command: ["git", "remote", "get-url", remoteName], cwd: root });
   return result.exitCode === 0 ? parseOwnerRepo(result.stdout.trim()) : null;
 }
