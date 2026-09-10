@@ -1163,7 +1163,7 @@ function pollutedMainCheckout(mainRoot: string): void {
   git(mainRoot, ["commit", "-q", "-m", "unrelated main-checkout work"]);
 }
 
-describe("stop: worktree scoping (AD-129)", () => {
+describe("stop: worktree scoping, AD-129", () => {
   test("WTS-05 the comment gate scans the worktree's tree at stop, not the main checkout's polluted one", async () => {
     const main = cleanRepo();
     const worktree = addWorktree(main, "feature-x");

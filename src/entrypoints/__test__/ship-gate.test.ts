@@ -165,14 +165,15 @@ function cleanRepo(): string {
  * gates diffed `turn_base_sha` (worktree-valid, AD-117) against the *main checkout's* working tree — an
  * unrelated branch's whole file state read as "added this turn."
  */
-describe("ship-gate: worktree scoping (AD-129)", () => {
+describe("ship-gate: worktree scoping, AD-129", () => {
   test("WTS-01 the comment gate scans the worktree's tree, not the main checkout's polluted one", async () => {
     const main = cleanRepo();
     const worktree = addWorktree(main, "feature-x");
     writePolicy(main, { comments: { enabled: true, onViolation: "followup", mode: "declared" } });
 
-    // why: turn_base_sha is recorded from the worktree (AD-117) while state lives at the main checkout
-    // (AD-114) — the real production shape, reproduced end to end via the real prompt-submit handler.
+    // why: turn_base_sha is recorded from the worktree ([/decisions/ad-117.md](/decisions/ad-117.md)) while
+    // state lives at the main checkout ([/decisions/ad-114.md](/decisions/ad-114.md)) — the real production
+    // shape, reproduced end to end via the real prompt-submit handler.
     await runHandler(promptSubmitHandler, stdinOf(claudePromptSubmitInWorktree(main, worktree)));
 
     pollutedMainCheckout(main);

@@ -16,6 +16,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 ## 2026-09-09
 
 - **AD-128** — pr-open and push recognize their gh api equivalent, and pr-merge exists ([/decisions/ad-128.md](/decisions/ad-128.md))
+- **AD-129** — Turn-scope git diffing runs at the event's own working directory, not the project root ([/decisions/ad-129.md](/decisions/ad-129.md))
 
 ## 2026-09-08
 
