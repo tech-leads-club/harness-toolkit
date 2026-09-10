@@ -1,5 +1,6 @@
 import type { Decision, HarnessEvent } from "../contracts/index.ts";
 import { coreFacade } from "../core/index.ts";
+import { localRepoRemote } from "../platform/git.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
 import { shipGateVerdict } from "./ship-gate.ts";
@@ -100,15 +101,21 @@ async function rulesDecision(event: HarnessEvent, ctx: HandlerContext): Promise<
   if (dryRun.outcomes.length === 0) {
     return { kind: "abstain" };
   }
-  // why twice: the first pass answers whether any rule fired at all, which costs no git. Only then is the sha
-  // worth a process, and the second pass is the one whose verdict counts.
-  const sha = await currentGitSha(shaRoot);
-  const verdict = coreFacade.rules.decideAction(event.projectDir, config, trigger, {
-    sha,
-    sessionKey: event.sessionKey,
-    mode: ctx.policy.mode,
-    shaRoot,
-  });
+  // why: the first pass answers whether any rule fired at all, which costs no git. Only then are the sha
+  // and the local remote worth a process each — the remote so a gh api call naming a different repository
+  // ([/decisions/ad-130.md](/decisions/ad-130.md)) cannot satisfy this project's own rules.
+  const [sha, repoRemote] = await Promise.all([currentGitSha(shaRoot), localRepoRemote(shaRoot)]);
+  const verdict = coreFacade.rules.decideAction(
+    event.projectDir,
+    config,
+    { ...trigger, repoRemote },
+    {
+      sha,
+      sessionKey: event.sessionKey,
+      mode: ctx.policy.mode,
+      shaRoot,
+    },
+  );
   return verdict.decision;
 }
 

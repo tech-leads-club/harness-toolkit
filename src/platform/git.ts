@@ -185,3 +185,28 @@ export async function listTrackedFiles(projectDir: string): Promise<string[]> {
   }
   return result.output.split("\0").filter((path) => path !== "");
 }
+
+export type RepoRef = { owner: string; repo: string };
+
+/**
+ * why: both SSH (`git@host:owner/repo.git`) and HTTPS (`https://host/owner/repo(.git)?`) forms share the same
+ * tail shape — a `/` or `:` before the owner, a `/` before the repo, an optional `.git` and trailing slash.
+ * One pattern reads both without a URL parser this project has no other use for.
+ */
+export function parseOwnerRepo(url: string): RepoRef | null {
+  const match = /[:/]([^/:]+)\/([^/]+?)(?:\.git)?\/?$/.exec(url.trim());
+  return match ? { owner: match[1] as string, repo: match[2] as string } : null;
+}
+
+/**
+ * why a fixed remote name: every repository this project has touched, including this one, names its own
+ * remote `origin` — a configurable name is generality nobody has asked for yet
+ * ([/decisions/ad-130.md](/decisions/ad-130.md)).
+ */
+export async function localRepoRemote(projectDir: string, remoteName = "origin"): Promise<RepoRef | null> {
+  if (!existsSync(join(projectDir, ".git"))) {
+    return null;
+  }
+  const result = await runProcess({ command: ["git", "remote", "get-url", remoteName], cwd: projectDir });
+  return result.exitCode === 0 ? parseOwnerRepo(result.stdout.trim()) : null;
+}

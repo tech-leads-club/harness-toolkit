@@ -20,6 +20,13 @@ export type TriggerContext = {
   event: string;
   toolName?: string;
   command?: string;
+  /**
+   * why optional, and why `null` differs from `undefined`: unset means the caller never resolved this
+   * dimension (every existing caller, unaffected). `null` means it tried and found no confirmable local
+   * repo, which fails an API-shaped match rather than skipping the check
+   * ([/decisions/ad-130.md](/decisions/ad-130.md)).
+   */
+  repoRemote?: { owner: string; repo: string } | null;
 };
 
 /**
@@ -176,12 +183,24 @@ function inferredApiMethod(words: readonly string[]): string {
   return words.some((word) => API_BODY_FLAGS.has(word)) ? "POST" : "GET";
 }
 
-function matchesApiShape(words: readonly string[], shape: ApiShape): boolean {
+function matchesApiShape(
+  words: readonly string[],
+  shape: ApiShape,
+  repoRemote?: { owner: string; repo: string } | null,
+): boolean {
   const path = apiPathArgument(words);
   if (path === undefined) {
     return false;
   }
   const segments = apiPathSegments(path);
+  if (repoRemote !== undefined) {
+    if (repoRemote === null) {
+      return false;
+    }
+    if (segments[0] !== "repos" || segments[1] !== repoRemote.owner || segments[2] !== repoRemote.repo) {
+      return false;
+    }
+  }
   const last = segments[segments.length - 1];
   if (shape.lastSegment !== undefined && last !== shape.lastSegment) {
     return false;
@@ -228,12 +247,13 @@ const API_SHAPES: Partial<Record<"pr-open" | "commit" | "push" | "pr-merge", rea
 function matchesAnyShape(
   words: readonly string[],
   kind: "pr-open" | "commit" | "push" | "pr-merge",
+  repoRemote?: { owner: string; repo: string } | null,
 ): boolean {
   if (SHELL_SHAPES[kind].some((shape) => matchesShape(words, shape))) {
     return true;
   }
   const apiShapes = API_SHAPES[kind] ?? [];
-  return apiShapes.some((shape) => matchesApiShape(words, shape));
+  return apiShapes.some((shape) => matchesApiShape(words, shape, repoRemote));
 }
 
 export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): boolean {
@@ -249,7 +269,9 @@ export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): b
       if (context.command === undefined) {
         return false;
       }
-      return subCommands(context.command).some((words) => matchesAnyShape(words, trigger.kind));
+      return subCommands(context.command).some((words) =>
+        matchesAnyShape(words, trigger.kind, context.repoRemote),
+      );
     }
     default: {
       if (context.command === undefined) {

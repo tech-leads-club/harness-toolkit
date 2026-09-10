@@ -9,6 +9,8 @@ import {
   filterTestTargets,
   listAddedLines,
   listChangedRepoFiles,
+  localRepoRemote,
+  parseOwnerRepo,
   runCommand,
 } from "../git.ts";
 
@@ -149,6 +151,44 @@ describe("the turn's base, not the HEAD at stop", () => {
         ["// narration"],
       );
     }
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("parseOwnerRepo", () => {
+  test("ARS reads the SSH form", () => {
+    assert.deepEqual(parseOwnerRepo("git@github.com:owner/repo.git"), { owner: "owner", repo: "repo" });
+  });
+
+  test("ARS reads the HTTPS form, with or without .git, with or without a trailing slash", () => {
+    assert.deepEqual(parseOwnerRepo("https://github.com/owner/repo.git"), { owner: "owner", repo: "repo" });
+    assert.deepEqual(parseOwnerRepo("https://github.com/owner/repo"), { owner: "owner", repo: "repo" });
+    assert.deepEqual(parseOwnerRepo("https://github.com/owner/repo/"), { owner: "owner", repo: "repo" });
+  });
+
+  test("ARS an unparseable string is null, not a guess", () => {
+    assert.equal(parseOwnerRepo("not-a-url"), null);
+    assert.equal(parseOwnerRepo(""), null);
+  });
+});
+
+describe("localRepoRemote", () => {
+  test("ARS resolves owner/repo from a real git repo's origin", async () => {
+    const dir = initRepo();
+    git(dir, ["remote", "add", "origin", "https://github.com/acme/widgets.git"]);
+    assert.deepEqual(await localRepoRemote(dir), { owner: "acme", repo: "widgets" });
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("ARS null when the repo has no such remote", async () => {
+    const dir = initRepo();
+    assert.equal(await localRepoRemote(dir), null);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("ARS null when the directory is not a git repo at all", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "git-test-non-repo-"));
+    assert.equal(await localRepoRemote(dir), null);
     rmSync(dir, { recursive: true, force: true });
   });
 });

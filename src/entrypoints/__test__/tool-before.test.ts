@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -943,6 +944,44 @@ describe("operator rules", () => {
       const outcome = await runHandler(toolBeforeHandler, stdinOf(opensPr(root, "cursor")));
 
       assert.equal(outcome.decision.kind, "deny");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * AD-130 — a `pr-open` rule protects *this* repository's pull requests. A `gh api` create targeting a
+   * different repository entirely is not this project's own pr-open, and must not be gated by it.
+   */
+  test("AD-130 a gh api pull-request create targeting an unrelated repository does not fire this rule", async () => {
+    const root = tempRoot();
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: root });
+      withRule(root, "Convene the jury.");
+
+      const command = "gh api repos/other-owner/unrelated-repo/pulls -f title=x -f head=feat/x -f base=main";
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShell(root, command)));
+
+      assert.notEqual(outcome.decision.kind, "deny");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("AD-130 the same gh api shape targeting this repo's own remote still fires the rule", async () => {
+    const root = tempRoot();
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: root });
+      withRule(root, "Convene the jury.");
+
+      const command = "gh api repos/acme/widgets/pulls -f title=x -f head=feat/x -f base=main";
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShell(root, command)));
+
+      assert.equal(outcome.decision.kind, "deny");
+      const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
+      assert.match(reason, /rule review-before-pr/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

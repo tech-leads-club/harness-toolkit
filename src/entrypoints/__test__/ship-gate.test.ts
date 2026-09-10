@@ -434,3 +434,46 @@ describe("ship-gate: commit/push/pr-open run the same battery stop would, before
     assert.notEqual(outcome.decision.kind, "deny");
   });
 });
+
+/**
+ * AD-130 — the exact production incident: a `gh api` push targeting an unrelated repository was gated by
+ * this repo's own stale local state. The full battery must never fire for a repo this checkout's remote
+ * does not name.
+ */
+describe("ship-gate: gh api push is scoped to the local checkout's own remote, AD-130", () => {
+  test("ARS-01/02 an unrelated repository's gh api push never pays the full battery, even with a real local failure", async () => {
+    const root = dirtyRepo();
+    git(root, "remote", "add", "origin", "https://github.com/acme/widgets.git");
+    writePolicy(root, { grind: { enabled: true, lintCommand: gate(1) } });
+
+    const outcome = await runHandler(
+      toolBeforeHandler,
+      stdinOf(
+        claudeShip(
+          root,
+          "gh api -X PATCH repos/other-owner/unrelated-repo/git/refs/heads/main -f sha=deadbeef",
+        ),
+      ),
+    );
+
+    assert.notEqual(
+      outcome.decision.kind,
+      "deny",
+      "a lint failure in this checkout must not gate a push to a different repository",
+    );
+  });
+
+  test("ARS-01 the same shape targeting this checkout's own remote still pays the battery", async () => {
+    const root = dirtyRepo();
+    git(root, "remote", "add", "origin", "https://github.com/acme/widgets.git");
+    writePolicy(root, { grind: { enabled: true, lintCommand: gate(1) } });
+
+    const outcome = await runHandler(
+      toolBeforeHandler,
+      stdinOf(claudeShip(root, "gh api -X PATCH repos/acme/widgets/git/refs/heads/main -f sha=deadbeef")),
+    );
+
+    assert.equal(outcome.decision.kind, "deny", JSON.stringify(outcome.decision));
+    assert.equal(outcome.decision.kind === "deny" ? outcome.decision.rule : "", "ship-gate-lint");
+  });
+});

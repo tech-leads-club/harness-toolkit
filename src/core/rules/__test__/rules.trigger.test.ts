@@ -358,6 +358,113 @@ describe("triggerMatches", () => {
     );
   });
 
+  /**
+   * AD-130 — the exact incident: `gh api` recognized *any* repository's push as this project's own. ARS-01..04
+   * close it: the API path's owner/repo now has to match `context.repoRemote`.
+   */
+  describe("AD-130 repoRemote scoping for the gh api shapes", () => {
+    const SAME_REPO = { owner: "acme", repo: "widgets" };
+    const OTHER_REPO = { owner: "other-owner", repo: "unrelated-repo" };
+
+    test("ARS-01 push still fires when the gh api call targets the local repo's own remote", () => {
+      assert.equal(
+        triggerMatches(
+          { kind: "push" },
+          {
+            event: "tool.before",
+            command: "gh api -X PATCH repos/acme/widgets/git/refs/heads/main -f sha=abc",
+            repoRemote: SAME_REPO,
+          },
+        ),
+        true,
+      );
+    });
+
+    test("ARS-02 push does not fire when the gh api call targets an unrelated repository", () => {
+      assert.equal(
+        triggerMatches(
+          { kind: "push" },
+          {
+            event: "tool.before",
+            command: "gh api -X PATCH repos/other-owner/unrelated-repo/git/refs/heads/main -f sha=abc",
+            repoRemote: SAME_REPO,
+          },
+        ),
+        false,
+      );
+    });
+
+    test("ARS-02 the same holds for pr-open and pr-merge against an unrelated repository", () => {
+      assert.equal(
+        triggerMatches(
+          { kind: "pr-open" },
+          {
+            event: "tool.before",
+            command: "gh api repos/other-owner/unrelated-repo/pulls -f title=x -f head=y -f base=z",
+            repoRemote: SAME_REPO,
+          },
+        ),
+        false,
+      );
+      assert.equal(
+        triggerMatches(
+          { kind: "pr-merge" },
+          {
+            event: "tool.before",
+            command: "gh api repos/other-owner/unrelated-repo/pulls/42/merge -X PUT",
+            repoRemote: SAME_REPO,
+          },
+        ),
+        false,
+      );
+    });
+
+    test("ARS-03 a resolved-but-absent local remote (null) fails every gh api shape, not just a mismatch", () => {
+      assert.equal(
+        triggerMatches(
+          { kind: "push" },
+          {
+            event: "tool.before",
+            command: "gh api -X PATCH repos/acme/widgets/git/refs/heads/main -f sha=abc",
+            repoRemote: null,
+          },
+        ),
+        false,
+      );
+    });
+
+    test("ARS-04 an omitted repoRemote (undefined) is unchanged from before AD-130", () => {
+      assert.equal(
+        triggerMatches(
+          { kind: "push" },
+          {
+            event: "tool.before",
+            command: "gh api -X PATCH repos/other-owner/unrelated-repo/git/refs/heads/main -f sha=abc",
+          },
+        ),
+        true,
+        "no repoRemote supplied at all — the caller didn't resolve this dimension, so the path/method check alone still decides",
+      );
+    });
+
+    test("ARS-04 CLI-form shapes are unaffected by repoRemote entirely, matched or mismatched", () => {
+      assert.equal(
+        triggerMatches(
+          { kind: "push" },
+          { event: "tool.before", command: "git push origin main", repoRemote: OTHER_REPO },
+        ),
+        true,
+      );
+      assert.equal(
+        triggerMatches(
+          { kind: "pr-merge" },
+          { event: "tool.before", command: "gh pr merge 42", repoRemote: OTHER_REPO },
+        ),
+        true,
+      );
+    });
+  });
+
   test("commit and push fire on their own shapes and not on each other", () => {
     assert.equal(
       triggerMatches({ kind: "commit" }, { event: "tool.before", command: "git commit -m x" }),
