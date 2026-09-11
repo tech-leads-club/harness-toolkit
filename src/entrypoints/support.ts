@@ -109,7 +109,7 @@ export async function computeTurnScope(
   const handoff = seal.ok ? coreFacade.handoff.readHandoff(root, provider, sessionKey) : undefined;
   const turnBase = handoff?.turn_base_sha ?? "HEAD";
   const rawChangedFiles = await listChangedRepoFiles(gitRoot, turnBase);
-  const otherSessionFiles = coreFacade.presence.filesClaimedByOtherLiveSessions(
+  const otherSessionFiles = await coreFacade.presence.filesClaimedByOtherLiveSessions(
     root,
     gitRoot,
     provider,

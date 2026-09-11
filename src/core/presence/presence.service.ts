@@ -1,5 +1,6 @@
 import { isAbsolute, relative } from "node:path";
 import type { Decision } from "../../contracts/decision.ts";
+import { gitRootOf } from "../../platform/git.ts";
 import {
   deletePresenceRecord,
   listPresenceRecords,
@@ -163,6 +164,14 @@ export function isSessionLive(
   return record !== null && !isStale(record, now.getTime(), CONVERSATION_STALE_MS);
 }
 
+// why: a caller's `gitRoot` is often `shaScopeRoot(event)` — a tracked directory, but not always the
+// repository's top level (a worktree subdirectory, a `cd`'d session, [/decisions/ad-114.md](/decisions/ad-114.md))
+// — and `relative()` against that non-root base miscomputes exactly like the mismatch this closes
+// ([/decisions/ad-137.md](/decisions/ad-137.md)).
+function relativeClaim(resolvedGitRoot: string, file: string): string {
+  return isAbsolute(file) ? relative(resolvedGitRoot, file) : file;
+}
+
 /**
  * hazard: two concurrent sessions in the same checkout both read `git diff` against the same shared working
  * tree — a file only one of them ever touched still shows up in the *other's* own diff, because git has no
@@ -171,20 +180,17 @@ export function isSessionLive(
  * output) or one both sessions touched stays in scope, so the existing single-session behaviour this exists
  * to leave alone is never narrowed by a guess ([/decisions/ad-137.md](/decisions/ad-137.md)).
  */
-function relativeClaim(gitRoot: string, file: string): string {
-  return isAbsolute(file) ? relative(gitRoot, file) : file;
-}
-
-export function filesClaimedByOtherLiveSessions(
+export async function filesClaimedByOtherLiveSessions(
   root: string,
   gitRoot: string,
   provider: string,
   sessionKey: string,
   now: Date = new Date(),
-): Set<string> {
+): Promise<Set<string>> {
+  const resolvedGitRoot = (await gitRootOf(gitRoot)) ?? gitRoot;
   const mine = sessionIdFromSessionKey(provider, sessionKey);
   const own = readPresenceRecord(root, provider, mine);
-  const ownFiles = new Set((own?.recent_files ?? []).map((file) => relativeClaim(gitRoot, file)));
+  const ownFiles = new Set((own?.recent_files ?? []).map((file) => relativeClaim(resolvedGitRoot, file)));
   const claimed = new Set<string>();
   for (const record of listPresenceRecords(root)) {
     if (record.provider === provider && record.session === mine) {
@@ -194,7 +200,7 @@ export function filesClaimedByOtherLiveSessions(
       continue;
     }
     for (const rawFile of record.recent_files) {
-      const file = relativeClaim(gitRoot, rawFile);
+      const file = relativeClaim(resolvedGitRoot, rawFile);
       if (!ownFiles.has(file)) {
         claimed.add(file);
       }

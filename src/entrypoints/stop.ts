@@ -497,7 +497,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
    */
   const deferred: string[] = [];
   const rawChangedFiles = await listChangedRepoFiles(shaRoot, turnBase);
-  const otherSessionFiles = coreFacade.presence.filesClaimedByOtherLiveSessions(
+  const otherSessionFiles = await coreFacade.presence.filesClaimedByOtherLiveSessions(
     root,
     shaRoot,
     provider,
