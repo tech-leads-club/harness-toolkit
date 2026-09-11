@@ -39,7 +39,12 @@ import {
   scanProject,
 } from "./duplication/duplication.service.ts";
 import { evaluateFloor } from "./floor/floor.service.ts";
-import { computeGateFingerprint, readLastGate, writeLastGate } from "./gate/gate.artifact.ts";
+import {
+  computeGateFingerprint,
+  pruneGateSessions,
+  readLastGate,
+  writeLastGate,
+} from "./gate/gate.artifact.ts";
 import {
   appendFilesVerdict,
   isCommandResolutionFailure,
@@ -290,6 +295,7 @@ export const coreFacade = {
     GateLockTimeoutError,
     writeLastGate,
     readLastGate,
+    pruneGateSessions,
     computeGateFingerprint,
     computeInputsHash,
     isCacheHit,

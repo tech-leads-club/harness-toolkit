@@ -205,7 +205,11 @@ export async function runLockedGate(args: {
 }): Promise<GateRun> {
   const command = [...args.command, ...args.argvFiles];
   const inputs = coreFacade.gate.computeInputsHash(args.root, args.recordFiles, command);
-  const cached = coreFacade.gate.cachedVerdict(coreFacade.gate.readLastGate(args.root), args.gate, inputs);
+  const cached = coreFacade.gate.cachedVerdict(
+    coreFacade.gate.readLastGate(args.root, args.sessionKey),
+    args.gate,
+    inputs,
+  );
 
   let artifact: LastGateArtifact;
   if (cached !== null) {
@@ -220,6 +224,7 @@ export async function runLockedGate(args: {
           const result = await runCommand(args.root, args.command, args.argvFiles);
           return coreFacade.gate.writeLastGate({
             root: args.root,
+            sessionKey: args.sessionKey,
             gate: args.gate,
             exitCode: result.exitCode,
             command,

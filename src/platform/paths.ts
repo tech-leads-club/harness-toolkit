@@ -132,6 +132,10 @@ export function handoffSessionsDir(root: string): string {
   return join(projectStateDir(root), "handoff-sessions");
 }
 
+export function gateSessionsDir(root: string): string {
+  return join(projectStateDir(root), "gate-sessions");
+}
+
 // why: inside the state directory on purpose — the baseline that proves the policy was not switched off
 // inherits the same protection as the policy itself.
 export function policyBaselineDir(root: string): string {
