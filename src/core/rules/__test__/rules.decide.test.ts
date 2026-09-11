@@ -167,10 +167,27 @@ describe("ruleMessage", () => {
     assert.match(message, new RegExp(PR_OPEN_HINT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   });
 
-  /** AC3 — commit/push/pr-merge have no equivalent escape hatch in `SHELL_SHAPES`; claiming one would be false. */
-  test("AC3 the hint is absent for commit, push, and pr-merge rules", () => {
+  /**
+   * AC1 (content) — a judge review found the earlier version of this test only checked that the message
+   * contained `PR_OPEN_HINT`, true by construction for any string that constant holds. A rewrite of the hint
+   * naming the wrong flags, or wrongly claiming `gh pr ready` is not gated, passed every other test in this
+   * file. This anchors the hint's actual words to the mechanism it describes, not to itself.
+   */
+  test("AC1 the hint's content names the real flags, not just its own presence", () => {
+    assert.match(PR_OPEN_HINT, /`gh pr create --draft` or `-d`/);
+    assert.match(PR_OPEN_HINT, /`gh pr ready`/);
+    assert.match(PR_OPEN_HINT, /gated the normal way/);
+  });
+
+  /**
+   * AC3 — no trigger kind other than `pr-open` has an equivalent escape hatch in `SHELL_SHAPES`; claiming one
+   * would be false. A judge review found the original per-kind loop only covered 3 of `RuleTrigger["kind"]`'s
+   * seven members — a decoy entry for `stop`, `tool`, or `command` passed undetected. This checks the whole map.
+   */
+  test("AC3 the hint exists for pr-open and for no other trigger kind", () => {
+    assert.deepEqual(Object.keys(TRIGGER_ESCAPE_HATCH_HINT), ["pr-open"]);
+
     for (const kind of ["commit", "push", "pr-merge"] as const) {
-      assert.equal(TRIGGER_ESCAPE_HATCH_HINT[kind], undefined, kind);
       const message = ruleMessage(
         rule({ on: { kind }, body: "" }),
         ["gate(test) since HEAD"],
