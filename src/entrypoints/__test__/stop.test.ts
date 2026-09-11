@@ -720,9 +720,9 @@ test("the docs advisory abstains on a provider whose stop event carries no conte
     writeProjectPolicy(root, { docs: { command: FAILING_DOCS, severity: "warn" } });
     const outcome = await runHandler(stopHandler, stdinOf(cursorStop(root)));
     assert.equal(outcome.decision.kind, "abstain");
-    const artifact = readFileSync(join(root, ".tlc", "harness", "state", "last-gate.json"), "utf8");
-    assert.match(artifact, /"gate":\s*"docs"/);
-    assert.match(artifact, /doc x is stale/);
+    const artifact = coreFacade.gate.readLastGate(root, "cursor-conv-1");
+    assert.equal(artifact?.gate, "docs");
+    assert.match(artifact?.outputTail ?? "", /doc x is stale/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -738,8 +738,8 @@ test("a failing docs command at deny blocks the stop through the standard gate p
       assert.match(outcome.decision.text, /docs/);
     }
     // the shared path means the artifact and the handoff are written like any other gate
-    const artifact = readFileSync(join(root, ".tlc", "harness", "state", "last-gate.json"), "utf8");
-    assert.match(artifact, /"gate":\s*"docs"/);
+    const artifact = coreFacade.gate.readLastGate(root, "cursor-conv-1");
+    assert.equal(artifact?.gate, "docs");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
