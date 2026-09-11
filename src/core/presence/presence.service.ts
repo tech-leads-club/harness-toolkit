@@ -166,15 +166,15 @@ export function isSessionLive(
   return record !== null && !isStale(record, now.getTime(), CONVERSATION_STALE_MS);
 }
 
-// why: `gitRootOf` resolves symlinks and Windows short names, but a claim's own path is not guaranteed to be
-// — comparing a resolved base against an unresolved one miscomputes on macOS's `/tmp` → `/private/tmp`. Walking
-// to the nearest existing ancestor keeps both sides resolved even if the claimed file no longer exists.
+// why: `gitRootOf` resolves symlinks and Windows short (8.3) names, but a claim's own path is not guaranteed
+// to be — reproduced on both macOS's `/tmp` → `/private/tmp` and Windows's `RUNNER~1` → `runneradmin`.
+// `realpathSync` alone does not expand 8.3 names (a pure-JS, per-segment resolver); `.native` asks the OS.
 function realpathExistingPrefix(path: string): string {
   let current = path;
   let tail = "";
   for (;;) {
     try {
-      const real = realpathSync(current);
+      const real = realpathSync.native(current);
       return tail ? join(real, tail) : real;
     } catch {
       const parent = dirname(current);
