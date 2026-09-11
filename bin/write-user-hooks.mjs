@@ -6,6 +6,7 @@ import { applyClaudeWiring } from "../src/providers/claude/claude.wiring.ts";
 import { applyCodexWiring } from "../src/providers/codex/codex.wiring.ts";
 import { isOpencodeManaged, renderOpencodePlugin } from "../src/providers/opencode/opencode.wiring.ts";
 import { isVSCodeManaged, renderVSCodeHooksText } from "../src/providers/vscode/vscode.wiring.ts";
+import { backupBeforeWrite } from "../src/platform/config-backup.ts";
 import { providers } from "../src/providers/index.ts";
 
 const CURSOR_MARKER = "tlc-exec.mjs";
@@ -56,6 +57,11 @@ export function applyCursorWiring(wiring, { force = false } = {}) {
     };
   }
 
+  // why: this file is shared with whatever else Cursor has wired — a backup before every rewrite is
+  // the recovery path if the merge ever gets a foreign entry wrong.
+  if (existsSync(targetPath)) {
+    backupBeforeWrite(targetPath, readFileSync(targetPath, "utf8"));
+  }
   mkdirSync(dirname(targetPath), { recursive: true });
   writeFileSync(targetPath, rendered);
   return { status: "written", target: targetPath };
@@ -88,6 +94,12 @@ export function applyOpencodePluginWiring(wiring, { force = false } = {}) {
       return { status: "unchanged", target: targetPath };
     }
   }
+
+  // why: this is a full module replacement, not a merge — a backup is the only recovery path if the
+  // generated bridge text has a defect.
+  if (existsSync(targetPath)) {
+    backupBeforeWrite(targetPath, readFileSync(targetPath, "utf8"));
+  }
   mkdirSync(dirname(targetPath), { recursive: true });
   writeFileSync(targetPath, rendered);
   return { status: "written", target: targetPath };
@@ -119,6 +131,12 @@ export function applyVSCodeWiring(wiring, { force = false } = {}) {
     if (existing === rendered) {
       return { status: "unchanged", target: targetPath };
     }
+  }
+
+  // why: this file is replaced wholesale, not merged — a backup is the only recovery path if the
+  // rendered document is wrong.
+  if (existsSync(targetPath)) {
+    backupBeforeWrite(targetPath, readFileSync(targetPath, "utf8"));
   }
   mkdirSync(dirname(targetPath), { recursive: true });
   writeFileSync(targetPath, rendered);

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ProviderWiring, RuntimePaths, WiringEntry } from "../../contracts/index.ts";
+import { backupBeforeWrite } from "../../platform/config-backup.ts";
 import { claudeConfigDir } from "../../platform/paths.ts";
 import type { ProviderWiringKind } from "../provider.port.ts";
 
@@ -240,6 +241,9 @@ export function applyClaudeWiring(settingsPath: string, entries: readonly Wiring
   const existingText = existsSync(settingsPath) ? readFileSync(settingsPath, "utf8") : null;
   const result = mergeClaudeSettings(existingText, entries);
   if (result.ok && result.changed) {
+    if (existingText !== null) {
+      backupBeforeWrite(settingsPath, existingText);
+    }
     mkdirSync(dirname(settingsPath), { recursive: true });
     writeFileSync(settingsPath, result.settingsText, "utf8");
   }

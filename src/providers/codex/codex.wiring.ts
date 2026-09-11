@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ProviderWiring, RuntimePaths, WiringEntry } from "../../contracts/index.ts";
+import { backupBeforeWrite } from "../../platform/config-backup.ts";
 import { codexConfigDir } from "../../platform/paths.ts";
 import type { ProviderWiringKind } from "../provider.port.ts";
 
@@ -164,6 +165,9 @@ export function applyCodexWiring(hooksPath: string, entries: readonly WiringEntr
   const existingText = existsSync(hooksPath) ? readFileSync(hooksPath, "utf8") : null;
   const result = mergeCodexHooks(existingText, entries);
   if (result.ok && result.changed) {
+    if (existingText !== null) {
+      backupBeforeWrite(hooksPath, existingText);
+    }
     mkdirSync(dirname(hooksPath), { recursive: true });
     writeFileSync(hooksPath, result.hooksText, "utf8");
   }

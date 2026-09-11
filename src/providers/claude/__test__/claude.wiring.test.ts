@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -11,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { backupPathFor } from "../../../platform/config-backup.ts";
 import { claudeConfigDir } from "../../../platform/paths.ts";
 import {
   applyClaudeWiring,
@@ -342,4 +344,23 @@ test("removeClaudeWiring on an absent file is not an error", () => {
   const result = removeClaudeWiring(join(tempDir(), "settings.json"));
   assert.equal(result.ok, true);
   assert.equal(result.ok && result.changed, false);
+});
+
+test("applyClaudeWiring backs up the existing settings.json when it changes an existing file", () => {
+  const dir = tempDir();
+  const settingsPath = join(dir, "settings.json");
+  writeFileSync(settingsPath, JSON.stringify({ env: { A: "1" } }), "utf8");
+  try {
+    const result = applyClaudeWiring(settingsPath, claudeWiring(RUNTIME).entries);
+    assert.equal(result.ok, true);
+    assert.equal(result.ok && result.changed, true);
+    // A backup should exist at <target>.<ISO-timestamp>.bak
+    const files = readdirSync(dir);
+    const bakFile = files.find((f) => f.startsWith("settings.json.") && f.endsWith(".bak"));
+    assert.ok(bakFile, `expected a .bak file alongside settings.json, found: ${files.join(", ")}`);
+    const bakContent = readFileSync(join(dir, bakFile), "utf8");
+    assert.equal(bakContent, JSON.stringify({ env: { A: "1" } }));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
