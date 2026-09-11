@@ -144,6 +144,7 @@ Handoff section and a link back to this index.
 | [AD-134](/decisions/ad-134.md) | runCommand moves to process.ts; listTrackedFiles never reaches for it again | active |
 | [AD-135](/decisions/ad-135.md) | pr-open recognizes its MCP surface | active |
 | [AD-136](/decisions/ad-136.md) | hook.enter makes a hook invocation observable before any decision is made | active |
+| [AD-137](/decisions/ad-137.md) | Gate artifacts are scoped per session, the same fix AD-122 already proved for handoff | active |
 
 ## Archived
 
