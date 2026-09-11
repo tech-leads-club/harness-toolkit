@@ -17,4 +17,5 @@ export type ProviderPort = {
   toEvent(raw: Record<string, unknown>): HarnessEvent | null;
   render(decision: Decision, event: HarnessEvent): Rendered;
   wiring(runtime: RuntimePaths): ProviderWiring;
+  wiringTargets(): string[];
 };

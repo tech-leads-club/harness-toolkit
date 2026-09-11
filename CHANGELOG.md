@@ -6,6 +6,57 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## v0.15.1
+
+- **AD-137** — Gate artifacts are scoped per session, the same fix AD-122 already proved for handoff
+
+## v0.15.0
+
+- **AD-135** — pr-open recognizes its MCP surface
+- **AD-136** — hook.enter makes a hook invocation observable before any decision is made
+
+## v0.14.2
+
+- **AD-134** — runCommand moves to process.ts; listTrackedFiles never reaches for it again
+
+## v0.14.1
+
+- **AD-133** — runCommand stops truncating; the one caller that needs a bound already had one
+
+## v0.14.0
+
+- **AD-132** — Git-root discovery replaces an exact-match guard, in the six functions and their consumers
+
+## v0.13.0
+
+- **AD-131** — A ship-gate denial names what it checked and points at tlc harness why
+
+## v0.12.2
+
+- **AD-130** — gh api pr-open/push/pr-merge detection is scoped to the local checkout's own remote
+
+## v0.12.1
+
+- **AD-129** — Turn-scope git diffing runs at the event's own working directory, not the project root
+
+## v0.12.0
+
+- **AD-128** — pr-open and push recognize their gh api equivalent, and pr-merge exists
+
+## v0.11.2
+
+- **AD-127** — A rule's shell triggers match the act at any word position, not only at word 0
+
+## v0.11.1
+
+- **AD-124** — A provider's wiring target is a floor surface; secret-shaped tool output is a rail
+- **AD-125** — A provider's docs and file scaffold are generated from its own code, never hand-maintained
+- **AD-126** — The provider scaffold is a contributor tool; it never belonged on the published CLI
+
+## v0.11.0
+
+- **AD-123** — Policy stays declarative; no custom executable policy code, ever
+
 ## v0.10.6
 
 - **AD-122** — Handoff continuity is scoped per session, and a live neighbour is never a source

@@ -465,6 +465,13 @@ describe("route — dispatch table", () => {
   test("an unrecognized subcommand routes to 'unknown'", () => {
     assert.deepEqual(route(["nonsense"]), { kind: "unknown", cmd: "nonsense" });
   });
+
+  // why: new-provider was a published-CLI subcommand that scaffolded files a real install's runtime home
+  // wipes on every update ([/decisions/ad-126.md](/decisions/ad-126.md)) — removed entirely, so it now routes
+  // exactly like any other unrecognized command, not a command-specific case.
+  test("new-provider is not a recognized subcommand — routes to 'unknown', same as any other unrecognized input", () => {
+    assert.deepEqual(route(["new-provider", "acme"]), { kind: "unknown", cmd: "new-provider" });
+  });
 });
 
 describe("harness test — step plan and runner", () => {
@@ -488,6 +495,7 @@ describe("harness test — step plan and runner", () => {
         "check-obs-contract",
         "check-manifest",
         "capabilities in sync",
+        "provider docs in sync",
         "changelog in sync",
         "log in sync",
         "coverage in sync",
@@ -529,6 +537,7 @@ describe("harness test — step plan and runner", () => {
       ["check-obs-contract", ["tools/dev/check-obs-contract.ts"]],
       ["check-manifest", ["tools/dev/check-manifest.ts"]],
       ["capabilities in sync", ["tools/dev/render-capabilities.ts", "--check"]],
+      ["provider docs in sync", ["tools/dev/render-provider-docs.ts", "--check"]],
       ["changelog in sync", ["tools/dev/render-changelog.ts", "--check"]],
     ] as const) {
       assert.deepEqual(argsOf(label), [...args], label);
@@ -553,7 +562,7 @@ describe("harness test — step plan and runner", () => {
      * here, so it has to be argued for in a diff somebody reads.
      */
     assert.ok(
-      KNIP_EXPORTS_CEILING <= 76,
+      KNIP_EXPORTS_CEILING <= 80,
       `the unused-export ceiling went up to ${KNIP_EXPORTS_CEILING}. Lowering it is free; raising it is a decision.`,
     );
   });

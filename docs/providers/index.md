@@ -68,4 +68,6 @@ kind's absence.
 
 A new provider is a new directory under `src/providers/<name>/` plus one line in
 `src/providers/provider.registry.ts` (see [/decisions/ad-004.md](/decisions/ad-004.md) and
-[/decisions/ad-009.md](/decisions/ad-009.md) item 7) — never a change to `core/`.
+[/decisions/ad-009.md](/decisions/ad-009.md) item 7) — never a change to `core/`. `node
+tools/dev/new-provider.ts <name>`, run from a clone, scaffolds the stub files and a doc skeleton — a
+contributor-only tool, not a published CLI command ([/decisions/ad-126.md](/decisions/ad-126.md)).

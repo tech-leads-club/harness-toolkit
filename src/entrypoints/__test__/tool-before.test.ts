@@ -1,15 +1,29 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, test } from "node:test";
+import type { Decision, HarnessEvent } from "../../contracts/index.ts";
 import { coreFacade } from "../../core/index.ts";
 import { projectConfigPath } from "../../platform/paths.ts";
+import type { ProviderPort } from "../../providers/index.ts";
+import { providers } from "../../providers/index.ts";
 import { runHandler } from "../run.ts";
 import { toolBeforeHandler } from "../tool-before.ts";
 
 function tempRoot(): string {
   return mkdtempSync(join(tmpdir(), "tlc-tool-before-"));
+}
+
+// why: the barrel exports the registry, never a provider by name — reaching past it is the coupling
+// check-boundaries' entrypoints-deep-imports-providers rule exists to catch.
+function providerNamed(name: string): ProviderPort {
+  const found = providers.find((provider) => provider.name === name);
+  if (!found) {
+    throw new Error(`no registered provider named ${name}`);
+  }
+  return found;
 }
 
 /**
@@ -76,6 +90,30 @@ function cursorMcp(root: string): string {
     conversation_id: "conv-1",
     session_id: "sess-1",
     tool_name: "mcp__whatever__call",
+  });
+}
+
+/** AD-135 — the production shapes: Cursor's beforeMCPExecution sends the bare tool name. */
+/** AD-135 F2 — `tool_input` is a JSON *string* on this host's real `beforeMCPExecution` payload, not an object. */
+function cursorMcpCreatePr(root: string, toolInput: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    hook_event_name: "beforeMCPExecution",
+    workspace_roots: [root],
+    conversation_id: "conv-1",
+    session_id: "sess-1",
+    tool_name: "create_pull_request",
+    tool_input: JSON.stringify(toolInput),
+  });
+}
+
+/** AD-135 — Claude Code's PreToolUse sends `mcp__<server>__<tool>`, fanned out to `mcp.before`. */
+function claudeMcpCreatePr(root: string, toolInput: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    hook_event_name: "PreToolUse",
+    cwd: root,
+    session_id: "sess-1",
+    tool_name: "mcp__github__create_pull_request",
+    tool_input: toolInput,
   });
 }
 
@@ -662,6 +700,102 @@ test("a non-shell refusal is recorded as a policy refusal, carrying the floor ru
 });
 
 /**
+ * wiring-tamper, end-to-end (T7 / EFH-01..04) — HandlerContext.protectedPaths is populated from the real
+ * provider registry in run.ts, and threaded into the floor by tool-before.ts.
+ */
+for (const [label, build, provider] of [
+  ["Claude", claudeShell, providerNamed("claude")],
+  ["Cursor", cursorShell, providerNamed("cursor")],
+] as const) {
+  test(`a shell write to ${label}'s real wiring target is denied end-to-end`, async () => {
+    const root = tempRoot();
+    try {
+      const target = provider.wiringTargets()[0];
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(build(root, `echo '{}' > ${target}`)));
+      assert.equal(outcome.decision.kind, "deny");
+      assert.match(outcome.decision.kind === "deny" ? outcome.decision.reason : "", /rule=wiring-tamper/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test("an Edit tool call against Claude's real wiring target is denied end-to-end", async () => {
+  const root = tempRoot();
+  try {
+    const target = providerNamed("claude").wiringTargets()[0];
+    const outcome = await runHandler(
+      toolBeforeHandler,
+      stdinOf(claudeTool(root, { tool_name: "Edit", tool_input: { file_path: target } })),
+    );
+    assert.equal(outcome.decision.kind, "deny");
+    assert.match(outcome.decision.kind === "deny" ? outcome.decision.reason : "", /rule=wiring-tamper/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * EFH-04 — a new provider's wiring target is protected the moment it registers, with zero change to
+ * run.ts or tool-before.ts. The fixture is pushed into the real registry and spliced back out, the same
+ * pattern provider.contract.test.ts already uses.
+ */
+function makeFixtureWiringProvider(target: string): ProviderPort {
+  const base = providerNamed("claude");
+  return {
+    name: "fixture-wiring-provider",
+    detect(raw: unknown): boolean {
+      return (
+        Boolean(raw) && typeof raw === "object" && (raw as Record<string, unknown>).fixtureWiring === true
+      );
+    },
+    capabilities: base.capabilities,
+    policyDefaults: base.policyDefaults,
+    toEvent(raw: Record<string, unknown>): HarnessEvent | null {
+      if (raw.fixtureWiring !== true) {
+        return null;
+      }
+      return {
+        provider: "fixture-wiring-provider",
+        event: "shell.before",
+        sessionKey: "fixture-wiring-sess",
+        projectDir: String(raw.projectDir ?? "/tmp"),
+        command: String(raw.command ?? ""),
+        raw,
+      };
+    },
+    render(decision: Decision, event: HarnessEvent) {
+      return base.render(decision, event);
+    },
+    wiring: base.wiring,
+    wiringTargets(): string[] {
+      return [target];
+    },
+  };
+}
+
+test("EFH-04: a fixture provider's own wiring target is protected with zero changes to run.ts/tool-before.ts", async () => {
+  const root = tempRoot();
+  const target = join(root, "fixture-provider-wiring.json");
+  const fixture = makeFixtureWiringProvider(target);
+  providers.push(fixture);
+  try {
+    const outcome = await runHandler(
+      toolBeforeHandler,
+      stdinOf(JSON.stringify({ fixtureWiring: true, projectDir: root, command: `echo '{}' > ${target}` })),
+    );
+    assert.equal(outcome.decision.kind, "deny");
+    assert.match(outcome.decision.kind === "deny" ? outcome.decision.reason : "", /rule=wiring-tamper/);
+  } finally {
+    const index = providers.indexOf(fixture);
+    if (index >= 0) {
+      providers.splice(index, 1);
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
  * The operator rules rail, driven through the real entrypoint.
  *
  * why `since session` here and `since HEAD` in the unit tests: the window semantics are decided in
@@ -779,6 +913,113 @@ describe("operator rules", () => {
     }
   });
 
+  /**
+   * AD-135 — the production gap: `mcp.before` never reached the operator's rule at all, so a `create_pull_request`
+   * MCP call opened a pull request the exact same `pr-open` rule already denied for `gh pr create` and
+   * `gh api .../pulls`. P3.3's end-to-end reproduction, on both providers.
+   */
+  test("AD-135 a create_pull_request MCP call with no proof is denied, same rule as gh pr create", async () => {
+    const root = tempRoot();
+    try {
+      withRule(root, "Convene the jury.");
+
+      const cursorOutcome = await runHandler(toolBeforeHandler, stdinOf(cursorMcpCreatePr(root)));
+      assert.equal(cursorOutcome.decision.kind, "deny", "cursor");
+      assert.equal(
+        cursorOutcome.decision.kind === "deny" ? cursorOutcome.decision.rule : "",
+        "rule:review-before-pr",
+      );
+
+      const claudeOutcome = await runHandler(toolBeforeHandler, stdinOf(claudeMcpCreatePr(root)));
+      assert.equal(claudeOutcome.decision.kind, "deny", "claude");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("AD-135 the same MCP call is allowed once the proof exists, same as the shell form", async () => {
+    const root = tempRoot();
+    try {
+      withRule(root, "Convene the jury.");
+      observe(root, "the-jury");
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(cursorMcpCreatePr(root)));
+
+      assert.equal(outcome.decision.kind, "allow");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** AD-135 P2 — an MCP call naming a different repository than this one does not fire the rule. */
+  test("AD-135 an MCP call scoped to a different repository is untouched", async () => {
+    const root = tempRoot();
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: root });
+      withRule(root, "Convene the jury.");
+
+      const outcome = await runHandler(
+        toolBeforeHandler,
+        stdinOf(cursorMcpCreatePr(root, { owner: "acme", repo: "other-repo" })),
+      );
+
+      assert.equal(outcome.decision.kind, "allow");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * AD-135 P2, end to end — the incident's own repo-scope claim, exercised against a real `git remote -v`
+   * resolution rather than a hand-built `TriggerContext`. Confirmed by a live Verifier's mutation sensor:
+   * forcing `repoRemote` to resolve as if unscoped on this exact path survived every test that stopped short
+   * of this reproduction.
+   */
+  test("AD-135 an MCP call naming this repository, resolved through a real git remote, is denied", async () => {
+    const root = tempRoot();
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: root });
+      withRule(root, "Convene the jury.");
+
+      const outcome = await runHandler(
+        toolBeforeHandler,
+        stdinOf(cursorMcpCreatePr(root, { owner: "acme", repo: "widgets" })),
+      );
+
+      assert.equal(outcome.decision.kind, "deny");
+      assert.equal(outcome.decision.kind === "deny" ? outcome.decision.rule : "", "rule:review-before-pr");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * AD-136, end to end — the exact pairing the spec names: `hook.enter` precedes `shell.start`'s own `deny`
+   * record for the same session, for a real `pr-open` denial through `toolBeforeHandler`, not a stub handler.
+   */
+  test("AD-136 hook.enter precedes shell.start's deny record for a real pr-open denial", async () => {
+    const root = tempRoot();
+    try {
+      withRule(root, "Convene the jury.");
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(opensPr(root, "cursor")));
+      assert.equal(outcome.decision.kind, "deny");
+
+      const events = coreFacade.observability.readSignalEvents(root, "obs.jsonl", 50);
+      const enterIndex = events.findIndex((event) => (event.kind as string) === "hook.enter");
+      const shellIndex = events.findIndex((event) => event.kind === "shell.start");
+      assert.notEqual(enterIndex, -1, "hook.enter must be recorded");
+      assert.notEqual(shellIndex, -1, "shell.start must be recorded");
+      assert.ok(enterIndex < shellIndex, "hook.enter precedes shell.start");
+      assert.equal(events[shellIndex]?.attrs.permission, "deny");
+      assert.equal(events[enterIndex]?.session_id, events[shellIndex]?.session_id, "same session");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   /** AC1 — the capability off means the rule file is inert, not read-and-ignored. */
   test("AC1 with rules.enabled false the rule does not fire", async () => {
     const root = tempRoot();
@@ -834,6 +1075,269 @@ describe("operator rules", () => {
       const outcome = await runHandler(toolBeforeHandler, stdinOf(opensPr(root, "cursor")));
 
       assert.equal(outcome.decision.kind, "deny");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * AD-130 — a `pr-open` rule protects *this* repository's pull requests. A `gh api` create targeting a
+   * different repository entirely is not this project's own pr-open, and must not be gated by it.
+   */
+  test("AD-130 a gh api pull-request create targeting an unrelated repository does not fire this rule", async () => {
+    const root = tempRoot();
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: root });
+      withRule(root, "Convene the jury.");
+
+      const command = "gh api repos/other-owner/unrelated-repo/pulls -f title=x -f head=feat/x -f base=main";
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShell(root, command)));
+
+      assert.notEqual(outcome.decision.kind, "deny");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("AD-130 the same gh api shape targeting this repo's own remote still fires the rule", async () => {
+    const root = tempRoot();
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: root });
+      withRule(root, "Convene the jury.");
+
+      const command = "gh api repos/acme/widgets/pulls -f title=x -f head=feat/x -f base=main";
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShell(root, command)));
+
+      assert.equal(outcome.decision.kind, "deny");
+      const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
+      assert.match(reason, /rule review-before-pr/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  function withCommandRule(root: string): void {
+    writeProjectPolicy(root, { version: 1, rules: { enabled: true } });
+    const dir = join(root, ".tlc", "harness", "rules");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "review-before-pr.md"),
+      "---\non: pr-open\nrequire:\n  - command(post_review.py) since HEAD\notherwise: deny\n---\nReview first.",
+      "utf8",
+    );
+  }
+
+  function claudeShellAt(cwd: string, command: string): string {
+    return JSON.stringify({
+      hook_event_name: "PreToolUse",
+      cwd,
+      session_id: "sess-1",
+      tool_name: "Bash",
+      tool_input: { command },
+    });
+  }
+
+  /**
+   * GRD-02/AD-132 — the confirmed production shape: a `pr-open`-shaped `gh api` command run with the event's
+   * cwd at a real subdirectory of the project, not the root.
+   */
+  test("GRD-02 a pr-open rule fires from a real subdirectory of the project, not only the exact root", async () => {
+    const root = tempRoot();
+    const previousProjectDir = process.env.CLAUDE_PROJECT_DIR;
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: root });
+      execFileSync("git", ["config", "user.email", "t@t"], { cwd: root });
+      execFileSync("git", ["config", "user.name", "t"], { cwd: root });
+      writeFileSync(join(root, "a.ts"), "export const a = 1;\n");
+      execFileSync("git", ["add", "-A"], { cwd: root });
+      execFileSync("git", ["commit", "-q", "-m", "initial"], { cwd: root });
+      mkdirSync(join(root, "apps", "web"), { recursive: true });
+      withCommandRule(root);
+      process.env.CLAUDE_PROJECT_DIR = root;
+
+      const command = "gh api repos/acme/widgets/pulls -f title=x -f head=feat/x -f base=main";
+      const outcome = await runHandler(
+        toolBeforeHandler,
+        stdinOf(claudeShellAt(join(root, "apps", "web"), command)),
+      );
+
+      assert.equal(outcome.decision.kind, "deny", JSON.stringify(outcome.decision));
+      const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
+      assert.match(reason, /rule review-before-pr/);
+    } finally {
+      if (previousProjectDir === undefined) {
+        delete process.env.CLAUDE_PROJECT_DIR;
+      } else {
+        process.env.CLAUDE_PROJECT_DIR = previousProjectDir;
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("GRD-07 the same rule resolves against a worktree's own remote when cwd is a subdirectory of it", async () => {
+    const main = tempRoot();
+    const previousProjectDir = process.env.CLAUDE_PROJECT_DIR;
+    let worktree: string | undefined;
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: main });
+      execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/widgets.git"], { cwd: main });
+      execFileSync("git", ["config", "user.email", "t@t"], { cwd: main });
+      execFileSync("git", ["config", "user.name", "t"], { cwd: main });
+      writeFileSync(join(main, "a.ts"), "export const a = 1;\n");
+      execFileSync("git", ["add", "-A"], { cwd: main });
+      execFileSync("git", ["commit", "-q", "-m", "initial"], { cwd: main });
+
+      worktree = `${main}-wt`;
+      execFileSync("git", ["worktree", "add", "-b", "feature-x", worktree], { cwd: main });
+      mkdirSync(join(worktree, "apps", "web"), { recursive: true });
+      withCommandRule(main);
+      process.env.CLAUDE_PROJECT_DIR = main;
+
+      const command = "gh api repos/acme/widgets/pulls -f title=x -f head=feat/x -f base=main";
+      const outcome = await runHandler(
+        toolBeforeHandler,
+        stdinOf(claudeShellAt(join(worktree, "apps", "web"), command)),
+      );
+
+      assert.equal(outcome.decision.kind, "deny", JSON.stringify(outcome.decision));
+      const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
+      assert.match(reason, /rule review-before-pr/);
+    } finally {
+      if (previousProjectDir === undefined) {
+        delete process.env.CLAUDE_PROJECT_DIR;
+      } else {
+        process.env.CLAUDE_PROJECT_DIR = previousProjectDir;
+      }
+      if (worktree !== undefined) {
+        execFileSync("git", ["worktree", "remove", "--force", worktree], { cwd: main });
+      }
+      rmSync(main, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * AD-131 — a denial's `diagnostic` summary reaches the obs record that fed it, the same way `rule` already
+ * does, so `tlc harness why` can render it later without re-deriving it from a stale reason string.
+ */
+describe("a denial's diagnostic reaches its obs record, AD-131", () => {
+  test("DIAG-06 a self-diagnosing shell denial's diagnostic reaches the recorded shell decision", async () => {
+    const root = tempRoot();
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      writeFileSync(join(root, ".gitignore"), ".tlc/\n");
+      mkdirSync(join(root, "src"), { recursive: true });
+      writeFileSync(join(root, "src", "app.ts"), "export const a = 1;\n");
+      execFileSync("git", ["add", "."], { cwd: root });
+      execFileSync("git", ["commit", "-q", "-m", "initial"], {
+        cwd: root,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "t",
+          GIT_AUTHOR_EMAIL: "t@t",
+          GIT_COMMITTER_NAME: "t",
+          GIT_COMMITTER_EMAIL: "t@t",
+        },
+      });
+      writeFileSync(join(root, "src", "app.ts"), "export const a = 1;\n// this explains nothing new\n");
+      writeProjectPolicy(root, { comments: { enabled: true, onViolation: "followup", mode: "declared" } });
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShell(root, "git commit -am 'wip'")));
+      assert.equal(outcome.decision.kind, "deny", JSON.stringify(outcome.decision));
+      const expectedDiagnostic = outcome.decision.kind === "deny" ? outcome.decision.diagnostic : undefined;
+      assert.notEqual(expectedDiagnostic, undefined, "test setup: the denial must carry a diagnostic");
+
+      const recorded = coreFacade.observability
+        .readSignalEvents(root, "obs.jsonl", 50)
+        .find((event) => event.kind === "shell.start");
+      assert.equal(recorded?.attrs.diagnostic, expectedDiagnostic);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("DIAG-06 a shell denial with no diagnostic records none, unchanged from before this feature", async () => {
+    const root = tempRoot();
+    try {
+      const outcome = await runHandler(
+        toolBeforeHandler,
+        stdinOf(claudeShell(root, "python3 -c \"open('.tlc/harness/config.json','w')\"")),
+      );
+      assert.equal(outcome.decision.kind, "deny");
+
+      const recorded = coreFacade.observability
+        .readSignalEvents(root, "obs.jsonl", 50)
+        .find((event) => event.kind === "shell.start");
+      assert.equal(recorded?.attrs.rule, "policy-surface-write");
+      assert.equal(recorded?.attrs.diagnostic, "none");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("DIAG-07 a non-shell refusal with no diagnostic records none, unchanged from before this feature", async () => {
+    const root = tempRoot();
+    try {
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(cursorRead(root, "~/.ssh/id_rsa")));
+      assert.equal(outcome.decision.kind, "deny");
+
+      const refusals = coreFacade.observability
+        .readSignalEvents(root, "obs.jsonl", 50)
+        .filter((event) => event.kind === "policy.deny");
+      assert.equal(refusals.length, 1);
+      assert.equal(refusals[0]?.attrs.rule, "secret-access");
+      assert.equal(refusals[0]?.attrs.diagnostic, "none");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * AD-131 — the commit-time comment gate (`comment-policy-before-ship`, AD-115) gets the same treatment as
+ * ship-gate's comment denial: the checked root, the sha and a reproduction command, not only the finding.
+ */
+describe("comment-policy-before-ship names what it checked, AD-131", () => {
+  test("DIAG-04 a commit-time comment denial names the checked root, the sha, a reproduction command and the why pointer", async () => {
+    const root = tempRoot();
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      writeFileSync(join(root, ".gitignore"), ".tlc/\n");
+      mkdirSync(join(root, "src"), { recursive: true });
+      writeFileSync(join(root, "src", "app.ts"), "export const a = 1;\n");
+      execFileSync("git", ["add", "."], { cwd: root });
+      execFileSync("git", ["commit", "-q", "-m", "initial"], {
+        cwd: root,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "t",
+          GIT_AUTHOR_EMAIL: "t@t",
+          GIT_COMMITTER_NAME: "t",
+          GIT_COMMITTER_EMAIL: "t@t",
+        },
+      });
+      writeFileSync(join(root, "src", "app.ts"), "export const a = 1;\n// this explains nothing new\n");
+      writeProjectPolicy(root, { comments: { enabled: true, onViolation: "followup", mode: "declared" } });
+      const sha = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: root }).toString().trim();
+
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShell(root, "git commit -am 'wip'")));
+
+      assert.equal(outcome.decision.kind, "deny", JSON.stringify(outcome.decision));
+      assert.equal(
+        outcome.decision.kind === "deny" ? outcome.decision.rule : "",
+        "comment-policy-before-ship",
+      );
+      const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
+      assert.equal(reason.includes(`Checked ${root} at ${sha}.`), true, reason);
+      assert.equal(reason.includes(`Reproduce: git diff ${sha} -- src/app.ts`), true, reason);
+      assert.equal(reason.includes("Run `tlc harness why` for the full diagnostic."), true, reason);
+      assert.equal(
+        outcome.decision.kind === "deny" ? outcome.decision.diagnostic : undefined,
+        `Checked ${root} at ${sha} · Reproduce: git diff ${sha} -- src/app.ts`,
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

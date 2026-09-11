@@ -1,7 +1,35 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runProcess } from "./process.ts";
 import { normalizeSeparators } from "./sanitize.ts";
+
+/**
+ * why: `existsSync(join(dir, ".git"))` requires `.git` to exist *exactly* at `dir` — it does not discover a
+ * repository root the way git itself does, walking upward from any subdirectory. A directory genuinely inside
+ * a real repository read as "not a repository" by every caller that used that check, silently
+ * ([/decisions/ad-132.md](/decisions/ad-132.md)).
+ *
+ * invariant: `git rev-parse --show-toplevel` already handles every case this project would otherwise have to
+ * reimplement — a subdirectory, a worktree's own subdirectory, a missing path, a genuinely absent repository —
+ * so nothing here special-cases any of them.
+ */
+export async function gitRootOf(dir: string): Promise<string | null> {
+  // why: every other caller in this file used to check `existsSync` first, which absorbed a missing directory
+  // silently. This function is now the first thing that runs when the directory does not exist at all —
+  // `spawn` rejects instead of resolving a non-zero exit code for that case, a different failure shape than
+  // "not a repository" ([/decisions/ad-132.md](/decisions/ad-132.md)).
+  let result: { exitCode: number; stdout: string };
+  try {
+    result = await runProcess({ command: ["git", "rev-parse", "--show-toplevel"], cwd: dir });
+  } catch {
+    return null;
+  }
+  if (result.exitCode !== 0) {
+    return null;
+  }
+  const root = result.stdout.trim();
+  return root.length > 0 ? root : null;
+}
 
 async function gitLines(projectDir: string, args: string[]): Promise<string[]> {
   const result = await runProcess({ command: ["git", ...args], cwd: projectDir });
@@ -15,6 +43,21 @@ async function gitLines(projectDir: string, args: string[]): Promise<string[]> {
 }
 
 /**
+ * hazard: `gitLines`' `\n`-split and per-line `.trim()` both corrupt a file path — git quotes and
+ * octal-escapes any name with a non-ASCII byte when not run with `-z` (`"café.ts"` becomes
+ * `"caf\303\251.ts"`), and `.trim()` separately eats a real leading space. Every call site here that reads
+ * paths passes its own `-z` (position matters: before any `--` pathspec separator, never after) and splits on
+ * NUL instead ([/decisions/ad-134.md](/decisions/ad-134.md)).
+ */
+async function gitPaths(projectDir: string, args: string[]): Promise<string[]> {
+  const result = await runProcess({ command: ["git", ...args], cwd: projectDir });
+  if (result.exitCode !== 0) {
+    return [];
+  }
+  return result.stdout.split("\0").filter((path) => path !== "");
+}
+
+/**
  * why: `base` is the revision the turn started at, not `HEAD`. A turn that commits moves `HEAD` past its own
  * changes, so every gate reading this list saw an empty diff and skipped — measured on a real turn whose task
  * was named "schema v2 + tests + commit" ([/decisions/ad-058.md](/decisions/ad-058.md)).
@@ -22,14 +65,15 @@ async function gitLines(projectDir: string, args: string[]): Promise<string[]> {
  * invariant: `HEAD` stays the default, so a caller with no recorded base behaves exactly as before.
  */
 export async function listChangedRepoFiles(projectDir: string, base = "HEAD"): Promise<string[]> {
-  if (!existsSync(join(projectDir, ".git"))) {
+  const root = await gitRootOf(projectDir);
+  if (root === null) {
     return [];
   }
 
   const batches = await Promise.all([
-    gitLines(projectDir, ["diff", "--name-only", base]),
-    gitLines(projectDir, ["diff", "--name-only", "--cached"]),
-    gitLines(projectDir, ["ls-files", "--others", "--exclude-standard"]),
+    gitPaths(root, ["diff", "--name-only", "-z", base]),
+    gitPaths(root, ["diff", "--name-only", "-z", "--cached"]),
+    gitPaths(root, ["ls-files", "-z", "--others", "--exclude-standard"]),
   ]);
 
   const paths = new Set<string>();
@@ -46,18 +90,16 @@ export async function listChangedRepoFiles(projectDir: string, base = "HEAD"): P
  * over history without knowing how git formats anything.
  */
 export async function listCommitFileSets(projectDir: string, limit: number): Promise<string[][]> {
-  if (!existsSync(join(projectDir, ".git")) || limit <= 0) {
+  if (limit <= 0) {
+    return [];
+  }
+  const root = await gitRootOf(projectDir);
+  if (root === null) {
     return [];
   }
   // why: one git call for all commits. A separate call per commit is the obvious shape and is an order of
   // magnitude slower on the history sizes this is used for.
-  const lines = await gitLines(projectDir, [
-    "log",
-    `-${limit}`,
-    "--name-only",
-    "--no-renames",
-    "--format=%x00",
-  ]);
+  const lines = await gitLines(root, ["log", `-${limit}`, "--name-only", "--no-renames", "--format=%x00"]);
 
   const commits: string[][] = [];
   let current: string[] | null = null;
@@ -83,17 +125,21 @@ export async function listAddedLines(
   relativePaths: string[],
   base = "HEAD",
 ): Promise<AddedLine[]> {
-  if (!existsSync(join(projectDir, ".git")) || relativePaths.length === 0) {
+  if (relativePaths.length === 0) {
     return [];
   }
-  const tracked = new Set(await gitLines(projectDir, ["ls-files", "--", ...relativePaths]));
+  const root = await gitRootOf(projectDir);
+  if (root === null) {
+    return [];
+  }
+  const tracked = new Set(await gitPaths(root, ["ls-files", "-z", "--", ...relativePaths]));
   const out: AddedLine[] = [];
 
   for (const file of relativePaths) {
     if (!tracked.has(file)) {
       let raw = "";
       try {
-        raw = readFileSync(join(projectDir, file), "utf8");
+        raw = readFileSync(join(root, file), "utf8");
       } catch {
         continue;
       }
@@ -102,7 +148,7 @@ export async function listAddedLines(
       });
       continue;
     }
-    const diff = await gitLines(projectDir, ["diff", "--unified=0", base, "--", file]);
+    const diff = await gitLines(root, ["diff", "--unified=0", base, "--", file]);
     let lineNo = 0;
     for (const row of diff) {
       const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(row);
@@ -140,48 +186,45 @@ export function filterTestTargets(relativePaths: string[]): string[] {
   return relativePaths.filter((path) => /\.(spec|test)\.(ts|tsx|js|jsx)$/.test(path));
 }
 
-export type CommandResult = { exitCode: number; output: string; durationMs: number };
-
-export async function runCommand(
-  projectDir: string,
-  command: string[],
-  extraArgs: string[] = [],
-  options: { env?: NodeJS.ProcessEnv } = {},
-): Promise<CommandResult> {
-  if (command.length === 0) {
-    return { exitCode: 0, output: "", durationMs: 0 };
-  }
-  const started = Date.now();
-  const result = await runProcess({
-    command: [...command, ...extraArgs],
-    cwd: projectDir,
-    env: options.env ? { ...process.env, ...options.env } : process.env,
-  });
-  const combined = (result.stdout + result.stderr).trim();
-  const maxChars = 8000;
-  const output =
-    combined.length === 0
-      ? "(no output captured)"
-      : combined.length <= maxChars
-        ? combined
-        : combined.slice(-maxChars);
-  return {
-    exitCode: result.exitCode,
-    output,
-    durationMs: Date.now() - started,
-  };
-}
-
 /**
  * Every tracked file, so a duplication scan reads what the project owns and nothing it ignores.
  *
  * why: `git ls-files` already honours `.gitignore`, so `node_modules` and build output cost nothing to exclude
  * and no second ignore list has to be kept in step ([/decisions/ad-071.md](/decisions/ad-071.md)).
+ * hazard: reads through `gitPaths`, never `runCommand` (`platform/process.ts`), which trims and
+ * placeholder-substitutes for human display — three real defects came from this function reusing that helper
+ * for exact, structured data instead ([/decisions/ad-134.md](/decisions/ad-134.md)).
  */
 export async function listTrackedFiles(projectDir: string): Promise<string[]> {
-  const result = await runCommand(projectDir, ["git", "ls-files", "-z"]);
-  if (result.exitCode !== 0) {
+  const root = await gitRootOf(projectDir);
+  if (root === null) {
     return [];
   }
-  return result.output.split("\0").filter((path) => path !== "");
+  return gitPaths(root, ["ls-files", "-z"]);
+}
+
+export type RepoRef = { owner: string; repo: string };
+
+/**
+ * why: both SSH (`git@host:owner/repo.git`) and HTTPS (`https://host/owner/repo(.git)?`) forms share the same
+ * tail shape — a `/` or `:` before the owner, a `/` before the repo, an optional `.git` and trailing slash.
+ * One pattern reads both without a URL parser this project has no other use for.
+ */
+export function parseOwnerRepo(url: string): RepoRef | null {
+  const match = /[:/]([^/:]+)\/([^/]+?)(?:\.git)?\/?$/.exec(url.trim());
+  return match ? { owner: match[1] as string, repo: match[2] as string } : null;
+}
+
+/**
+ * why a fixed remote name: every repository this project has touched, including this one, names its own
+ * remote `origin` — a configurable name is generality nobody has asked for yet
+ * ([/decisions/ad-130.md](/decisions/ad-130.md)).
+ */
+export async function localRepoRemote(projectDir: string, remoteName = "origin"): Promise<RepoRef | null> {
+  const root = await gitRootOf(projectDir);
+  if (root === null) {
+    return null;
+  }
+  const result = await runProcess({ command: ["git", "remote", "get-url", remoteName], cwd: root });
+  return result.exitCode === 0 ? parseOwnerRepo(result.stdout.trim()) : null;
 }

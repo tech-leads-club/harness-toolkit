@@ -2,7 +2,7 @@ import { isEffortLevel } from "../../contracts/effort.ts";
 import type { EffortLevel, HarnessEvent, HarnessEventKind } from "../../contracts/index.ts";
 import { sanitizeSegment } from "../../platform/sanitize.ts";
 
-const EVENT_KIND_BY_HOOK: Record<string, HarnessEventKind> = {
+export const EVENT_KIND_BY_HOOK: Record<string, HarnessEventKind> = {
   SessionStart: "session.start",
   SessionEnd: "session.end",
   UserPromptSubmit: "prompt.submit",
@@ -15,6 +15,40 @@ const EVENT_KIND_BY_HOOK: Record<string, HarnessEventKind> = {
 };
 
 const MCP_TOOL_NAME = /^mcp__/;
+
+type ToolNameFanOutRule = { match: RegExp | string; kind: HarnessEventKind };
+
+// why: PreToolUse fans out by tool_name — Claude has no dedicated shell/MCP/read event.
+export const PRE_TOOL_USE_FAN_OUT: readonly ToolNameFanOutRule[] = [
+  { match: "Bash", kind: "shell.before" },
+  { match: MCP_TOOL_NAME, kind: "mcp.before" },
+  { match: "Read", kind: "read.before" },
+];
+
+// why: PostToolUse fans out the same way, for the after-half of each of those tool classes.
+export const POST_TOOL_USE_FAN_OUT: readonly ToolNameFanOutRule[] = [
+  { match: "Bash", kind: "shell.after" },
+  { match: MCP_TOOL_NAME, kind: "mcp.after" },
+  { match: "Edit", kind: "edit.after" },
+  { match: "Write", kind: "edit.after" },
+];
+
+function matchFanOut(
+  table: readonly ToolNameFanOutRule[],
+  toolName: string | undefined,
+  fallback: HarnessEventKind,
+): HarnessEventKind {
+  if (toolName === undefined) {
+    return fallback;
+  }
+  for (const rule of table) {
+    const matched = typeof rule.match === "string" ? rule.match === toolName : rule.match.test(toolName);
+    if (matched) {
+      return rule.kind;
+    }
+  }
+  return fallback;
+}
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
@@ -57,31 +91,12 @@ function effortFor(raw: Record<string, unknown>): EffortLevel | undefined {
   return isEffortLevel(level) ? level : undefined;
 }
 
-// why: PreToolUse fans out by tool_name — Claude has no dedicated shell/MCP/read event.
 function preToolUseKind(toolName: string | undefined): HarnessEventKind {
-  if (toolName === "Bash") {
-    return "shell.before";
-  }
-  if (toolName && MCP_TOOL_NAME.test(toolName)) {
-    return "mcp.before";
-  }
-  if (toolName === "Read") {
-    return "read.before";
-  }
-  return "tool.before";
+  return matchFanOut(PRE_TOOL_USE_FAN_OUT, toolName, "tool.before");
 }
 
 function postToolUseKind(toolName: string | undefined): HarnessEventKind {
-  if (toolName === "Bash") {
-    return "shell.after";
-  }
-  if (toolName && MCP_TOOL_NAME.test(toolName)) {
-    return "mcp.after";
-  }
-  if (toolName === "Edit" || toolName === "Write") {
-    return "edit.after";
-  }
-  return "tool.after";
+  return matchFanOut(POST_TOOL_USE_FAN_OUT, toolName, "tool.after");
 }
 
 /** Never throws on a malformed payload — returns null instead. */

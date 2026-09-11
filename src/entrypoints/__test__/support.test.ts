@@ -1,7 +1,27 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import type { HarnessEvent } from "../../contracts/index.ts";
-import { shaScopeRoot } from "../support.ts";
+import { currentGitBranch, currentGitSha, shaScopeRoot } from "../support.ts";
+
+function git(cwd: string, args: string[]): void {
+  execFileSync("git", args, { cwd });
+}
+
+function initRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), "support-git-"));
+  git(dir, ["init", "-q"]);
+  git(dir, ["config", "user.email", "test@example.com"]);
+  git(dir, ["config", "user.name", "Test"]);
+  git(dir, ["checkout", "-q", "-b", "feature-x"]);
+  writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+  git(dir, ["add", "-A"]);
+  git(dir, ["commit", "-q", "-m", "initial"]);
+  return dir;
+}
 
 const BASE_EVENT: HarnessEvent = {
   provider: "claude",
@@ -25,4 +45,40 @@ test("shaScopeRoot falls back to event.projectDir when cwd is absent", () => {
 test("shaScopeRoot returns projectDir unchanged when cwd equals it", () => {
   const event: HarnessEvent = { ...BASE_EVENT, cwd: "/main-checkout" };
   assert.equal(shaScopeRoot(event), "/main-checkout");
+});
+
+test("GRD-04 currentGitSha resolves the same sha from a real subdirectory as from the root", async () => {
+  const dir = initRepo();
+  mkdirSync(join(dir, "apps", "web"), { recursive: true });
+
+  const fromRoot = await currentGitSha(dir);
+  const fromSubdir = await currentGitSha(join(dir, "apps", "web"));
+
+  assert.notEqual(fromRoot, null);
+  assert.equal(fromSubdir, fromRoot);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("GRD-04 currentGitSha is null for a directory with no git repository at all", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "support-no-git-"));
+  assert.equal(await currentGitSha(dir), null);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("GRD-04 currentGitBranch resolves the same branch from a real subdirectory as from the root", async () => {
+  const dir = initRepo();
+  mkdirSync(join(dir, "apps", "web"), { recursive: true });
+
+  const fromRoot = await currentGitBranch(dir);
+  const fromSubdir = await currentGitBranch(join(dir, "apps", "web"));
+
+  assert.equal(fromRoot, "feature-x");
+  assert.equal(fromSubdir, fromRoot);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("GRD-04 currentGitBranch is null for a directory with no git repository at all", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "support-no-git-"));
+  assert.equal(await currentGitBranch(dir), null);
+  rmSync(dir, { recursive: true, force: true });
 });

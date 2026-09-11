@@ -31,7 +31,7 @@ function readJsonl(path: string): Array<Record<string, unknown>> {
 }
 
 function obsRecords(root: string): Array<Record<string, unknown>> {
-  return readJsonl(join(projectStateDir(root), "obs.jsonl"));
+  return readJsonl(join(projectStateDir(root), "obs.jsonl")).filter((record) => record.kind !== "hook.enter");
 }
 
 function allRecords(root: string): Array<Record<string, unknown>> {
@@ -99,6 +99,14 @@ function claudeEditAfter(root: string, filePath: string): string {
     tool_name: "Edit",
     tool_input: { file_path: filePath },
   });
+}
+
+function writeSecretsPolicy(root: string, redactOutput: boolean): void {
+  mkdirSync(join(root, ".tlc", "harness"), { recursive: true });
+  writeFileSync(
+    join(root, ".tlc", "harness", "config.json"),
+    JSON.stringify({ version: 1, secrets: { redactOutput } }),
+  );
 }
 
 function writeUntrustedPolicy(root: string): void {
@@ -479,6 +487,7 @@ test("the framing is skipped when the provider cannot carry context on tool.afte
         capabilities: { ...capable, contextAtToolAfter: false },
         provider,
         now: new Date(),
+        protectedPaths: [],
       },
     );
     assert.equal(decision.kind, "abstain");
@@ -614,6 +623,81 @@ test("edit.after stays silent for a file outside codePaths", async () => {
     const outcome = await runHandler(
       toolAfterHandler,
       stdinOf(claudeEditAfter(root, join(root, "scripts/x.ts"))),
+    );
+    assert.equal(outcome.decision.kind, "abstain");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("EFH-07/EFH-10: a secret-shaped tool.after output under Claude renders updatedToolOutput end to end", async () => {
+  const root = tempRoot();
+  try {
+    const outcome = await runHandler(
+      toolAfterHandler,
+      stdinOf(claudeToolAfter(root, { tool_response: "AWS key: AKIAABCDEFGHIJKLMNOP" })),
+    );
+    assert.equal(outcome.decision.kind, "rewriteOutput");
+    if (outcome.decision.kind === "rewriteOutput") {
+      assert.match(outcome.decision.output, /^AWS key: \[REDACTED:aws-access-key:[0-9a-f]{8}\]$/);
+    }
+    assert.ok(outcome.rendered.stdout);
+    const rendered = JSON.parse(outcome.rendered.stdout as string) as { updatedToolOutput: string };
+    assert.match(rendered.updatedToolOutput, /^AWS key: \[REDACTED:aws-access-key:[0-9a-f]{8}\]$/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("EFH-08: the same secret value in the same session masks to the same placeholder", async () => {
+  const root = tempRoot();
+  try {
+    const first = await runHandler(
+      toolAfterHandler,
+      stdinOf(
+        claudeToolAfter(root, { tool_response: "key: AKIAABCDEFGHIJKLMNOP", session_id: "sess-shared" }),
+      ),
+    );
+    const second = await runHandler(
+      toolAfterHandler,
+      stdinOf(
+        claudeToolAfter(root, { tool_response: "again: AKIAABCDEFGHIJKLMNOP", session_id: "sess-shared" }),
+      ),
+    );
+    assert.equal(first.decision.kind, "rewriteOutput");
+    assert.equal(second.decision.kind, "rewriteOutput");
+    const placeholderIn = (output: string) => /\[REDACTED:aws-access-key:[0-9a-f]{8}\]/.exec(output)?.[0];
+    const firstPlaceholder =
+      first.decision.kind === "rewriteOutput" ? placeholderIn(first.decision.output) : undefined;
+    const secondPlaceholder =
+      second.decision.kind === "rewriteOutput" ? placeholderIn(second.decision.output) : undefined;
+    assert.ok(firstPlaceholder);
+    assert.equal(firstPlaceholder, secondPlaceholder);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("EFH-10: secrets.redactOutput false leaves a secret-shaped output unmasked, falling through to abstain", async () => {
+  const root = tempRoot();
+  try {
+    writeSecretsPolicy(root, false);
+    const outcome = await runHandler(
+      toolAfterHandler,
+      stdinOf(claudeToolAfter(root, { tool_response: "AWS key: AKIAABCDEFGHIJKLMNOP" })),
+    );
+    assert.equal(outcome.decision.kind, "abstain");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("EFH-11: clean tool.after output with no secret-shaped content falls through to abstain", async () => {
+  const root = tempRoot();
+  try {
+    const outcome = await runHandler(
+      toolAfterHandler,
+      stdinOf(claudeToolAfter(root, { tool_response: "3 files changed, all tests passed" })),
     );
     assert.equal(outcome.decision.kind, "abstain");
   } finally {

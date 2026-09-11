@@ -20,6 +20,7 @@ test("facade.gate.computeGateFingerprint is deterministic, mirroring the underly
   try {
     const artifact = coreFacade.gate.writeLastGate({
       root,
+      sessionKey: "session-fingerprint-test",
       gate: "test",
       exitCode: 1,
       command: ["npm", "test"],

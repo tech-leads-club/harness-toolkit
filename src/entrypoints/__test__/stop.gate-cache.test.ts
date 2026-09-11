@@ -74,11 +74,11 @@ function writePolicy(root: string, lint: string[], extra: Record<string, unknown
   );
 }
 
-function stopEvent(root: string): { readStdin: () => Promise<string> } {
+function stopEvent(root: string, sessionId = "sess-cache"): { readStdin: () => Promise<string> } {
   return {
     readStdin: () =>
       Promise.resolve(
-        JSON.stringify({ hook_event_name: "Stop", cwd: root, session_id: "sess-cache", status: "completed" }),
+        JSON.stringify({ hook_event_name: "Stop", cwd: root, session_id: sessionId, status: "completed" }),
       ),
   };
 }
@@ -92,7 +92,7 @@ test("the first stop runs the gate and records the inputs hash", async () => {
   await runHandler(stopHandler, stopEvent(root));
 
   assert.equal(gate.runs(), 1);
-  assert.ok(coreFacade.gate.readLastGate(root)?.inputsHash);
+  assert.ok(coreFacade.gate.readLastGate(root, "claude-sess-cache")?.inputsHash);
 });
 
 /**
@@ -110,6 +110,72 @@ test("a second stop with nothing changed does not run the gate again", async () 
   await runHandler(stopHandler, stopEvent(root));
 
   assert.equal(gate.runs(), 1);
+});
+
+/**
+ * AD-137 — the reported production incident, reproduced end to end: two concurrent sessions in the same
+ * checkout, the exact condition that let one session's cached gate result surface as another's. Before this
+ * record, `readLastGate(args.root)` took no session, so the second session's stop read the first session's
+ * own artifact — same file, same inputsHash, same shared dirty tree — and reused it without ever running its
+ * own gate. `gate.runs()` staying at 1 after two DIFFERENT sessions' stops is the old, buggy behavior; 2 is
+ * the fix.
+ */
+test("a second, different session's stop never reuses the first session's cached verdict", async () => {
+  process.env.TLC_HOME = newDir("tlc-cache-home-");
+  const root = dirtyRepo();
+  const gate = countingGate(1);
+  writePolicy(root, gate.command);
+
+  const first = await runHandler(stopHandler, stopEvent(root, "sess-agent-a"));
+  const second = await runHandler(stopHandler, stopEvent(root, "sess-agent-b"));
+
+  assert.equal(
+    gate.runs(),
+    2,
+    "each session must run its own gate — session B must never inherit session A's cached artifact",
+  );
+  assert.equal(first.decision.kind, "continue", "session A is blocked by its own real failure");
+  assert.equal(second.decision.kind, "continue", "session B is blocked by ITS OWN real failure, not A's");
+
+  const artifactA = coreFacade.gate.readLastGate(root, "claude-sess-agent-a");
+  const artifactB = coreFacade.gate.readLastGate(root, "claude-sess-agent-b");
+  assert.ok(artifactA, "session A must have its own artifact");
+  assert.ok(artifactB, "session B must have its own artifact, not merely a read of A's");
+});
+
+/**
+ * AD-137 (round 2) — the reported symptom itself, reproduced exactly: session B made no changes of its own,
+ * but the shared working tree still shows session A's edit as "changed" from B's own point of view (`git
+ * diff` has no concept of which agent wrote an uncommitted change). Before this record, B ran its own gate
+ * against A's own file and blocked on A's own failure — same final BLOCKED text, different cause than the
+ * first-round fix closed. Once session A's own presence record claims the file, session B's own gate scope
+ * excludes it, and B's turn is not blocked by work that was never B's own.
+ */
+test("a session with no claim on the dirty file is not blocked by a live neighbour's own edit", async () => {
+  process.env.TLC_HOME = newDir("tlc-cache-home-");
+  const root = dirtyRepo();
+  const gate = countingGate(1);
+  writePolicy(root, gate.command);
+
+  // why: `run.ts` writes `event.filePath` verbatim, and every real host sends an absolute path — a relative
+  // claim here would test a shape production never produces.
+  coreFacade.presence.register(root, { provider: "claude", session: "sess-agent-a", pid: 1, branch: "main" });
+  coreFacade.presence.heartbeat(root, {
+    provider: "claude",
+    session: "sess-agent-a",
+    file: join(root, "src", "app.ts"),
+  });
+
+  const outcome = await runHandler(stopHandler, stopEvent(root, "sess-agent-b"));
+
+  assert.equal(
+    gate.runs(),
+    0,
+    "session B must never run a gate scoped to a file only session A's own presence record claims",
+  );
+  if (outcome.decision.kind === "continue") {
+    assert.doesNotMatch(outcome.decision.text, /BLOCKED: lint failed/);
+  }
 });
 
 test("a content change runs the gate again", async () => {
@@ -193,7 +259,7 @@ test("an unreadable input is never cached, so the gate runs every time", async (
   await runHandler(stopHandler, stopEvent(root));
   await runHandler(stopHandler, stopEvent(root));
 
-  assert.equal(coreFacade.gate.readLastGate(root)?.inputsHash, undefined);
+  assert.equal(coreFacade.gate.readLastGate(root, "claude-sess-cache")?.inputsHash, undefined);
   assert.equal(gate.runs(), 2);
 });
 

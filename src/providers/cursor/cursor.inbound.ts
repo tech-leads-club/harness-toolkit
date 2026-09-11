@@ -1,7 +1,7 @@
 import type { HarnessEvent, HarnessEventKind } from "../../contracts/index.ts";
 import { sanitizeSegment } from "../../platform/sanitize.ts";
 
-const EVENT_KIND_BY_HOOK: Record<string, HarnessEventKind> = {
+export const EVENT_KIND_BY_HOOK: Record<string, HarnessEventKind> = {
   sessionStart: "session.start",
   sessionEnd: "session.end",
   beforeSubmitPrompt: "prompt.submit",
@@ -34,6 +34,27 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+/**
+ * hazard: `beforeMCPExecution`'s own `tool_input` is documented as a JSON *string* ("JSON params string that
+ * will be passed to the tool"), not an object like `preToolUse`'s — `asRecord` alone left it `undefined` for
+ * every MCP call on this host, silently skipping any rule that reads `toolInput` fields
+ * ([/decisions/ad-135.md](/decisions/ad-135.md)).
+ */
+function mcpToolInput(value: unknown): Record<string, unknown> | undefined {
+  const direct = asRecord(value);
+  if (direct) {
+    return direct;
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  try {
+    return asRecord(JSON.parse(value));
+  } catch {
+    return undefined;
+  }
 }
 
 function asStatus(value: unknown): "completed" | "aborted" | "error" | undefined {
@@ -164,7 +185,7 @@ export function cursorToEvent(raw: Record<string, unknown>): HarnessEvent | null
       if (toolName) {
         event.toolName = toolName;
       }
-      const toolInput = asRecord(raw.tool_input);
+      const toolInput = mcpToolInput(raw.tool_input);
       if (toolInput) {
         event.toolInput = toolInput;
       }

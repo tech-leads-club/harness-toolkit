@@ -60,11 +60,21 @@ export function activitySince(events: readonly ObsEvent[], sessionKey: string): 
   };
 }
 
-export function readTurnActivity(root: string, sessionKey: string, limit = 500): TurnActivity {
-  return activitySince(
-    ACTIVITY_PLANES.flatMap((plane) => readSignalEvents(root, plane, limit)),
-    sessionKey,
+function isTurnRelevant(event: ObsEvent): boolean {
+  return event.kind === TURN_START || TOOL_KINDS.has(event.kind);
+}
+
+// hazard: truncating to `limit` before filtering let a noise kind (`hook.enter`, one record per gate-relevant
+// hook call) push `prompt.submit` out of the window this function reads — the same order-of-operations defect
+// `tools/obs-cli.ts`'s `liveEvents` had. Read wide, filter to what this function actually counts, then cut to
+// `limit` ([/decisions/ad-136.md](/decisions/ad-136.md)).
+export function readTurnActivity(root: string, sessionKey: string, limit = 500, readWide = 20): TurnActivity {
+  const events = ACTIVITY_PLANES.flatMap((plane) =>
+    readSignalEvents(root, plane, Math.max(limit * readWide, limit))
+      .filter(isTurnRelevant)
+      .slice(-limit),
   );
+  return activitySince(events, sessionKey);
 }
 
 export type IdleTurnInput = {

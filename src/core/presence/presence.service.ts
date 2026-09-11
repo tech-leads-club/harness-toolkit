@@ -1,4 +1,8 @@
+import { realpathSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import type { Decision } from "../../contracts/decision.ts";
+import { gitRootOf } from "../../platform/git.ts";
+import { normalizeSeparators } from "../../platform/sanitize.ts";
 import {
   deletePresenceRecord,
   listPresenceRecords,
@@ -160,6 +164,70 @@ export function isSessionLive(
 ): boolean {
   const record = readPresenceRecord(root, provider, sessionIdFromSessionKey(provider, sessionKey));
   return record !== null && !isStale(record, now.getTime(), CONVERSATION_STALE_MS);
+}
+
+// why: `gitRootOf` resolves symlinks and Windows short (8.3) names, but a claim's own path is not guaranteed
+// to be — reproduced on both macOS's `/tmp` → `/private/tmp` and Windows's `RUNNER~1` → `runneradmin`.
+// `realpathSync` alone does not expand 8.3 names (a pure-JS, per-segment resolver); `.native` asks the OS.
+function realpathExistingPrefix(path: string): string {
+  let current = path;
+  let tail = "";
+  for (;;) {
+    try {
+      const real = realpathSync.native(current);
+      return tail ? join(real, tail) : real;
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) {
+        return path;
+      }
+      tail = tail ? join(basename(current), tail) : basename(current);
+      current = parent;
+    }
+  }
+}
+
+function relativeClaim(resolvedGitRoot: string, file: string): string {
+  return normalizeSeparators(
+    isAbsolute(file) ? relative(resolvedGitRoot, realpathExistingPrefix(file)) : file,
+  );
+}
+
+/**
+ * hazard: two concurrent sessions in the same checkout both read `git diff` against the same shared working
+ * tree — a file only one of them ever touched still shows up in the *other's* own diff, because git has no
+ * concept of which agent wrote an uncommitted change. A file is excluded only when a *live* neighbour's own
+ * claim names it and this session's own claims do not — an unclaimed file (a shell script, a generated
+ * output) or one both sessions touched stays in scope, so the existing single-session behaviour this exists
+ * to leave alone is never narrowed by a guess ([/decisions/ad-137.md](/decisions/ad-137.md)).
+ */
+export async function filesClaimedByOtherLiveSessions(
+  root: string,
+  gitRoot: string,
+  provider: string,
+  sessionKey: string,
+  now: Date = new Date(),
+): Promise<Set<string>> {
+  const resolvedGitRoot = realpathExistingPrefix((await gitRootOf(gitRoot)) ?? gitRoot);
+  const mine = sessionIdFromSessionKey(provider, sessionKey);
+  const own = readPresenceRecord(root, provider, mine);
+  const ownFiles = new Set((own?.recent_files ?? []).map((file) => relativeClaim(resolvedGitRoot, file)));
+  const claimed = new Set<string>();
+  for (const record of listPresenceRecords(root)) {
+    if (record.provider === provider && record.session === mine) {
+      continue;
+    }
+    if (isStale(record, now.getTime(), CONVERSATION_STALE_MS)) {
+      continue;
+    }
+    for (const rawFile of record.recent_files) {
+      const file = relativeClaim(resolvedGitRoot, rawFile);
+      if (!ownFiles.has(file)) {
+        claimed.add(file);
+      }
+    }
+  }
+  return claimed;
 }
 
 export { listPresenceRecords, presenceSessionKey, readPresenceRecord };

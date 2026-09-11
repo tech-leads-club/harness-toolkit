@@ -1,5 +1,5 @@
 import type { Decision } from "../../contracts/decision.ts";
-import { isInside, isScratch, isSecretPath, resolveTarget } from "./floor.paths.ts";
+import { isInside, isProtectedWiringTarget, isScratch, isSecretPath, resolveTarget } from "./floor.paths.ts";
 import { checkPolicySurface } from "./floor.policy-surface.ts";
 import { type ShellSegment, type ShellWord, tokenizeShell } from "./floor.tokenize.ts";
 import { verbOf } from "./floor.verb.ts";
@@ -11,7 +11,8 @@ export type FloorRule =
   | "history-rewrite"
   | "outside-project-destruction"
   | "policy-surface-write"
-  | "unprovable-execution";
+  | "unprovable-execution"
+  | "wiring-tamper";
 
 export type FloorInput = {
   projectDir: string;
@@ -19,12 +20,16 @@ export type FloorInput = {
   filePath?: string | undefined;
   command?: string | undefined;
   isReadEvent?: boolean | undefined;
+  protectedPaths?: readonly string[] | undefined;
 };
 
 const DESTRUCTIVE_VERBS = new Set(["dd", "rm", "rmdir", "shred", "truncate"]);
 const MACHINE_VERBS = new Set(["halt", "poweroff", "reboot", "shutdown"]);
 const READER_VERBS = new Set(["base64", "cat", "head", "less", "more", "od", "strings", "tail", "xxd"]);
 const READING_TOOLS = new Set(["Read", "Edit", "MultiEdit", "NotebookEdit"]);
+// why: the spec's own AC3 names these three tool calls, not the wider WRITE_TOOLS set (which also carries
+// `Delete`/`NotebookEdit`) — a provider's wiring target is a settings/hooks document, never a notebook.
+const WIRING_EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit"]);
 const EXPANDING_VERBS = new Set([".", "eval", "source"]);
 const SHELLS = new Set(["ash", "bash", "dash", "fish", "ksh", "sh", "zsh"]);
 
@@ -147,6 +152,7 @@ function checkShell(input: FloorInput): Decision {
   }
 
   const segments = tokenizeShell(command);
+  const protectedPaths = input.protectedPaths ?? [];
 
   // invariant: asked before the rest. A fetched program satisfies every other rule by containing nothing this
   // gate can read, so checking the wrapper first and the payload never is the order that let it through.
@@ -211,6 +217,16 @@ function checkShell(input: FloorInput): Decision {
 
     for (const word of targets) {
       const resolved = resolveTarget(input.projectDir, word.text);
+      // why: a destructive verb targeting a provider's wiring path is the same tampering the redirect and
+      // in-place-edit cases already name — attributing it to `outside-project-destruction` instead would be
+      // technically safe (the file still cannot be destroyed) but would hide which rule actually did the work.
+      if (isProtectedWiringTarget(resolved, protectedPaths)) {
+        return denial(
+          "wiring-tamper",
+          `${resolved} is where a provider reads its own hook registration from, and destroying it would stop every hook this harness has for that host from firing.`,
+          `${verb} of ${resolved}`,
+        );
+      }
       if (!isInside(input.projectDir, resolved) && !isScratch(resolved)) {
         return denial(
           "outside-project-destruction",
@@ -223,7 +239,7 @@ function checkShell(input: FloorInput): Decision {
 
   // hazard: the guard that used to defend this surface keyed off tool names, so a single shell line went
   // around it. The rule belongs here, where the decision is made before any policy is read.
-  const surface = checkPolicySurface(input.projectDir, command, segments);
+  const surface = checkPolicySurface(input.projectDir, command, segments, protectedPaths);
   if (surface.kind === "deny") {
     // invariant: the remedy comes from the branch that denied, so a read refusal names how to read and a write
     // refusal names who may write. One fixed tail on both handed write advice to an agent trying to read
@@ -231,7 +247,13 @@ function checkShell(input: FloorInput): Decision {
     const remedy =
       surface.remedy ??
       "Set a gate command with `tlc harness gate test-command` or `gate lint-command`, and run policy changes from your own terminal rather than from inside this session.";
-    return denial("policy-surface-write", `${surface.detail} ${remedy}`, surface.note);
+    // why: the same segment logic protects both surfaces, so the only way to attribute the right rule is to ask
+    // whether the harness's own surface — with no wiring targets in the mix — would have denied this on its own.
+    // If it would not, the only thing that changed the answer is a provider's wiring target.
+    const harnessOnly =
+      protectedPaths.length === 0 ? surface : checkPolicySurface(input.projectDir, command, segments, []);
+    const rule: FloorRule = harnessOnly.kind === "deny" ? "policy-surface-write" : "wiring-tamper";
+    return denial(rule, `${surface.detail} ${remedy}`, surface.note);
   }
 
   return checkShellSecrets(segments, input.projectDir);
@@ -279,12 +301,22 @@ function checkFile(input: FloorInput): Decision {
   if (!filePath) {
     return { kind: "allow" };
   }
+  const resolved = resolveTarget(input.projectDir, filePath);
+
+  const writes = input.toolName !== undefined && WIRING_EDIT_TOOLS.has(input.toolName);
+  if (writes && isProtectedWiringTarget(resolved, input.protectedPaths ?? [])) {
+    return denial(
+      "wiring-tamper",
+      `${resolved} is where a provider reads its own hook registration from, and overwriting it would stop every hook this harness has for that host from firing.`,
+      `write to ${resolved}`,
+    );
+  }
+
   const reads =
     input.isReadEvent === true || (input.toolName !== undefined && READING_TOOLS.has(input.toolName));
   if (!reads) {
     return { kind: "allow" };
   }
-  const resolved = resolveTarget(input.projectDir, filePath);
   if (!isSecretPath(resolved)) {
     return { kind: "allow" };
   }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Decision, HarnessEvent, ProviderCapabilities, Rendered } from "../../contracts/index.ts";
-import { isEffortLevel } from "../../contracts/index.ts";
+import { HARNESS_EVENT_KINDS, isEffortLevel } from "../../contracts/index.ts";
 import type { ProviderPort } from "../provider.port.ts";
 import { providers, resolveFromRegistry, resolveProvider } from "../provider.registry.ts";
 
@@ -11,7 +11,6 @@ const BOOLEAN_CAPABILITY_FLAGS: readonly (keyof ProviderCapabilities)[] = [
   "nativeLoopCounter",
   "dedicatedShellEvent",
   "toolInputRewrite",
-  "toolOutputRewrite",
   "contextAtToolBefore",
   "contextAtToolAfter",
   "contextAtStop",
@@ -22,9 +21,9 @@ const BOOLEAN_CAPABILITY_FLAGS: readonly (keyof ProviderCapabilities)[] = [
   "thoughtEvent",
 ];
 
-const CAPABILITY_FLAG_COUNT = BOOLEAN_CAPABILITY_FLAGS.length + 1;
+const CAPABILITY_FLAG_COUNT = BOOLEAN_CAPABILITY_FLAGS.length + 2;
 
-function assertSatisfiesContract(provider: ProviderPort): void {
+export function assertSatisfiesContract(provider: ProviderPort): void {
   assert.equal(typeof provider.name, "string", "name is a string");
   assert.ok(provider.name.length > 0, "name is non-empty");
   assert.equal(typeof provider.detect, "function");
@@ -33,6 +32,7 @@ function assertSatisfiesContract(provider: ProviderPort): void {
   assert.equal(typeof provider.toEvent, "function");
   assert.equal(typeof provider.render, "function");
   assert.equal(typeof provider.wiring, "function");
+  assert.equal(typeof provider.wiringTargets, "function");
 
   const policyDefaults = provider.policyDefaults();
   /**
@@ -87,6 +87,21 @@ function assertSatisfiesContract(provider: ProviderPort): void {
   for (const kind of capabilities.askSupportedOn) {
     assert.equal(typeof kind, "string", `${provider.name}.capabilities().askSupportedOn entries are strings`);
   }
+  assert.ok(
+    Array.isArray(capabilities.toolOutputRewriteOn),
+    `${provider.name}.capabilities().toolOutputRewriteOn is an array`,
+  );
+  for (const kind of capabilities.toolOutputRewriteOn) {
+    assert.equal(
+      typeof kind,
+      "string",
+      `${provider.name}.capabilities().toolOutputRewriteOn entries are strings`,
+    );
+    assert.ok(
+      HARNESS_EVENT_KINDS.includes(kind),
+      `${provider.name}.capabilities().toolOutputRewriteOn entries are valid HarnessEventKind values`,
+    );
+  }
 
   const fabricated: HarnessEvent = {
     provider: provider.name,
@@ -102,6 +117,14 @@ function assertSatisfiesContract(provider: ProviderPort): void {
   const wiring = provider.wiring({ launcherPath: "/tmp/tlc-exec.mjs" });
   assert.ok(wiring.target.length > 0, "wiring target is non-empty");
   assert.ok(wiring.strategy === "replace" || wiring.strategy === "merge", "strategy is replace or merge");
+
+  const wiringTargets = provider.wiringTargets();
+  assert.ok(Array.isArray(wiringTargets), `${provider.name}.wiringTargets() is an array`);
+  assert.ok(wiringTargets.length > 0, `${provider.name}.wiringTargets() is non-empty`);
+  for (const target of wiringTargets) {
+    assert.equal(typeof target, "string", `${provider.name}.wiringTargets() entries are strings`);
+    assert.ok(target.length > 0, `${provider.name}.wiringTargets() entries are non-empty`);
+  }
 }
 
 function makeFixtureProvider(): ProviderPort {
@@ -112,7 +135,7 @@ function makeFixtureProvider(): ProviderPort {
     nativeLoopCounter: true,
     dedicatedShellEvent: true,
     toolInputRewrite: true,
-    toolOutputRewrite: true,
+    toolOutputRewriteOn: ["tool.after"],
     contextAtToolBefore: true,
     contextAtToolAfter: true,
     contextAtStop: true,
@@ -154,6 +177,9 @@ function makeFixtureProvider(): ProviderPort {
     },
     wiring() {
       return { target: "/tmp/fixture.json", strategy: "replace" as const, entries: [] };
+    },
+    wiringTargets() {
+      return ["/tmp/fixture.json"];
     },
   };
 }

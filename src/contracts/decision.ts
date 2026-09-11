@@ -7,11 +7,12 @@
 export type Decision =
   | { kind: "abstain" }
   | { kind: "allow" }
-  | { kind: "deny"; reason: string; userNote?: string; rule: string }
-  | { kind: "ask"; reason: string; userNote?: string; rule: string }
+  | { kind: "deny"; reason: string; userNote?: string; rule: string; diagnostic?: string }
+  | { kind: "ask"; reason: string; userNote?: string; rule: string; diagnostic?: string }
   | { kind: "context"; text: string; env?: Record<string, string> }
   | { kind: "continue"; text: string }
-  | { kind: "rewriteInput"; input: Record<string, unknown>; reason: string };
+  | { kind: "rewriteInput"; input: Record<string, unknown>; reason: string }
+  | { kind: "rewriteOutput"; output: string };
 
 export type Rendered = {
   // invariant: null means write nothing; a provider whose abstain is a literal "{}" sets it explicitly.

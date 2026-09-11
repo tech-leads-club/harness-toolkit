@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
-import { activitySince, endedWithoutActing } from "../turn.activity.ts";
+import { projectStateDir } from "../../../platform/paths.ts";
+import { activitySince, endedWithoutActing, readTurnActivity } from "../turn.activity.ts";
 
 // why: the window boundary is a timestamp now, because the events counted inside it come from two planes and
 // two files cannot share an index. Each call gets a later `ts` so the order in the array is the order in time.
@@ -124,4 +128,56 @@ test("an out-of-order plane still lands inside its own turn", () => {
   const stale = { ...event("shell.end"), ts: "2020-01-01T00:00:00.000Z" };
   const events = [work, stale, boundary] as never[];
   assert.equal(activitySince(events, "provider-a-s1").toolCalls, 1);
+});
+
+/**
+ * AD-136 F1 (round 2) — `readTurnActivity`'s own file-reading half had the identical order-of-operations
+ * defect `tools/obs-cli.ts`'s `liveEvents` had: truncating to `limit` before filtering by kind let a
+ * high-volume, turn-irrelevant kind (`hook.enter`) push `prompt.submit` out of the window entirely.
+ */
+test("readTurnActivity: prompt.submit survives a flood of turn-irrelevant noise ahead of the limit", () => {
+  const root = mkdtempSync(join(tmpdir(), "tlc-turn-activity-"));
+  try {
+    const dir = projectStateDir(root);
+    mkdirSync(dir, { recursive: true });
+    const session = "provider-a-s1";
+    const base = Date.parse("2026-01-01T00:00:00.000Z");
+    const lines: string[] = [
+      JSON.stringify({
+        schema: "harness.observability.v1",
+        kind: "prompt.submit",
+        session_id: session,
+        level: "signal",
+        ts: new Date(base).toISOString(),
+      }),
+    ];
+    for (let i = 0; i < 600; i += 1) {
+      lines.push(
+        JSON.stringify({
+          schema: "harness.observability.v1",
+          kind: "hook.enter",
+          session_id: session,
+          level: "signal",
+          ts: new Date(base + (i + 1) * 1000).toISOString(),
+        }),
+      );
+    }
+    lines.push(
+      JSON.stringify({
+        schema: "harness.observability.v1",
+        kind: "shell.end",
+        session_id: session,
+        level: "signal",
+        ts: new Date(base + 601 * 1000).toISOString(),
+      }),
+    );
+    writeFileSync(join(dir, "obs.jsonl"), `${lines.join("\n")}\n`);
+
+    const activity = readTurnActivity(root, session, 500);
+
+    assert.equal(activity.sawTurnStart, true, "the flood must not push prompt.submit out of the window");
+    assert.equal(activity.toolCalls, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

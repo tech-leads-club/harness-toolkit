@@ -5,12 +5,13 @@ import { coreFacade, type LastGateArtifact, type PendingLessonCredit, type Polic
 import {
   filterCodeTargets,
   filterTestTargets,
+  gitRootOf,
   listAddedLines,
   listChangedRepoFiles,
   listTrackedFiles,
-  runCommand,
 } from "../platform/git.ts";
 import { flagsDir } from "../platform/paths.ts";
+import { runCommand } from "../platform/process.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
 import {
@@ -204,7 +205,11 @@ export async function runLockedGate(args: {
 }): Promise<GateRun> {
   const command = [...args.command, ...args.argvFiles];
   const inputs = coreFacade.gate.computeInputsHash(args.root, args.recordFiles, command);
-  const cached = coreFacade.gate.cachedVerdict(coreFacade.gate.readLastGate(args.root), args.gate, inputs);
+  const cached = coreFacade.gate.cachedVerdict(
+    coreFacade.gate.readLastGate(args.root, args.sessionKey),
+    args.gate,
+    inputs,
+  );
 
   let artifact: LastGateArtifact;
   if (cached !== null) {
@@ -219,6 +224,7 @@ export async function runLockedGate(args: {
           const result = await runCommand(args.root, args.command, args.argvFiles);
           return coreFacade.gate.writeLastGate({
             root: args.root,
+            sessionKey: args.sessionKey,
             gate: args.gate,
             exitCode: result.exitCode,
             command,
@@ -490,7 +496,14 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
    * says so once at the end instead of three times ([/decisions/ad-073.md](/decisions/ad-073.md)).
    */
   const deferred: string[] = [];
-  const changedFiles = await listChangedRepoFiles(root, turnBase);
+  const rawChangedFiles = await listChangedRepoFiles(shaRoot, turnBase);
+  const otherSessionFiles = await coreFacade.presence.filesClaimedByOtherLiveSessions(
+    root,
+    shaRoot,
+    provider,
+    sessionKey,
+  );
+  const changedFiles = rawChangedFiles.filter((file) => !otherSessionFiles.has(file));
   const codeTargets = filterCodeTargets(changedFiles, policy.codePaths);
   const testTargets = filterTestTargets(changedFiles);
   // why: the comment rail scopes by the syntax catalog (40+ languages), not `codeTargets`'s nine-extension
@@ -653,7 +666,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
     coreFacade.observe.shouldObserve(policy.observe, "comments", policy.comments.enabled)
   ) {
     const hits = await coreFacade.commentPolicy.scanAddedComments(
-      root,
+      shaRoot,
       commentTargets,
       policy.comments.mode,
       turnBase,
@@ -680,7 +693,7 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
 
   if (policy.comments.enabled && policy.comments.onViolation === "followup" && commentTargets.length > 0) {
     const hits = await coreFacade.commentPolicy.scanAddedComments(
-      root,
+      shaRoot,
       commentTargets,
       policy.comments.mode,
       turnBase,
@@ -708,13 +721,14 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   if (policy.supplyChain.enabled && changedFiles.length > 0) {
     const manifests = changedFiles.filter((path) => coreFacade.supplyChain.isManifest(path));
     if (manifests.length > 0) {
-      const added = await listAddedLines(root, manifests, turnBase);
+      const added = await listAddedLines(shaRoot, manifests, turnBase);
+      const gitRoot = (await gitRootOf(shaRoot)) ?? shaRoot;
       const outcome = coreFacade.supplyChain.inspectSupplyChain({
         changedFiles,
         added,
         readManifest: (relativePath) => {
           try {
-            return readFileSync(join(root, relativePath), "utf8");
+            return readFileSync(join(gitRoot, relativePath), "utf8");
           } catch {
             return null;
           }
@@ -742,13 +756,14 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
    * ([/decisions/ad-071.md](/decisions/ad-071.md)).
    */
   if (policy.duplication.enabled && codeTargets.length > 0) {
-    const added = await listAddedLines(root, codeTargets, turnBase);
-    const tracked = await listTrackedFiles(root);
+    const added = await listAddedLines(shaRoot, codeTargets, turnBase);
+    const tracked = await listTrackedFiles(shaRoot);
+    const gitRoot = (await gitRootOf(shaRoot)) ?? shaRoot;
     const scan = coreFacade.duplication.scanProject(
       tracked,
       (relativePath) => {
         try {
-          return readFileSync(join(root, relativePath), "utf8");
+          return readFileSync(join(gitRoot, relativePath), "utf8");
         } catch {
           return null;
         }

@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import {
   filterCodeTargets,
   filterTestTargets,
+  gitRootOf,
   listAddedLines,
   listChangedRepoFiles,
-  runCommand,
+  listCommitFileSets,
+  listTrackedFiles,
+  localRepoRemote,
+  parseOwnerRepo,
 } from "../git.ts";
 
 function git(cwd: string, args: string[]): void {
@@ -48,6 +52,91 @@ describe("listChangedRepoFiles", () => {
     assert.equal(changed.includes("untracked.ts"), true);
     rmSync(dir, { recursive: true, force: true });
   });
+
+  /**
+   * GRD-05 — a subdirectory used to read as "not a repository" and return no files at all, silently, the same
+   * blind spot AD-132 fixes across every function in this file.
+   */
+  test("GRD-05 returns the identical file list whether called from the root or a real subdirectory", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "committed.ts"), "export const a = 1;\n");
+    git(dir, ["add", "committed.ts"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+    writeFileSync(join(dir, "committed.ts"), "export const a = 2;\n");
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+    writeFileSync(join(dir, "apps", "web", "untracked.ts"), "export const b = 2;\n");
+
+    const fromRoot = await listChangedRepoFiles(dir);
+    const fromSubdir = await listChangedRepoFiles(join(dir, "apps", "web"));
+
+    assert.deepEqual([...fromSubdir].sort(), [...fromRoot].sort());
+    assert.equal(fromRoot.includes("apps/web/untracked.ts"), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /**
+   * hazard: found by review of AD-134's own fix — git quotes and octal-escapes any path containing a
+   * non-ASCII byte unless run with `-z` (`"café.ts"` becomes `"caf\303\251.ts"` on the wire), and a leading
+   * space survives git's own quoting but not a naive `.trim()`. Both corrupted names miss
+   * `filterCodeTargets`'s extension check and vanish from every gate silently
+   * ([/decisions/ad-134.md](/decisions/ad-134.md)).
+   */
+  test("a modified file with a non-ASCII name and one with a leading space both survive intact", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "café.ts"), "export const a = 1;\n");
+    writeFileSync(join(dir, " leading-space.ts"), "export const b = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+
+    writeFileSync(join(dir, "café.ts"), "export const a = 2;\n");
+    writeFileSync(join(dir, " leading-space.ts"), "export const b = 2;\n");
+
+    const changed = await listChangedRepoFiles(dir);
+    assert.equal(changed.includes("café.ts"), true);
+    assert.equal(changed.includes(" leading-space.ts"), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a new untracked file with a non-ASCII name survives intact", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+
+    writeFileSync(join(dir, "新しい.ts"), "export const b = 1;\n");
+
+    const changed = await listChangedRepoFiles(dir);
+    assert.equal(changed.includes("新しい.ts"), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("listCommitFileSets", () => {
+  test("GRD-05 returns the identical commit history whether called from the root or a real subdirectory", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "first"]);
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+    writeFileSync(join(dir, "apps", "web", "b.ts"), "export const b = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "second"]);
+
+    const fromRoot = await listCommitFileSets(dir, 5);
+    const fromSubdir = await listCommitFileSets(join(dir, "apps", "web"), 5);
+
+    assert.deepEqual(fromSubdir, fromRoot);
+    assert.deepEqual(fromRoot[0], ["apps/web/b.ts"]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns an empty array when .git is absent, without throwing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "no-git-"));
+    await assert.doesNotReject(async () => {
+      assert.deepEqual(await listCommitFileSets(dir, 5), []);
+    });
+    rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 describe("filterCodeTargets", () => {
@@ -69,24 +158,6 @@ describe("filterTestTargets", () => {
   test("matches .test.ts and .spec.ts files", () => {
     const result = filterTestTargets(["src/foo.test.ts", "src/bar.spec.tsx", "src/foo.ts"]);
     assert.deepEqual(result, ["src/foo.test.ts", "src/bar.spec.tsx"]);
-  });
-});
-
-describe("runCommand", () => {
-  test("returns '(no output captured)' when the command produces no output", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "run-command-"));
-    const result = await runCommand(dir, ["node", "-e", ""]);
-    assert.equal(result.exitCode, 0);
-    assert.equal(result.output, "(no output captured)");
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  test("truncates output over 8000 characters, keeping the tail", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "run-command-"));
-    const result = await runCommand(dir, ["node", "-e", "process.stdout.write('x'.repeat(9000) + 'END')"]);
-    assert.equal(result.output.length, 8000);
-    assert.equal(result.output.endsWith("END"), true);
-    rmSync(dir, { recursive: true, force: true });
   });
 });
 
@@ -133,6 +204,29 @@ describe("the turn's base, not the HEAD at stop", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  /**
+   * hazard: the tracked-file check used to read through `gitLines`, whose quoting/`.trim()` corruption made
+   * a non-ASCII or leading-space filename mismatch the exact string `relativePaths` passed in — `tracked.has`
+   * came back false for an actually-tracked file, misreading its whole current content as newly added instead
+   * of diffing it against `base` ([/decisions/ad-134.md](/decisions/ad-134.md)).
+   */
+  test("a tracked file with a non-ASCII name is diffed against base, not misread as untracked", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "café.ts"), "export const a = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+    const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+
+    writeFileSync(join(dir, "café.ts"), "export const a = 1;\n// narration\n");
+
+    const added = await listAddedLines(dir, ["café.ts"], base);
+    assert.deepEqual(
+      added.map((line) => line.text),
+      ["// narration"],
+    );
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("an uncommitted change is found from either base", async () => {
     const dir = initRepo();
     writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
@@ -150,5 +244,254 @@ describe("the turn's base, not the HEAD at stop", () => {
       );
     }
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GRD-06 a tracked file's added lines are identical from a subdirectory as from the root", async () => {
+    const dir = initRepo();
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+    writeFileSync(join(dir, "apps", "web", "a.ts"), "export const a = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+    const base = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    writeFileSync(join(dir, "apps", "web", "a.ts"), "// narration\nexport const a = 1;\n");
+
+    const fromRoot = await listAddedLines(dir, ["apps/web/a.ts"], base);
+    const fromSubdir = await listAddedLines(join(dir, "apps", "web"), ["apps/web/a.ts"], base);
+
+    assert.deepEqual(fromSubdir, fromRoot);
+    assert.deepEqual(
+      fromRoot.map((line) => line.text),
+      ["// narration"],
+    );
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GRD-06 an untracked file's lines are identical from a subdirectory as from the root", async () => {
+    const dir = initRepo();
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+    writeFileSync(join(dir, "apps", "web", "new.ts"), "export const b = 1;\nexport const c = 2;\n");
+
+    const fromRoot = await listAddedLines(dir, ["apps/web/new.ts"]);
+    const fromSubdir = await listAddedLines(join(dir, "apps", "web"), ["apps/web/new.ts"]);
+
+    assert.deepEqual(fromSubdir, fromRoot);
+    assert.deepEqual(
+      fromRoot.map((line) => line.text),
+      ["export const b = 1;", "export const c = 2;", ""],
+    );
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GRD-06 returns an empty array when .git is absent, without throwing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "no-git-"));
+    await assert.doesNotReject(async () => {
+      assert.deepEqual(await listAddedLines(dir, ["a.ts"]), []);
+    });
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("parseOwnerRepo", () => {
+  test("ARS reads the SSH form", () => {
+    assert.deepEqual(parseOwnerRepo("git@github.com:owner/repo.git"), { owner: "owner", repo: "repo" });
+  });
+
+  test("ARS reads the HTTPS form, with or without .git, with or without a trailing slash", () => {
+    assert.deepEqual(parseOwnerRepo("https://github.com/owner/repo.git"), { owner: "owner", repo: "repo" });
+    assert.deepEqual(parseOwnerRepo("https://github.com/owner/repo"), { owner: "owner", repo: "repo" });
+    assert.deepEqual(parseOwnerRepo("https://github.com/owner/repo/"), { owner: "owner", repo: "repo" });
+  });
+
+  test("ARS an unparseable string is null, not a guess", () => {
+    assert.equal(parseOwnerRepo("not-a-url"), null);
+    assert.equal(parseOwnerRepo(""), null);
+  });
+});
+
+describe("localRepoRemote", () => {
+  test("ARS resolves owner/repo from a real git repo's origin", async () => {
+    const dir = initRepo();
+    git(dir, ["remote", "add", "origin", "https://github.com/acme/widgets.git"]);
+    assert.deepEqual(await localRepoRemote(dir), { owner: "acme", repo: "widgets" });
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("ARS null when the repo has no such remote", async () => {
+    const dir = initRepo();
+    assert.equal(await localRepoRemote(dir), null);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("ARS null when the directory is not a git repo at all", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "git-test-non-repo-"));
+    assert.equal(await localRepoRemote(dir), null);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /**
+   * GRD-02 — the exact production incident: this check silently returned null for a real subdirectory of a
+   * real repository, letting a pr-open rule never evaluate at all ([/decisions/ad-132.md](/decisions/ad-132.md)).
+   */
+  test("GRD-02 resolves the same owner/repo from a real subdirectory, not only the exact root", async () => {
+    const dir = initRepo();
+    git(dir, ["remote", "add", "origin", "https://github.com/acme/widgets.git"]);
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+
+    const fromRoot = await localRepoRemote(dir);
+    const fromSubdir = await localRepoRemote(join(dir, "apps", "web"));
+
+    assert.deepEqual(fromRoot, { owner: "acme", repo: "widgets" });
+    assert.deepEqual(fromSubdir, fromRoot);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * AD-134 — three real bugs (truncation dropping files, an empty repo reading as a phantom entry, a leading
+ * space eaten from a real filename) all traced to one cause: this function used to read through `runCommand`
+ * (`platform/process.ts`), a display-oriented helper, instead of `runProcess` directly. One consolidated suite
+ * proves the structural fix closes all three at once, plus the pre-existing AD-132 subdirectory guarantee.
+ */
+describe("listTrackedFiles", () => {
+  test("GCB-04 every tracked file survives even when the list exceeds the old 8000-char truncation threshold", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "a-marker.ts"), "export const marker = 1;\n");
+    for (let index = 0; index < 400; index += 1) {
+      writeFileSync(
+        join(dir, `generated-file-${String(index).padStart(4, "0")}.ts`),
+        "export const x = 1;\n",
+      );
+    }
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "large tree"]);
+
+    const lsFilesBytes = execFileSync("git", ["-C", dir, "ls-files", "-z"]).length;
+    assert.ok(lsFilesBytes > 8000, `test setup: expected >8000 bytes, got ${lsFilesBytes}`);
+
+    const tracked = await listTrackedFiles(dir);
+    assert.equal(tracked.length, 401);
+    assert.equal(tracked.includes("a-marker.ts"), true);
+    assert.equal(tracked.includes("generated-file-0399.ts"), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GCB-05 returns an empty array for a real repo with no tracked files, never a placeholder entry", async () => {
+    const dir = initRepo();
+    assert.deepEqual(await listTrackedFiles(dir), []);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GCB-06 a filename with a leading space survives intact", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, " leading-space.ts"), "export const a = 1;\n");
+    writeFileSync(join(dir, "zz.ts"), "export const b = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+
+    const tracked = await listTrackedFiles(dir);
+
+    assert.equal(tracked.includes(" leading-space.ts"), true);
+    assert.equal(tracked.includes("leading-space.ts"), false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /**
+   * hazard: `git ls-files` scopes its output to the cwd it runs from, unlike `git diff`/`git log`. This
+   * regression guard makes sure the structural fix here never reopens the subdirectory bug
+   * ([/decisions/ad-132.md](/decisions/ad-132.md)) already closed.
+   */
+  test("GCB-07 returns repo-root-relative paths whether called from the root or a real subdirectory", async () => {
+    const dir = initRepo();
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+    mkdirSync(join(dir, "core"), { recursive: true });
+    writeFileSync(join(dir, "core", "a.ts"), "export const a = 1;\n");
+    writeFileSync(join(dir, "apps", "web", "b.ts"), "export const b = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+
+    const fromRoot = await listTrackedFiles(dir);
+    const fromSubdir = await listTrackedFiles(join(dir, "apps", "web"));
+
+    assert.deepEqual([...fromSubdir].sort(), [...fromRoot].sort());
+    assert.equal(fromRoot.includes("apps/web/b.ts"), true);
+    assert.equal(fromRoot.includes("core/a.ts"), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns an empty array when .git is absent, without throwing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "no-git-"));
+    await assert.doesNotReject(async () => {
+      assert.deepEqual(await listTrackedFiles(dir), []);
+    });
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * why a marker file instead of string equality: `git rev-parse --show-toplevel` and Node's own path
+ * normalization disagree on Windows CI — forward slashes and the long form (`runneradmin`) from git, backslashes
+ * and an 8.3 short form (`RUNNER~1`) from `mkdtempSync`/`realpathSync`. Both spellings name the same directory;
+ * a marker file readable through the resolved path proves that without caring how either side spells it.
+ */
+function sameLocation(resolved: string | null, marker: string, expectedContent: string): boolean {
+  if (resolved === null) {
+    return false;
+  }
+  try {
+    return readFileSync(join(resolved, marker), "utf8") === expectedContent;
+  } catch {
+    return false;
+  }
+}
+
+describe("gitRootOf", () => {
+  test("GRD-01 resolves the repo root when given the root itself", async () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, "marker.txt"), "root");
+    assert.equal(sameLocation(await gitRootOf(dir), "marker.txt", "root"), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GRD-01 resolves the same repo root when given a real subdirectory", async () => {
+    const dir = initRepo();
+    mkdirSync(join(dir, "apps", "web"), { recursive: true });
+    writeFileSync(join(dir, "marker.txt"), "root");
+    assert.equal(sameLocation(await gitRootOf(join(dir, "apps", "web")), "marker.txt", "root"), true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GRD-03 null when the directory has no git repository at all", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "git-root-non-repo-"));
+    assert.equal(await gitRootOf(dir), null);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("GRD-03 null when the directory does not exist on disk", async () => {
+    assert.equal(await gitRootOf(join(tmpdir(), "does-not-exist-at-all-xyz")), null);
+  });
+
+  /**
+   * GRD-07 — a worktree's own subdirectory must resolve to that worktree's own root, never the main
+   * checkout's, preserving [/decisions/ad-129.md](/decisions/ad-129.md)'s existing guarantee.
+   */
+  test("GRD-07 a git worktree's own subdirectory resolves to the worktree's own root, not the main checkout's", async () => {
+    const main = initRepo();
+    writeFileSync(join(main, "a.ts"), "export const a = 1;\n");
+    git(main, ["add", "-A"]);
+    git(main, ["commit", "-q", "-m", "initial"]);
+    writeFileSync(join(main, "marker.txt"), "main");
+
+    const worktree = mkdtempSync(join(tmpdir(), "git-root-worktree-"));
+    rmSync(worktree, { recursive: true, force: true });
+    git(main, ["worktree", "add", "-b", "feature-x", worktree]);
+    mkdirSync(join(worktree, "apps", "web"), { recursive: true });
+    writeFileSync(join(worktree, "marker.txt"), "worktree");
+
+    const resolved = await gitRootOf(join(worktree, "apps", "web"));
+    assert.equal(sameLocation(resolved, "marker.txt", "worktree"), true);
+    assert.equal(sameLocation(resolved, "marker.txt", "main"), false);
+
+    git(main, ["worktree", "remove", "--force", worktree]);
+    rmSync(main, { recursive: true, force: true });
   });
 });

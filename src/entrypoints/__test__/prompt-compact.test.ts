@@ -27,7 +27,8 @@ function obsRecords(root: string): Array<Record<string, unknown>> {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .filter((record) => record.kind !== "hook.enter");
 }
 
 function cursorPromptSubmit(root: string, overrides: Record<string, unknown> = {}): string {

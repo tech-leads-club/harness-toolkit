@@ -19,22 +19,34 @@ Source: `src/providers/cursor/`.
 
 `cursor.capabilities.ts`:
 
+<!-- generated:capabilities -->
+
 | Capability | Value |
-| --- | --- |
+|---|---|
 | `enforcesHooks` | `true` |
-| `askSupportedOn` | `["shell.before", "mcp.before"]` — **not** `tool.before` (see [/decisions/ad-009.md](/decisions/ad-009.md), note) |
+| `askSupportedOn` | `["shell.before","mcp.before"]` |
 | `sessionEnv` | `true` |
 | `nativeLoopCounter` | `true` |
 | `dedicatedShellEvent` | `true` |
 | `toolInputRewrite` | `true` |
-| `toolOutputRewrite` | `true` |
+| `toolOutputRewriteOn` | `["mcp.after"]` |
 | `contextAtToolBefore` | `false` |
 | `contextAtToolAfter` | `true` |
-| `contextAtStop` | `false` — the `stop` output schema carries `followup_message` and nothing else |
-| `sessionStartContextReliable` | `false` — Cursor accepts `additional_context` at `sessionStart`, logs it as merged, and drops it (see [Lessons view](#lessons-view)) |
+| `contextAtStop` | `false` |
+| `sessionStartContextReliable` | `false` |
+| `toolOutputAtAfter` | `true` |
 | `usageInPayload` | `true` |
 | `effortSignal` | `false` |
 | `thoughtEvent` | `true` |
+
+<!-- /generated -->
+
+`askSupportedOn` is **not** `tool.before` (see [/decisions/ad-009.md](/decisions/ad-009.md), note).
+`toolOutputRewriteOn` is **not** `shell.after`/`edit.after`: `afterShellExecution`/`afterFileEdit` are
+documented as observation-only, with no `updated_mcp_tool_output` equivalent. `contextAtStop` is `false`
+because the `stop` output schema carries `followup_message` and nothing else. `sessionStartContextReliable`
+is `false` because Cursor accepts `additional_context` at `sessionStart`, logs it as merged, and drops it
+(see [Lessons view](#lessons-view)).
 
 ## Policy defaults
 
@@ -51,8 +63,10 @@ project's rather than replacing them.
 
 `cursor.inbound.ts` maps Cursor's own camelCase hook names to the shared `HarnessEventKind`:
 
-| Cursor hook | `HarnessEventKind` |
-| --- | --- |
+<!-- generated:event-mapping -->
+
+| Hook | HarnessEventKind |
+|---|---|
 | `sessionStart` | `session.start` |
 | `sessionEnd` | `session.end` |
 | `beforeSubmitPrompt` | `prompt.submit` |
@@ -71,6 +85,8 @@ project's rather than replacing them.
 | `preCompact` | `compact.before` |
 | `afterAgentResponse` | `response.after` |
 | `afterAgentThought` | `thought.after` |
+
+<!-- /generated -->
 
 Cursor has a dedicated event per tool class (`beforeShellExecution`, `beforeMCPExecution`,
 `beforeReadFile`), unlike Claude's single `PreToolUse`/`PostToolUse` fan-out.

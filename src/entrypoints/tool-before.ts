@@ -1,5 +1,6 @@
 import type { Decision, HarnessEvent } from "../contracts/index.ts";
 import { coreFacade } from "../core/index.ts";
+import { localRepoRemote } from "../platform/git.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
 import { shipGateVerdict } from "./ship-gate.ts";
@@ -26,14 +27,23 @@ async function commentGateBeforeCommit(event: HarnessEvent, ctx: HandlerContext)
   if (!coreFacade.rules.triggerMatches({ kind: "commit" }, context)) {
     return { kind: "abstain" };
   }
-  const hits = await pendingCommentViolations(event.projectDir, event.provider, event.sessionKey, ctx.policy);
+  const shaRoot = shaScopeRoot(event);
+  const hits = await pendingCommentViolations(
+    event.projectDir,
+    shaRoot,
+    event.provider,
+    event.sessionKey,
+    ctx.policy,
+  );
   if (hits.length === 0) {
     return { kind: "abstain" };
   }
+  const diag = coreFacade.diagnostics.diffDiagnostic(shaRoot, await currentGitSha(shaRoot), hits);
   return {
     kind: "deny",
-    reason: coreFacade.commentPolicy.commentViolationMessage(hits, ctx.policy.comments.mode),
+    reason: `${coreFacade.commentPolicy.commentViolationMessage(hits, ctx.policy.comments.mode)}\n\n${diag.footer}`,
     rule: "comment-policy-before-ship",
+    diagnostic: diag.summary,
   };
 }
 
@@ -66,6 +76,7 @@ function recordShellDecision(event: HarnessEvent, ctx: HandlerContext, decision:
       // why: unattributed rather than guessed. A rate an operator cannot trace to a switch is a number, not a
       // signal.
       rule: "rule" in decision && decision.rule ? decision.rule : "none",
+      diagnostic: "diagnostic" in decision && decision.diagnostic ? decision.diagnostic : "none",
     },
   });
 }
@@ -83,7 +94,12 @@ function recordShellDecisionIfShell(event: HarnessEvent, ctx: HandlerContext, de
  */
 async function rulesDecision(event: HarnessEvent, ctx: HandlerContext): Promise<Decision> {
   const config = ctx.policy.rules;
-  const trigger = { event: event.event, toolName: event.toolName, command: event.command };
+  const trigger = {
+    event: event.event,
+    toolName: event.toolName,
+    command: event.command,
+    toolInput: event.toolInput,
+  };
   const shaRoot = shaScopeRoot(event);
   const dryRun = coreFacade.rules.decideAction(event.projectDir, config, trigger, {
     sha: null,
@@ -94,15 +110,27 @@ async function rulesDecision(event: HarnessEvent, ctx: HandlerContext): Promise<
   if (dryRun.outcomes.length === 0) {
     return { kind: "abstain" };
   }
-  // why twice: the first pass answers whether any rule fired at all, which costs no git. Only then is the sha
-  // worth a process, and the second pass is the one whose verdict counts.
-  const sha = await currentGitSha(shaRoot);
-  const verdict = coreFacade.rules.decideAction(event.projectDir, config, trigger, {
-    sha,
-    sessionKey: event.sessionKey,
-    mode: ctx.policy.mode,
-    shaRoot,
-  });
+  // why: the first pass answers whether any rule fired at all, which costs no git. The remote is a second
+  // process, spent only when the command could possibly be a gh api call naming a different repository
+  // ([/decisions/ad-130.md](/decisions/ad-130.md)) — a CLI shape or an unrelated trigger never reads it.
+  const [sha, repoRemote] = await Promise.all([
+    currentGitSha(shaRoot),
+    (event.command && coreFacade.rules.mentionsGhApi(event.command)) ||
+    coreFacade.rules.mentionsMcpAct(event.toolName)
+      ? localRepoRemote(shaRoot)
+      : undefined,
+  ]);
+  const verdict = coreFacade.rules.decideAction(
+    event.projectDir,
+    config,
+    { ...trigger, repoRemote },
+    {
+      sha,
+      sessionKey: event.sessionKey,
+      mode: ctx.policy.mode,
+      shaRoot,
+    },
+  );
   return verdict.decision;
 }
 
@@ -183,6 +211,7 @@ export const toolBeforeHandler: Handler = async (
     filePath: filePathOf(event),
     command: event.command,
     isReadEvent: event.event === "read.before",
+    protectedPaths: ctx.protectedPaths,
   });
   if (floor.kind !== "allow") {
     // invariant: one rail owns the record of every shell decision. The floor short-circuits before the shell

@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { setProjectScopedEnv } from "../../platform/env-scope.ts";
-import { projectStateDir } from "../../platform/paths.ts";
+import { gateSessionsDir, projectStateDir } from "../../platform/paths.ts";
+import { NO_OUTPUT_CAPTURED } from "../../platform/process.ts";
+import { sanitizeSegment } from "../../platform/sanitize.ts";
 import { findingsFromLines } from "./gate.findings.ts";
 import { GATE_SCHEMA, type GateFinding, type LastGateArtifact } from "./gate.types.ts";
 
@@ -12,8 +14,8 @@ export const FINDINGS_MAX = 8;
 const FAIL_HINT =
   /(?:\bFAIL(?:ED)?\b|\bERROR\b|Error:|error\[|AssertionError|\bpanic:|✗|×|✕|✖|failures?\s*[:=]\s*[1-9])/i;
 
-export function lastGatePath(root: string): string {
-  return join(projectStateDir(root), "last-gate.json");
+export function lastGatePath(root: string, sessionKey: string): string {
+  return join(gateSessionsDir(root), `${sanitizeSegment(sessionKey)}.json`);
 }
 
 export function gateReportPath(root: string): string {
@@ -100,6 +102,7 @@ export function extractFindingsFromOutput(
 
 export function writeLastGate(args: {
   root: string;
+  sessionKey: string;
   gate: string;
   exitCode: number;
   command: string[];
@@ -111,7 +114,7 @@ export function writeLastGate(args: {
 }): LastGateArtifact {
   const outputTail = trimOutputTail(args.output);
   const fromReport = args.reportPath ? readReportFindings(args.reportPath) : null;
-  const emptyOutput = !outputTail || outputTail === "(no output captured)";
+  const emptyOutput = !outputTail || outputTail === NO_OUTPUT_CAPTURED;
   const findings =
     fromReport ??
     (args.exitCode === 0
@@ -136,14 +139,48 @@ export function writeLastGate(args: {
     scopedEnv: setProjectScopedEnv(),
     ...(args.inputsHash ? { inputsHash: args.inputsHash } : {}),
   };
-  const path = lastGatePath(args.root);
+  const path = lastGatePath(args.root, args.sessionKey);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(artifact, null, 2)}\n`, "utf8");
   return artifact;
 }
 
-export function readLastGate(root: string): LastGateArtifact | null {
-  return readJson<LastGateArtifact>(lastGatePath(root));
+export function readLastGate(root: string, sessionKey: string): LastGateArtifact | null {
+  return readJson<LastGateArtifact>(lastGatePath(root, sessionKey));
+}
+
+const GATE_SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function pruneGateSessions(root: string, options: { now?: number; maxAgeMs?: number } = {}): number {
+  const dir = gateSessionsDir(root);
+  if (!existsSync(dir)) {
+    return 0;
+  }
+  const now = options.now ?? Date.now();
+  const maxAgeMs = options.maxAgeMs ?? GATE_SESSION_MAX_AGE_MS;
+  let pruned = 0;
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith(".json")) {
+      continue;
+    }
+    const path = join(dir, name);
+    const artifact = readJson<LastGateArtifact>(path);
+    // why: an unreadable or unparseable ts (a torn read racing a concurrent writer, or a shape from
+    // before this field existed) means "unknown", not "old" — the sibling handoff pruner
+    // ([/decisions/ad-122.md](/decisions/ad-122.md)) already treats doubt as a reason to keep a file, not
+    // delete it, and a false delete here costs a neighbour session's cached gate result.
+    const age = artifact ? now - Date.parse(artifact.ts) : Number.NaN;
+    if (Number.isNaN(age) || age < maxAgeMs) {
+      continue;
+    }
+    // why: a file already gone between `readdirSync` and this `unlinkSync` needs no retry — the same
+    // silent swallow `clearGateReport` already uses for its own single-file unlink, above.
+    try {
+      unlinkSync(path);
+      pruned += 1;
+    } catch {}
+  }
+  return pruned;
 }
 
 export function computeGateFingerprint(artifact: LastGateArtifact): string {

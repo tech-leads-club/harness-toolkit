@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { describe, test } from "node:test";
 import { presenceDir } from "../../../platform/paths.ts";
 import { sanitizeSegment } from "../../../platform/sanitize.ts";
 import {
   checkCollision,
+  filesClaimedByOtherLiveSessions,
   heartbeat,
   isSessionLive,
   listPresenceRecords,
@@ -19,6 +21,28 @@ import {
 
 function tempRoot(): string {
   return mkdtempSync(join(tmpdir(), "tlc-presence-"));
+}
+
+function git(dir: string, ...args: string[]): void {
+  execFileSync("git", ["-C", dir, ...args], {
+    stdio: "ignore",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@t",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@t",
+    },
+  });
+}
+
+function initRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), "tlc-presence-repo-"));
+  git(dir, "init", "-q");
+  writeFileSync(join(dir, ".gitkeep"), "");
+  git(dir, "add", ".");
+  git(dir, "commit", "-q", "-m", "initial");
+  return dir;
 }
 
 test("register writes a presence record with every required field", () => {
@@ -348,4 +372,235 @@ test("release on a session that was never registered does not throw", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+/**
+ * AD-137 (round 2) — the reported symptom's actual mechanism: two sessions in the same checkout both see the
+ * same shared git working tree, so a file only one of them touched still shows up in the other's own diff.
+ * `filesClaimedByOtherLiveSessions` is what a caller subtracts from that diff before scoping a gate to it.
+ *
+ * why claims below are absolute paths, not relative ones: a Verifier caught round 2 shipping inert in
+ * production — `run.ts` writes `event.filePath` verbatim, and every real host sends an absolute path, while
+ * `changedFiles` (`git diff --name-only`) is repo-relative. A claim in the relative form `changedFiles` already
+ * uses would pass by coincidence and never catch that mismatch again ([/decisions/ad-137.md](/decisions/ad-137.md)).
+ */
+describe("filesClaimedByOtherLiveSessions", () => {
+  function gitRoot(): string {
+    return tempRoot();
+  }
+
+  test("a live neighbour's own claimed file is returned, normalized to the git-relative form changedFiles uses", async () => {
+    const root = tempRoot();
+    const repo = gitRoot();
+    try {
+      register(root, { provider: "provider-a", session: "session-a", pid: 1, branch: "main" });
+      heartbeat(root, {
+        provider: "provider-a",
+        session: "session-a",
+        file: join(repo, "src/app.ts"),
+      });
+
+      const claimed = await filesClaimedByOtherLiveSessions(root, repo, "provider-a", "session-b");
+
+      assert.ok(
+        claimed.has("src/app.ts"),
+        "session B must see session A's own claim, in changedFiles's own shape",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("this session's own claimed file is never returned, even if it also appears in a neighbour's claims", async () => {
+    const root = tempRoot();
+    const repo = gitRoot();
+    try {
+      register(root, { provider: "provider-a", session: "session-a", pid: 1, branch: "main" });
+      heartbeat(root, { provider: "provider-a", session: "session-a", file: join(repo, "src/shared.ts") });
+      register(root, { provider: "provider-a", session: "session-b", pid: 2, branch: "main" });
+      heartbeat(root, { provider: "provider-a", session: "session-b", file: join(repo, "src/shared.ts") });
+
+      const claimed = await filesClaimedByOtherLiveSessions(root, repo, "provider-a", "session-b");
+
+      assert.equal(
+        claimed.has("src/shared.ts"),
+        false,
+        "a file both sessions touched must not be excluded from either one's own scope",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("an unclaimed file (no session's own recent_files names it) is never returned", async () => {
+    const root = tempRoot();
+    const repo = gitRoot();
+    try {
+      register(root, { provider: "provider-a", session: "session-a", pid: 1, branch: "main" });
+      heartbeat(root, { provider: "provider-a", session: "session-a", file: join(repo, "src/app.ts") });
+
+      const claimed = await filesClaimedByOtherLiveSessions(root, repo, "provider-a", "session-b");
+
+      assert.equal(
+        claimed.has("src/generated.ts"),
+        false,
+        "a file no presence record claims (a shell script, a generated output) must stay in scope for everyone",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("a stale (not live) neighbour's claim is never returned", async () => {
+    const root = tempRoot();
+    const repo = gitRoot();
+    try {
+      const start = new Date("2026-07-29T10:00:00.000Z");
+      register(root, { provider: "provider-a", session: "session-a", pid: 1, branch: "main", now: start });
+      heartbeat(root, {
+        provider: "provider-a",
+        session: "session-a",
+        file: join(repo, "src/app.ts"),
+        now: start,
+      });
+
+      const later = new Date("2026-07-29T10:35:00.000Z");
+      const claimed = await filesClaimedByOtherLiveSessions(root, repo, "provider-a", "session-b", later);
+
+      assert.equal(
+        claimed.has("src/app.ts"),
+        false,
+        "a session gone quiet past the conversation window is not a live source to exclude on behalf of",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("a different provider's own live session is still a source — the check is not provider-scoped", async () => {
+    const root = tempRoot();
+    const repo = gitRoot();
+    try {
+      register(root, { provider: "provider-b", session: "session-x", pid: 1, branch: "main" });
+      heartbeat(root, { provider: "provider-b", session: "session-x", file: join(repo, "src/app.ts") });
+
+      const claimed = await filesClaimedByOtherLiveSessions(root, repo, "provider-a", "session-a");
+
+      assert.ok(claimed.has("src/app.ts"), "the shared working tree has no provider boundary either");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("with no other presence records at all, nothing is claimed — the common, single-session case", async () => {
+    const root = tempRoot();
+    const repo = gitRoot();
+    try {
+      const claimed = await filesClaimedByOtherLiveSessions(root, repo, "provider-a", "session-a");
+      assert.equal(claimed.size, 0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("a file already claimed in its relative form (no host ever sends one, but never assume) still matches", async () => {
+    const root = tempRoot();
+    const repo = gitRoot();
+    try {
+      register(root, { provider: "provider-a", session: "session-a", pid: 1, branch: "main" });
+      heartbeat(root, { provider: "provider-a", session: "session-a", file: "src/app.ts" });
+
+      const claimed = await filesClaimedByOtherLiveSessions(root, repo, "provider-a", "session-b");
+
+      assert.ok(
+        claimed.has("src/app.ts"),
+        "a relative claim passes through unchanged, not just an absolute one",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  // why: a judge review of AD-137's round 3 found the fix reproduces its own bug one layer down — a caller's
+  // `gitRoot` argument is often `shaScopeRoot(event)` (a worktree subdirectory or a `cd`'d cwd, AD-114), not the
+  // repository's actual top level, and `relative()` against that non-root base miscomputes exactly like the
+  // absolute/relative mismatch round 3 already fixed once.
+  test("a caller passing a git subdirectory as gitRoot still normalizes against the repository's real top level", async () => {
+    const root = tempRoot();
+    const repo = initRepo();
+    const subdir = join(repo, "packages", "web");
+    mkdirSync(subdir, { recursive: true });
+    try {
+      register(root, { provider: "provider-a", session: "session-a", pid: 1, branch: "main" });
+      heartbeat(root, {
+        provider: "provider-a",
+        session: "session-a",
+        file: join(repo, "packages/web/src/app.ts"),
+      });
+
+      const claimed = await filesClaimedByOtherLiveSessions(root, subdir, "provider-a", "session-b");
+
+      assert.ok(
+        claimed.has("packages/web/src/app.ts"),
+        "the claim must normalize against the repo root git itself would resolve, not the subdirectory passed in",
+      );
+      assert.equal(
+        claimed.has("../../packages/web/src/app.ts"),
+        false,
+        "a path relativized against the wrong base must never leak into the returned set",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  // why: a judge review found `gitRootOf` resolves symlinks (git's own behaviour), while a claim's own path
+  // often does not — macOS's `/tmp` → `/private/tmp` reproduced this exactly and broke the round-4 fix in CI.
+  // Symlink creation needs a privilege this CI's Windows runner may not grant an unprivileged process, so this
+  // skips rather than fails where that's the case — the same tolerance this suite gives any host-specific gap.
+  test("a git root reached through a symlinked ancestor still normalizes correctly", async (t) => {
+    const real = mkdtempSync(join(tmpdir(), "tlc-presence-real-"));
+    const linkParent = mkdtempSync(join(tmpdir(), "tlc-presence-link-"));
+    const link = join(linkParent, "link");
+    try {
+      symlinkSync(real, link, "junction");
+    } catch {
+      rmSync(real, { recursive: true, force: true });
+      rmSync(linkParent, { recursive: true, force: true });
+      t.skip("this host would not allow creating a symlink");
+      return;
+    }
+    const root = tempRoot();
+    const repoViaLink = join(link, "repo");
+    mkdirSync(join(repoViaLink, "packages", "web", "src"), { recursive: true });
+    execFileSync("git", ["-C", repoViaLink, "init", "-q"]);
+    writeFileSync(join(repoViaLink, "packages", "web", "src", "app.ts"), "export {};\n");
+    try {
+      register(root, { provider: "provider-a", session: "session-a", pid: 1, branch: "main" });
+      heartbeat(root, {
+        provider: "provider-a",
+        session: "session-a",
+        file: join(repoViaLink, "packages/web/src/app.ts"),
+      });
+
+      const claimed = await filesClaimedByOtherLiveSessions(root, repoViaLink, "provider-a", "session-b");
+
+      assert.ok(
+        claimed.has("packages/web/src/app.ts"),
+        "the claim must resolve to the repo's real path before relativizing, matching what gitRootOf itself returns",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(linkParent, { recursive: true, force: true });
+      rmSync(real, { recursive: true, force: true });
+    }
+  });
 });

@@ -90,6 +90,31 @@ test("afterMCPExecution maps to mcp.after and carries toolName and toolInput", (
   assert.deepEqual(event?.toolInput, { q: "harness" });
 });
 
+/**
+ * AD-135 F2 — the host's own documented schema types `beforeMCPExecution`'s `tool_input` as a JSON string,
+ * not an object. A payload carrying the object form (the fixture above) is defensive coverage, not the real
+ * shape; this is.
+ */
+test("beforeMCPExecution parses a JSON-string tool_input, the shape the host actually sends", () => {
+  const event = cursorToEvent(fixture("mcp-before-string-input"));
+  assert.equal(event?.event, "mcp.before");
+  assert.equal(event?.toolName, "create_pull_request");
+  assert.deepEqual(event?.toolInput, { owner: "acme", repo: "widgets", title: "fix: x" });
+});
+
+test("beforeMCPExecution with an unparseable tool_input string leaves toolInput unset, not crashed", () => {
+  const event = cursorToEvent({
+    hook_event_name: "beforeMCPExecution",
+    conversation_id: "conv-abc",
+    session_id: "sess-1",
+    workspace_roots: ["/repo"],
+    tool_name: "create_pull_request",
+    tool_input: "{not valid json",
+  });
+  assert.equal(event?.event, "mcp.before");
+  assert.equal(event?.toolInput, undefined);
+});
+
 test("beforeReadFile maps to read.before and carries filePath", () => {
   const event = cursorToEvent(fixture("read-before"));
   assert.equal(event?.event, "read.before");

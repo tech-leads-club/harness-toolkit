@@ -1332,7 +1332,8 @@ export const TEST_ENV_IMPORT = ["--import", "./tools/test-env.mjs"];
  * commit is one somebody looks at. Lowering it is the point; raising it needs an argument in the diff
  * ([/decisions/ad-102.md](/decisions/ad-102.md)).
  */
-export const KNIP_EXPORTS_CEILING = 76;
+// why: raised from 76 to 80 — knip cannot trace render-provider-docs.ts's dynamic import() of each provider's inbound module, so EVENT_KIND_BY_HOOK (both adapters) and Claude's PRE_TOOL_USE_FAN_OUT/POST_TOOL_USE_FAN_OUT report as unused though the drift gate depends on them.
+export const KNIP_EXPORTS_CEILING = 80;
 
 export function buildTestSteps(): TestStep[] {
   return [
@@ -1378,6 +1379,7 @@ export function buildTestSteps(): TestStep[] {
     // for an unrelated reason ([/decisions/ad-081.md](/decisions/ad-081.md)).
     { label: "check-manifest", bin: "node", args: ["tools/dev/check-manifest.ts"] },
     { label: "capabilities in sync", bin: "node", args: ["tools/dev/render-capabilities.ts", "--check"] },
+    { label: "provider docs in sync", bin: "node", args: ["tools/dev/render-provider-docs.ts", "--check"] },
     { label: "changelog in sync", bin: "node", args: ["tools/dev/render-changelog.ts", "--check"] },
     // why: the OKF bundle's log is a reserved file that cannot be retired, and hand-maintaining it drifted to 19
     // of 66 records before anyone noticed ([/decisions/ad-067.md](/decisions/ad-067.md)).

@@ -18,6 +18,7 @@ export type HandlerContext = {
   capabilities: ProviderCapabilities;
   provider: ProviderPort;
   now: Date;
+  protectedPaths: string[];
 };
 
 export type Handler = (event: HarnessEvent, ctx: HandlerContext) => Decision | Promise<Decision>;
@@ -61,17 +62,53 @@ function errorMessage(error: unknown): string {
 }
 
 // why: ObsKind is a closed union with no adapter-boundary member — these fire before a provider/session is known, so they bypass core's typed observability rather than widening that union from outside core.
-function recordAdapterEvent(root: string, kind: string, attrs: Record<string, unknown>): void {
+function recordAdapterEvent(
+  root: string,
+  kind: string,
+  attrs: Record<string, unknown>,
+  provider = "unknown",
+  top: Record<string, unknown> = {},
+): void {
   try {
     appendRecord(join(projectStateDir(root), "obs.jsonl"), {
       schema: "harness.observability.v1",
-      provider: "unknown",
+      provider,
       kind,
       level: "signal",
       ts: new Date().toISOString(),
+      ...top,
       attrs,
     });
   } catch {}
+}
+
+// hazard: unscoped, one record per hook invocation of any kind flooded the signal plane and pushed
+// `prompt.submit`/`policy.deny` out of two readers' fixed-count tails ([/decisions/ad-136.md](/decisions/ad-136.md)).
+function isGateRelevantHookEvent(event: HarnessEvent): boolean {
+  return event.event === "shell.before" || event.event === "mcp.before";
+}
+
+/**
+ * AD-136 — a hook invocation that never reaches the point where any existing record gets written (the handler
+ * killed mid-flight, a host-side timeout) previously left nothing in `obs.jsonl` at all — indistinguishable
+ * from a hook that never started. This is the earliest point after an event is known: before `loadPolicy`,
+ * before `handler` runs, before anything that could throw or take time. A future incident reads as "entered,
+ * no paired completion" instead of being reconstructed from raw provider traces after the fact.
+ */
+function recordHookEnter(event: HarnessEvent): void {
+  if (!isGateRelevantHookEvent(event)) {
+    return;
+  }
+  recordAdapterEvent(
+    event.projectDir,
+    "hook.enter",
+    { event: event.event, toolName: event.toolName ?? "none", sessionKey: event.sessionKey },
+    event.provider,
+    {
+      trace_id: coreFacade.observability.deriveTraceId(event.sessionKey),
+      session_id: event.sessionKey,
+    },
+  );
 }
 
 /**
@@ -103,6 +140,7 @@ function recordRefusal(event: HarnessEvent, policy: Policy, decision: Decision):
       permission: decision.kind,
       // why: unattributed rather than guessed. A refusal an operator cannot trace to a rule is noise.
       rule: decision.rule ?? "none",
+      diagnostic: decision.diagnostic ?? "none",
     },
   });
 }
@@ -153,6 +191,7 @@ export async function runHandler(handler: Handler, io: RunIo = {}): Promise<RunO
   }
 
   const capabilities = provider.capabilities();
+  recordHookEnter(event);
 
   try {
     const policy = coreFacade.policy.loadPolicy(event.projectDir);
@@ -180,7 +219,8 @@ export async function runHandler(handler: Handler, io: RunIo = {}): Promise<RunO
       ...(claimsFile(event) ? { file: event.filePath } : {}),
       now,
     });
-    const context: HandlerContext = { policy, capabilities, provider, now };
+    const protectedPaths = providerRegistry.flatMap((p) => p.wiringTargets());
+    const context: HandlerContext = { policy, capabilities, provider, now, protectedPaths };
     const decision = await handler(event, context);
     const degraded = degrade(decision, event, capabilities, {
       contextBudgetChars: CONTEXT_BUDGET_CHARS,

@@ -132,15 +132,19 @@ loaded, and `degrade` guarantees the answer fits what the provider can actually 
 
 ## Degradation, not detection
 
-When a core `Decision` (`allow | deny | ask | context | continue | rewriteInput | abstain`) cannot be
-expressed on a given provider, `src/providers/provider.degrade.ts` degrades it based on the capability
-descriptor:
+When a core `Decision` (`allow | deny | ask | context | continue | rewriteInput | rewriteOutput | abstain`)
+cannot be expressed on a given provider, `src/providers/provider.degrade.ts` degrades it based on the
+capability descriptor:
 
 - Provider cannot enforce hooks at all → any enforcing decision becomes an `ADVISORY —` context message.
 - `ask` where `askSupportedOn` does not include the current event → becomes `deny` (a provider that cannot
   ask must not silently allow).
 - `rewriteInput` where `toolInputRewrite` is false → becomes `ask`, carrying the proposed input in the
   reason text.
+- `rewriteOutput` where the current event is absent from `toolOutputRewriteOn` → becomes a `context` notice
+  naming the masking constraint, never the masked value itself — the model already saw the original output on
+  a host with no real rewrite for this event, so the notice states the limit instead of pretending it erased
+  anything.
 - `context` truncates to a caller-supplied character budget, dropping `env` if `sessionEnv` is false.
 
 This is what lets a hookless or partially-capable provider be a new adapter file rather than a core
@@ -226,6 +230,7 @@ and not described there fails the typecheck.
 | `machine-control` | `shutdown`, `reboot`, `halt`, `poweroff` | — |
 | `unprovable-execution` | a program fetched over the network and handed to a shell — piped, process-substituted, or inside a shell's `-c`/`eval` substitution. The gate cannot read what would run | a fetch with no shell downstream, and a shell fed a local file the gate can read |
 | `policy-surface-write` | every route an agent has to harness policy and state — a shell redirect, an interpreter, a heredoc program, or a write tool — in the project and under the runtime home, plus the mutating `tlc harness` subcommands from inside a session | reading them with a proven reader (`cat`, `head`, `grep`, `jq`, `ls`, `stat`, `test`), and `tlc harness handoff` for the handoff state |
+| `wiring-tamper` | a shell redirect, in-place edit, or delete into a registered provider's wiring target — the document its own editor reads to register the harness's hooks — and a direct `Edit`/`Write`/`MultiEdit` tool call against the same path — overwriting it silences every hook the harness has for that host | reading the same path with a proven reader or a read tool |
 
 <!-- /generated -->
 
@@ -268,11 +273,19 @@ detects a condition that a config field could otherwise switch off:
 | Plan gate (declared scope vs diff) | Blocks the stop when the turn changed files the declared HARNESS_PLAN did not name, so scope creep fails like a failing test instead of surviving as a review comment. | `planGate.enabled` |
 | Observation mode (measure a rail with its rule off) | Runs a rail's checker while that rail is not enforcing, so the record says whether the property held with the rule injected or without it. That is the reading that tells you a rail is unnecessary rather than merely quiet, and it is what makes deleting one a decision instead of a guess. | `observe.enabled` |
 | Operator rules (your trigger, your proof) | Turns a standing instruction into a gate. A rule names when it applies, what the harness must have observed, and what to do when it has not — so 'no pull request without a review' stops depending on the model remembering it. | `rules.enabled` |
+| Secret redaction (tool/shell output) | Masks an AWS access key, GitHub/Slack/Stripe token, PEM private-key block, JWT, or an unlabelled high-entropy string with a deterministic placeholder — the same value always yields the same placeholder within a session — instead of blocking the command that produced it. | `secrets.redactOutput` |
 
 <!-- /generated -->
 
 Operator posture (`mode`: `paired`, `solo`, `focus`) governs surfacing rather than capability, so it is not in
 the generated table.
+
+### Policy stays declarative
+
+The floor and the rails above grow by adding a `FloorRule` member, a `Policy` field, or an operator-rules
+trigger/proof pair — never by running operator- or third-party-supplied code inside the decision path. Custom
+policy functions and remote code-as-policy packs were evaluated and rejected; see
+[/decisions/ad-123.md](/decisions/ad-123.md) for the reasoning and the declarative alternative.
 
 ## See also
 

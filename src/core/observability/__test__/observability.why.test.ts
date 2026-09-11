@@ -143,6 +143,76 @@ test("an observation reading and a cost alert are decisions the harness made", (
   assert.match(whyText(decisions), /passed the session threshold/);
 });
 
+/**
+ * AD-131 — a denial that carries its own checked-root/sha diagnostic renders that instead of the bare tool
+ * name or raw command, so `tlc harness why` answers "what did it check" without the original denial text.
+ */
+test("DIAG-08 a policy.deny with a diagnostic renders it as detail and marks the decision self-diagnosing", () => {
+  const decisions = decisionsFrom([
+    event("policy.deny", {
+      event: "tool.before",
+      permission: "deny",
+      rule: "ship-gate-comments",
+      tool_name: "Bash",
+      diagnostic: "Checked /repo at abc123 · Reproduce: git diff abc123 -- src/app.ts",
+    }),
+  ]);
+  assert.equal(decisions[0]?.detail, "Checked /repo at abc123 · Reproduce: git diff abc123 -- src/app.ts");
+  assert.equal(decisions[0]?.selfDiagnosing, true);
+});
+
+test("DIAG-08 a shell.start with a diagnostic renders it as detail and marks the decision self-diagnosing", () => {
+  const decisions = decisionsFrom([
+    event("shell.start", {
+      permission: "deny",
+      rule: "comment-policy-before-ship",
+      command: "git commit -am wip",
+      diagnostic: "Checked /repo at abc123 · Reproduce: git diff abc123 -- src/app.ts",
+    }),
+  ]);
+  assert.equal(decisions[0]?.detail, "Checked /repo at abc123 · Reproduce: git diff abc123 -- src/app.ts");
+  assert.equal(decisions[0]?.selfDiagnosing, true);
+});
+
+test("DIAG-09 a policy.deny with no diagnostic falls back to the tool name, unchanged from before this feature", () => {
+  const decisions = decisionsFrom([
+    event("policy.deny", { event: "tool.before", permission: "deny", rule: "r", tool_name: "Task" }),
+  ]);
+  assert.equal(decisions[0]?.detail, "Task");
+  assert.equal(decisions[0]?.selfDiagnosing, false);
+});
+
+test('DIAG-09 a diagnostic attr literally "none" falls back the same way absence does', () => {
+  const decisions = decisionsFrom([
+    event("shell.start", { permission: "deny", rule: "r", command: "ls", diagnostic: "none" }),
+  ]);
+  assert.equal(decisions[0]?.detail, "ls");
+  assert.equal(decisions[0]?.selfDiagnosing, false);
+});
+
+test("DIAG-10 a window with a self-diagnosing decision explains the terms once, in plain language", () => {
+  const decisions = decisionsFrom([
+    event("shell.start", {
+      permission: "deny",
+      rule: "ship-gate-comments",
+      command: "git push",
+      diagnostic: "Checked /repo at abc123",
+    }),
+  ]);
+  const text = whyText(decisions);
+  const occurrences = text.split('"checked <dir> at <sha>" means').length - 1;
+  assert.equal(occurrences, 1);
+  assert.doesNotMatch(text, /turn_base_sha/);
+  assert.doesNotMatch(text, /AD-\d/);
+});
+
+test("DIAG-10 a window with no self-diagnosing decision carries no explanatory sentence", () => {
+  const decisions = decisionsFrom([
+    event("policy.deny", { permission: "deny", rule: "r", tool_name: "Task" }),
+  ]);
+  assert.doesNotMatch(whyText(decisions), /"checked <dir> at <sha>" means/);
+});
+
 // invariant: the declared set is what the contract checks against. A kind added to the switch and not here is a
 // consumer the contract cannot see.
 test("every kind the renderer branches on is declared", async () => {

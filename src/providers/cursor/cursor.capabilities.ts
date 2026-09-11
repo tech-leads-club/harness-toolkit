@@ -8,7 +8,9 @@ export function cursorCapabilities(): ProviderCapabilities {
     nativeLoopCounter: true,
     dedicatedShellEvent: true,
     toolInputRewrite: true,
-    toolOutputRewrite: true,
+    // why: `updated_mcp_tool_output` is scoped to `afterMCPExecution` only — `afterShellExecution` and
+    // `afterFileEdit` are documented as observation-only, with no equivalent field.
+    toolOutputRewriteOn: ["mcp.after"],
     contextAtToolBefore: false,
     contextAtToolAfter: true,
     // why: the `stop` output schema carries `followup_message` and nothing else, so a context decision raised there

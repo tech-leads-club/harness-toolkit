@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AddedLine } from "../../platform/git.ts";
-import { listAddedLines } from "../../platform/git.ts";
+import { gitRootOf, listAddedLines } from "../../platform/git.ts";
 import type { CommentMode } from "../policy/policy.types.ts";
 import type { CommentFinding } from "./comment-policy.types.ts";
 import { firstLeak, leakReason } from "./comment-resolvability.ts";
@@ -278,13 +278,13 @@ export function findAddedComments(
 
 // hazard: documenting an existing export touches only the comment, so the declaration it attaches to is
 // absent from the diff and has to be read from disk.
-function diskLineReader(projectDir: string): NextCodeLine {
+function diskLineReader(gitRoot: string): NextCodeLine {
   const cache = new Map<string, string[]>();
   return (file, line) => {
     let lines = cache.get(file);
     if (lines === undefined) {
       try {
-        lines = readFileSync(join(projectDir, file), "utf8").split("\n");
+        lines = readFileSync(join(gitRoot, file), "utf8").split("\n");
       } catch {
         lines = [];
       }
@@ -301,7 +301,8 @@ export async function scanAddedComments(
   base = "HEAD",
 ): Promise<CommentFinding[]> {
   const added = await listAddedLines(projectDir, relativePaths, base);
-  return findAddedComments(added, mode, diskLineReader(projectDir));
+  const gitRoot = (await gitRootOf(projectDir)) ?? projectDir;
+  return findAddedComments(added, mode, diskLineReader(gitRoot));
 }
 
 export function commentViolationMessage(hits: CommentFinding[], mode: CommentMode = "declared"): string {

@@ -1,5 +1,4 @@
-import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { statSync } from "node:fs";
 import type { EffortLevel, HarnessEvent } from "../contracts/index.ts";
 import {
   type CommentFinding,
@@ -9,7 +8,7 @@ import {
   type PendingLessonCredit,
   type Policy,
 } from "../core/index.ts";
-import { filterCodeTargets, filterTestTargets, listChangedRepoFiles } from "../platform/git.ts";
+import { filterCodeTargets, filterTestTargets, gitRootOf, listChangedRepoFiles } from "../platform/git.ts";
 import { runProcess } from "../platform/process.ts";
 import { type ProviderPort, renderClaudeLessonsView, renderCursorLessonsView } from "../providers/index.ts";
 
@@ -55,10 +54,11 @@ export function sessionIdFromKey(event: HarnessEvent): string {
 }
 
 export async function currentGitBranch(root: string): Promise<string | null> {
-  if (!existsSync(join(root, ".git"))) {
+  const gitRoot = await gitRootOf(root);
+  if (gitRoot === null) {
     return null;
   }
-  const result = await runProcess({ command: ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd: root });
+  const result = await runProcess({ command: ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd: gitRoot });
   if (result.exitCode !== 0) {
     return null;
   }
@@ -94,9 +94,13 @@ export type TurnScope = {
  *
  * invariant: `turn_base_sha` falls back to `HEAD` when the handoff is absent or its seal diverged —
  * identical to `stop.ts`'s own fallback.
+ * why: `root` is state (worktree-stable, AD-114); `gitRoot` is where the turn's files actually are
+ * (`shaScopeRoot(event)`) — diffing a worktree-valid sha from the wrong directory read a whole unrelated
+ * branch as added ([/decisions/ad-129.md](/decisions/ad-129.md)).
  */
 export async function computeTurnScope(
   root: string,
+  gitRoot: string,
   provider: string,
   sessionKey: string,
   policy: Pick<Policy, "codePaths">,
@@ -104,7 +108,14 @@ export async function computeTurnScope(
   const seal = coreFacade.handoff.handoffInjectable(root, sessionKey);
   const handoff = seal.ok ? coreFacade.handoff.readHandoff(root, provider, sessionKey) : undefined;
   const turnBase = handoff?.turn_base_sha ?? "HEAD";
-  const changedFiles = await listChangedRepoFiles(root, turnBase);
+  const rawChangedFiles = await listChangedRepoFiles(gitRoot, turnBase);
+  const otherSessionFiles = await coreFacade.presence.filesClaimedByOtherLiveSessions(
+    root,
+    gitRoot,
+    provider,
+    sessionKey,
+  );
+  const changedFiles = rawChangedFiles.filter((file) => !otherSessionFiles.has(file));
   const codeTargets = filterCodeTargets(changedFiles, policy.codePaths);
   const testTargets = filterTestTargets(changedFiles);
   const commentScope = changedFiles.filter((file) =>
@@ -128,6 +139,7 @@ export async function computeTurnScope(
  */
 export async function pendingCommentViolations(
   root: string,
+  gitRoot: string,
   provider: string,
   sessionKey: string,
   policy: Pick<Policy, "comments" | "codePaths">,
@@ -135,12 +147,12 @@ export async function pendingCommentViolations(
   if (!policy.comments.enabled || policy.comments.onViolation !== "followup") {
     return [];
   }
-  const scope = await computeTurnScope(root, provider, sessionKey, policy);
+  const scope = await computeTurnScope(root, gitRoot, provider, sessionKey, policy);
   if (scope.commentTargets.length === 0) {
     return [];
   }
   return coreFacade.commentPolicy.scanAddedComments(
-    root,
+    gitRoot,
     scope.commentTargets,
     policy.comments.mode,
     scope.turnBase,
@@ -148,10 +160,11 @@ export async function pendingCommentViolations(
 }
 
 export async function currentGitSha(root: string): Promise<string | null> {
-  if (!existsSync(join(root, ".git"))) {
+  const gitRoot = await gitRootOf(root);
+  if (gitRoot === null) {
     return null;
   }
-  const result = await runProcess({ command: ["git", "rev-parse", "--short", "HEAD"], cwd: root });
+  const result = await runProcess({ command: ["git", "rev-parse", "--short", "HEAD"], cwd: gitRoot });
   if (result.exitCode !== 0) {
     return null;
   }

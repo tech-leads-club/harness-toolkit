@@ -20,6 +20,19 @@ export type TriggerContext = {
   event: string;
   toolName?: string;
   command?: string;
+  /**
+   * why optional, and why `null` differs from `undefined`: unset means the caller never resolved this
+   * dimension (every existing caller, unaffected). `null` means it tried and found no confirmable local
+   * repo, which fails an API-shaped match rather than skipping the check
+   * ([/decisions/ad-130.md](/decisions/ad-130.md)).
+   */
+  repoRemote?: { owner: string; repo: string } | null;
+  /**
+   * why optional, and read only by the MCP shape: a shell-triggered event never carries this, and the vast
+   * majority of MCP events are not pr-open-shaped either — populating it for every event would be work spent
+   * on a field almost nothing reads ([/decisions/ad-135.md](/decisions/ad-135.md)).
+   */
+  toolInput?: Record<string, unknown>;
 };
 
 /**
@@ -38,13 +51,14 @@ type ShellShape = {
   readonly excludeIfAny?: readonly string[];
 };
 
-const SHELL_SHAPES: Record<"pr-open" | "commit" | "push", readonly ShellShape[]> = {
+const SHELL_SHAPES: Record<"pr-open" | "commit" | "push" | "pr-merge", readonly ShellShape[]> = {
   "pr-open": [
     { prefix: ["gh", "pr", "create"], excludeIfAny: ["--draft", "-d"] },
     { prefix: ["gh", "pr", "ready"] },
   ],
   commit: [{ prefix: ["git", "commit"] }],
   push: [{ prefix: ["git", "push"] }],
+  "pr-merge": [{ prefix: ["gh", "pr", "merge"] }],
 };
 
 /**
@@ -61,18 +75,6 @@ function subCommands(command: string): string[][] {
   return tokenizeShell(command)
     .map((segment) => segment.words.map((word) => word.text))
     .filter((words) => words.length > 0);
-}
-
-/** why prefix rather than equality: `gh pr create --fill --base main` is the same act as `gh pr create`. */
-function startsWithShape(words: readonly string[], prefix: readonly string[]): boolean {
-  return prefix.every((token, index) => words[index] === token);
-}
-
-function matchesShape(words: readonly string[], shape: ShellShape): boolean {
-  if (!startsWithShape(words, shape.prefix)) {
-    return false;
-  }
-  return !shape.excludeIfAny?.some((flag) => words.includes(flag));
 }
 
 /**
@@ -94,15 +96,245 @@ function tokenMatches(word: string | undefined, token: string): boolean {
 }
 
 /**
+ * why any starting index, not only 0: a wrapper in front of the real command — a proxy, `sudo`, `time`, `env
+ * FOO=bar`, or one nobody has written yet — must not hide the act behind it. An anchored check goes silently
+ * dead the moment anything sits in front of the verb it expects at word 0; a real rule stayed dead for exactly
+ * that reason before this existed ([/decisions/ad-127.md](/decisions/ad-127.md)). Trailing words past the
+ * phrase don't matter either: `gh pr create --fill --base main` is the same act as `gh pr create`.
+ */
+function findPhraseIndex(words: readonly string[], tokens: readonly string[]): number {
+  if (tokens.length === 0) {
+    return -1;
+  }
+  return words.findIndex((_, start) =>
+    tokens.every((token, index) => tokenMatches(words[start + index], token)),
+  );
+}
+
+function containsPhrase(words: readonly string[], tokens: readonly string[]): boolean {
+  return findPhraseIndex(words, tokens) !== -1;
+}
+
+/**
+ * why a second matcher, not one more `ShellShape`: `gh pr create` and `gh api repos/{o}/{r}/pulls` are the same
+ * real-world act described in two different grammars — CLI subcommand words vs. a REST path and an HTTP method.
+ * A pattern trigger was already documented as policy, not containment, precisely because of this escape
+ * ([/decisions/ad-100.md](/decisions/ad-100.md)); this narrows the one instance of it this project has actually
+ * seen exploited, without pretending to close the class ([/decisions/ad-128.md](/decisions/ad-128.md)).
+ */
+type ApiShape = {
+  readonly lastSegment?: string;
+  readonly containsSegment?: string;
+  readonly adjacentPair?: readonly [string, string];
+  readonly methods: readonly string[];
+};
+
+const API_VALUE_FLAGS = new Set([
+  "-X",
+  "--method",
+  "-f",
+  "--raw-field",
+  "-F",
+  "--field",
+  "--input",
+  "-p",
+  "--preview",
+]);
+const API_BODY_FLAGS = new Set(["-f", "--raw-field", "-F", "--field", "--input"]);
+
+/** why strip scheme+host and query: `gh api` accepts a bare path, a leading-slash path, or a full URL alike. */
+function apiPathSegments(path: string): string[] {
+  const withoutQuery = (path.split("?")[0] ?? "").replace(/^https?:\/\/[^/]+/, "");
+  return withoutQuery.split("/").filter((segment) => segment.length > 0);
+}
+
+/**
+ * why a hand-rolled scan and not `.find`: a value-taking flag's value (`-X POST`) must not be mistaken for the
+ * endpoint, and `gh api` accepts both `<endpoint> [flags]` and `[flags] <endpoint>` — its own `--help` shows
+ * both orders.
+ */
+function apiPathArgument(words: readonly string[]): string | undefined {
+  const at = findPhraseIndex(words, ["gh", "api"]);
+  if (at === -1) {
+    return undefined;
+  }
+  const rest = words.slice(at + 2);
+  for (let index = 0; index < rest.length; index += 1) {
+    const word = rest[index];
+    if (word === undefined) {
+      continue;
+    }
+    if (API_VALUE_FLAGS.has(word)) {
+      index += 1;
+      continue;
+    }
+    if (word.startsWith("-")) {
+      continue;
+    }
+    return word;
+  }
+  return undefined;
+}
+
+/**
+ * why POST when a body flag is present with no explicit method: confirmed against `gh api --help`'s own text,
+ * not assumed — "The default HTTP request method is GET normally and POST if any parameters were added."
+ */
+function inferredApiMethod(words: readonly string[]): string {
+  const methodAt = words.findIndex((word) => word === "-X" || word === "--method");
+  const explicit = methodAt === -1 ? undefined : words[methodAt + 1];
+  if (explicit !== undefined) {
+    return explicit.toUpperCase();
+  }
+  return words.some((word) => API_BODY_FLAGS.has(word)) ? "POST" : "GET";
+}
+
+function matchesApiShape(
+  words: readonly string[],
+  shape: ApiShape,
+  repoRemote?: { owner: string; repo: string } | null,
+): boolean {
+  const path = apiPathArgument(words);
+  if (path === undefined) {
+    return false;
+  }
+  const segments = apiPathSegments(path);
+  if (repoRemote !== undefined) {
+    if (repoRemote === null) {
+      return false;
+    }
+    if (segments[0] !== "repos" || segments[1] !== repoRemote.owner || segments[2] !== repoRemote.repo) {
+      return false;
+    }
+  }
+  const last = segments[segments.length - 1];
+  if (shape.lastSegment !== undefined && last !== shape.lastSegment) {
+    return false;
+  }
+  if (shape.containsSegment !== undefined && !segments.includes(shape.containsSegment)) {
+    return false;
+  }
+  if (shape.adjacentPair !== undefined) {
+    const [a, b] = shape.adjacentPair;
+    if (!segments.some((segment, index) => segment === a && segments[index + 1] === b)) {
+      return false;
+    }
+  }
+  return shape.methods.includes(inferredApiMethod(words));
+}
+
+/**
  * why a phrase and not a word: an operator writes `command(gh pr review)`, meaning those words in that order.
  * Matching the raw string against the whole command would let a heredoc or an unrelated argument satisfy it.
  */
 export function matchesPhrase(words: readonly string[], pattern: string): boolean {
-  const phrase = pattern.trim().split(/\s+/);
-  if (phrase.length === 0) {
+  return containsPhrase(words, pattern.trim().split(/\s+/));
+}
+
+function matchesShape(words: readonly string[], shape: ShellShape): boolean {
+  if (!containsPhrase(words, shape.prefix)) {
     return false;
   }
-  return words.some((_, start) => phrase.every((token, index) => tokenMatches(words[start + index], token)));
+  return !shape.excludeIfAny?.some((flag) => words.includes(flag));
+}
+
+/**
+ * why partial and not total: `commit` has no REST-endpoint equivalent an agent's normal workflow ever produces
+ * — creating a commit through GitHub's git-database API is not a shape this project has observed in practice,
+ * unlike the `pr-open`/`push`/`pr-merge` cases this record exists to close
+ * ([/decisions/ad-128.md](/decisions/ad-128.md)).
+ */
+const API_SHAPES: Partial<Record<"pr-open" | "commit" | "push" | "pr-merge", readonly ApiShape[]>> = {
+  "pr-open": [{ lastSegment: "pulls", methods: ["POST"] }],
+  push: [{ adjacentPair: ["git", "refs"], methods: ["POST", "PATCH"] }],
+  "pr-merge": [{ lastSegment: "merge", containsSegment: "pulls", methods: ["PUT"] }],
+};
+
+function matchesAnyShape(
+  words: readonly string[],
+  kind: "pr-open" | "commit" | "push" | "pr-merge",
+  repoRemote?: { owner: string; repo: string } | null,
+): boolean {
+  if (SHELL_SHAPES[kind].some((shape) => matchesShape(words, shape))) {
+    return true;
+  }
+  const apiShapes = API_SHAPES[kind] ?? [];
+  return apiShapes.some((shape) => matchesApiShape(words, shape, repoRemote));
+}
+
+/**
+ * why a structural strip, not a literal prefix list: an MCP server's name is operator-configured
+ * (`mcp__github__create_pull_request` vs. `mcp__gh__create_pull_request` name the same tool through two
+ * differently-configured servers), so a fixed string would miss every server name this project has not seen
+ * yet — the same "why a basename fallback" reasoning `tokenMatches` already applies to a script's own path
+ * ([/decisions/ad-121.md](/decisions/ad-121.md)).
+ */
+export function normalizeMcpToolName(toolName: string): string {
+  const withoutHostPrefix = toolName.startsWith("MCP:") ? toolName.slice(4) : toolName;
+  if (!withoutHostPrefix.startsWith("mcp__")) {
+    return withoutHostPrefix;
+  }
+  const afterMcp = withoutHostPrefix.slice("mcp__".length);
+  const lastSeparator = afterMcp.lastIndexOf("__");
+  return lastSeparator === -1 ? afterMcp : afterMcp.slice(lastSeparator + 2);
+}
+
+/**
+ * why a third grammar, not a widened `ApiShape`: an MCP tool call has no path or HTTP method to infer a verb
+ * from — the tool name already names the act, the way a CLI subcommand does. Reusing `ApiShape`'s fields
+ * would leave `lastSegment`/`methods` meaningless for this grammar ([/decisions/ad-135.md](/decisions/ad-135.md)).
+ */
+type McpShape = {
+  readonly toolName: string;
+  readonly ownerField: string;
+  readonly repoField: string;
+};
+
+const MCP_SHAPES: Partial<Record<"pr-open" | "commit" | "push" | "pr-merge", readonly McpShape[]>> = {
+  "pr-open": [{ toolName: "create_pull_request", ownerField: "owner", repoField: "repo" }],
+};
+
+function matchesMcpShape(
+  context: TriggerContext,
+  shape: McpShape,
+  repoRemote?: { owner: string; repo: string } | null,
+): boolean {
+  if (context.toolName === undefined || normalizeMcpToolName(context.toolName) !== shape.toolName) {
+    return false;
+  }
+  const owner = context.toolInput?.[shape.ownerField];
+  const repo = context.toolInput?.[shape.repoField];
+  if (typeof owner !== "string" || typeof repo !== "string") {
+    return true;
+  }
+  if (repoRemote === undefined) {
+    return true;
+  }
+  if (repoRemote === null) {
+    return false;
+  }
+  return owner === repoRemote.owner && repo === repoRemote.repo;
+}
+
+function matchesAnyMcpShape(
+  kind: "pr-open" | "commit" | "push" | "pr-merge",
+  context: TriggerContext,
+): boolean {
+  const mcpShapes = MCP_SHAPES[kind] ?? [];
+  return mcpShapes.some((shape) => matchesMcpShape(context, shape, context.repoRemote));
+}
+
+/**
+ * why exported, mirroring `mentionsGhApi`: the caller deciding whether `repoRemote` is worth a process spawn
+ * needs to know whether the MCP-shaped path could possibly be in play, without paying for `localRepoRemote`
+ * on every unrelated tool call ([/decisions/ad-130.md](/decisions/ad-130.md), [/decisions/ad-135.md](/decisions/ad-135.md)).
+ */
+export function mentionsMcpAct(toolName: string | undefined): boolean {
+  if (toolName === undefined) {
+    return false;
+  }
+  const normalized = normalizeMcpToolName(toolName);
+  return Object.values(MCP_SHAPES).some((shapes) => shapes.some((shape) => shape.toolName === normalized));
 }
 
 export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): boolean {
@@ -113,12 +345,17 @@ export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): b
       return context.toolName === trigger.name;
     case "pr-open":
     case "commit":
-    case "push": {
-      if (context.command === undefined) {
-        return false;
+    case "push":
+    case "pr-merge": {
+      const byCommand =
+        context.command !== undefined &&
+        subCommands(context.command).some((words) =>
+          matchesAnyShape(words, trigger.kind, context.repoRemote),
+        );
+      if (byCommand) {
+        return true;
       }
-      const shapes = SHELL_SHAPES[trigger.kind];
-      return subCommands(context.command).some((words) => shapes.some((shape) => matchesShape(words, shape)));
+      return matchesAnyMcpShape(trigger.kind, context);
     }
     default: {
       if (context.command === undefined) {
@@ -132,4 +369,14 @@ export function triggerMatches(trigger: RuleTrigger, context: TriggerContext): b
 /** invariant: a disabled rule never fires. It exists to switch a global off and to record why. */
 export function firingRules(rules: readonly Rule[], context: TriggerContext): Rule[] {
   return rules.filter((rule) => rule.enabled && triggerMatches(rule.on, context));
+}
+
+/**
+ * why exported: a caller deciding whether `repoRemote` is worth a process spawn only needs to know whether
+ * the API-shaped path (the only one that ever reads it) could possibly be in play — a CLI shape never
+ * matches this phrase, so resolving the remote first would spend a spawn no verdict can use
+ * ([/decisions/ad-130.md](/decisions/ad-130.md)).
+ */
+export function mentionsGhApi(command: string): boolean {
+  return subCommands(command).some((words) => findPhraseIndex(words, ["gh", "api"]) !== -1);
 }

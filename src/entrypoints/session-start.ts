@@ -44,6 +44,7 @@ export const sessionStartHandler: Handler = async (
   });
 
   coreFacade.handoff.pruneDeadHandoffSessions(root);
+  coreFacade.gate.pruneGateSessions(root);
 
   await coreFacade.handoff.patchHandoff(root, event.provider, event.sessionKey, {
     shared: {

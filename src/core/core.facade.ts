@@ -31,6 +31,7 @@ import {
   scanAddedComments,
 } from "./comment-policy/comment-policy.service.ts";
 import { KNOWN_EXTENSION_COUNT, unknownExtensions } from "./comment-policy/comment-syntax.store.ts";
+import { diffDiagnostic, rootDiagnostic, WHY_POINTER } from "./diagnostics/diagnostics.message.ts";
 import {
   duplicationMessage,
   findDuplications,
@@ -38,7 +39,12 @@ import {
   scanProject,
 } from "./duplication/duplication.service.ts";
 import { evaluateFloor } from "./floor/floor.service.ts";
-import { computeGateFingerprint, readLastGate, writeLastGate } from "./gate/gate.artifact.ts";
+import {
+  computeGateFingerprint,
+  pruneGateSessions,
+  readLastGate,
+  writeLastGate,
+} from "./gate/gate.artifact.ts";
 import {
   appendFilesVerdict,
   isCommandResolutionFailure,
@@ -98,6 +104,7 @@ import {
 } from "./observability/observability.report.ts";
 import {
   DEFAULT_OBS,
+  deriveTraceId,
   recordAudit,
   recordFromEvent,
   recordObs,
@@ -142,7 +149,14 @@ import { isOperatorMode, OPERATOR_MODES } from "./policy/policy.posture.ts";
 import { activeRails } from "./policy/policy.rails.ts";
 import { pruneShadowed, shadowedKeys, typeMismatches, unknownKeys } from "./policy/policy.shadow.ts";
 import { forProvider } from "./policy/policy.types.ts";
-import { checkCollision, heartbeat, register, release, sweepStale } from "./presence/presence.service.ts";
+import {
+  checkCollision,
+  filesClaimedByOtherLiveSessions,
+  heartbeat,
+  register,
+  release,
+  sweepStale,
+} from "./presence/presence.service.ts";
 import { freshness, freshnessMessage, mayReplace, shouldRefetch } from "./pricing/pricing.freshness.ts";
 import {
   allDecisionFiles,
@@ -178,7 +192,9 @@ import {
   readRuleSources,
   recordObservation,
 } from "./rules/rules.store.ts";
-import { firingRules, triggerMatches } from "./rules/rules.trigger.ts";
+import { firingRules, mentionsGhApi, mentionsMcpAct, triggerMatches } from "./rules/rules.trigger.ts";
+import { scanForSecrets } from "./secret-scan/secret-scan.service.ts";
+import { placeholderFor } from "./secret-scan/secret-scan.store.ts";
 import { evaluateShellCommand } from "./shell-policy/shell-policy.service.ts";
 import { clearShellStall } from "./shell-policy/shell-policy.stall.ts";
 import { coversHandler, decideShim } from "./shim/shim.precedence.ts";
@@ -286,6 +302,7 @@ export const coreFacade = {
     GateLockTimeoutError,
     writeLastGate,
     readLastGate,
+    pruneGateSessions,
     computeGateFingerprint,
     computeInputsHash,
     isCacheHit,
@@ -377,6 +394,7 @@ export const coreFacade = {
   observability: {
     DEFAULT_OBS,
     resolveObsLevel,
+    deriveTraceId,
     recordObs,
     recordFromEvent,
     recordAudit,
@@ -458,6 +476,11 @@ export const coreFacade = {
     duplicationMessage,
     MIN_RUN,
   },
+  diagnostics: {
+    diffDiagnostic,
+    rootDiagnostic,
+    WHY_POINTER,
+  },
   commentPolicy: {
     scanAddedComments,
     findAddedComments,
@@ -498,6 +521,8 @@ export const coreFacade = {
     build: buildRuleSet,
     firing: firingRules,
     triggerMatches,
+    mentionsGhApi,
+    mentionsMcpAct,
     observations: readObservations,
     record: recordObservation,
     observationFrom,
@@ -515,9 +540,14 @@ export const coreFacade = {
     checkCollision,
     sweepStale,
     release,
+    filesClaimedByOtherLiveSessions,
   },
   floor: {
     evaluateFloor,
+  },
+  secretScan: {
+    scanForSecrets,
+    placeholderFor,
   },
   observe: {
     shouldObserve,

@@ -107,7 +107,7 @@ Handoff section and a link back to this index.
 | [AD-097](/decisions/ad-097.md) | The shell layer goes, and with it every platform branch that only existed because of it | active |
 | [AD-098](/decisions/ad-098.md) | Code splitting cut dist/ ninefold and broke three commands, so it is reverted until no library module self-executes | active |
 | [AD-099](/decisions/ad-099.md) | Reading a file claimed it, so a review agent locked the operator out of writing | active |
-| [AD-100](/decisions/ad-100.md) | The operator declares the trigger and the proof; the harness enforces it | active |
+| [AD-100](/decisions/ad-100.md) | The operator declares the trigger and the proof; the harness enforces it | active — corrected by AD-128 |
 | [AD-101](/decisions/ad-101.md) | Machine data belongs to the machine, not to the install | active |
 | [AD-102](/decisions/ad-102.md) | A green gate is not a working product, so four checks that look where it cannot | active |
 | [AD-103](/decisions/ad-103.md) | The artefact is proven where operators install it, and an inert scope has to be telling the truth | active |
@@ -130,6 +130,21 @@ Handoff section and a link back to this index.
 | [AD-120](/decisions/ad-120.md) | A rule denial names the directory and sha it actually checked | active |
 | [AD-121](/decisions/ad-121.md) | command(<pattern>) matches a bare word against a path ending in it, not only an exact word | active |
 | [AD-122](/decisions/ad-122.md) | Handoff continuity is scoped per session, and a live neighbour is never a source | active |
+| [AD-123](/decisions/ad-123.md) | Policy stays declarative; no custom executable policy code, ever | active |
+| [AD-124](/decisions/ad-124.md) | A provider's wiring target is a floor surface; secret-shaped tool output is a rail | active |
+| [AD-125](/decisions/ad-125.md) | A provider's docs and file scaffold are generated from its own code, never hand-maintained | active — corrected by AD-126 |
+| [AD-126](/decisions/ad-126.md) | The provider scaffold is a contributor tool; it never belonged on the published CLI | active |
+| [AD-127](/decisions/ad-127.md) | A rule's shell triggers match the act at any word position, not only at word 0 | active |
+| [AD-128](/decisions/ad-128.md) | pr-open and push recognize their gh api equivalent, and pr-merge exists | active |
+| [AD-129](/decisions/ad-129.md) | Turn-scope git diffing runs at the event's own working directory, not the project root | active |
+| [AD-130](/decisions/ad-130.md) | gh api pr-open/push/pr-merge detection is scoped to the local checkout's own remote | active |
+| [AD-131](/decisions/ad-131.md) | A ship-gate denial names what it checked and points at tlc harness why | active |
+| [AD-132](/decisions/ad-132.md) | Git-root discovery replaces an exact-match guard, in the six functions and their consumers | active |
+| [AD-133](/decisions/ad-133.md) | runCommand stops truncating; the one caller that needs a bound already had one | active |
+| [AD-134](/decisions/ad-134.md) | runCommand moves to process.ts; listTrackedFiles never reaches for it again | active |
+| [AD-135](/decisions/ad-135.md) | pr-open recognizes its MCP surface | active |
+| [AD-136](/decisions/ad-136.md) | hook.enter makes a hook invocation observable before any decision is made | active |
+| [AD-137](/decisions/ad-137.md) | Gate artifacts are scoped per session, the same fix AD-122 already proved for handoff | active |
 
 ## Archived
 

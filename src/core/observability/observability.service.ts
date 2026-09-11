@@ -28,7 +28,7 @@ function shortId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 16);
 }
 
-function deriveTraceId(sessionKey?: string): string {
+export function deriveTraceId(sessionKey?: string): string {
   const seed = sessionKey || randomUUID();
   return createHash("sha256").update(seed).digest("hex").slice(0, 32);
 }

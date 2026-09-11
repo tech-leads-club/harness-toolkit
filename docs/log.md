@@ -13,6 +13,39 @@ Generated from `docs/decisions/` — do not edit by hand. Run `node tools/render
 A reserved file of the [OKF v0.1](/decisions/ad-013.md) bundle: entries grouped under ISO 8601 headings,
 newest first. For what landed in which npm release, see `CHANGELOG.md` at the repository root.
 
+## 2026-09-11
+
+- **AD-137** — Gate artifacts are scoped per session, the same fix AD-122 already proved for handoff ([/decisions/ad-137.md](/decisions/ad-137.md))
+
+## 2026-09-10
+
+- **AD-130** — gh api pr-open/push/pr-merge detection is scoped to the local checkout's own remote ([/decisions/ad-130.md](/decisions/ad-130.md))
+- **AD-131** — A ship-gate denial names what it checked and points at tlc harness why ([/decisions/ad-131.md](/decisions/ad-131.md))
+- **AD-132** — Git-root discovery replaces an exact-match guard, in the six functions and their consumers ([/decisions/ad-132.md](/decisions/ad-132.md))
+- **AD-133** — runCommand stops truncating; the one caller that needs a bound already had one ([/decisions/ad-133.md](/decisions/ad-133.md))
+- **AD-134** — runCommand moves to process.ts; listTrackedFiles never reaches for it again ([/decisions/ad-134.md](/decisions/ad-134.md))
+- **AD-135** — pr-open recognizes its MCP surface ([/decisions/ad-135.md](/decisions/ad-135.md))
+- **AD-136** — hook.enter makes a hook invocation observable before any decision is made ([/decisions/ad-136.md](/decisions/ad-136.md))
+
+## 2026-09-09
+
+- **AD-128** — pr-open and push recognize their gh api equivalent, and pr-merge exists ([/decisions/ad-128.md](/decisions/ad-128.md))
+- **AD-129** — Turn-scope git diffing runs at the event's own working directory, not the project root ([/decisions/ad-129.md](/decisions/ad-129.md))
+
+## 2026-09-08
+
+- **AD-127** — A rule's shell triggers match the act at any word position, not only at word 0 ([/decisions/ad-127.md](/decisions/ad-127.md))
+
+## 2026-09-07
+
+- **AD-124** — A provider's wiring target is a floor surface; secret-shaped tool output is a rail ([/decisions/ad-124.md](/decisions/ad-124.md))
+- **AD-125** — A provider's docs and file scaffold are generated from its own code, never hand-maintained ([/decisions/ad-125.md](/decisions/ad-125.md))
+- **AD-126** — The provider scaffold is a contributor tool; it never belonged on the published CLI ([/decisions/ad-126.md](/decisions/ad-126.md))
+
+## 2026-09-06
+
+- **AD-123** — Policy stays declarative; no custom executable policy code, ever ([/decisions/ad-123.md](/decisions/ad-123.md))
+
 ## 2026-09-01
 
 - **AD-122** — Handoff continuity is scoped per session, and a live neighbour is never a source ([/decisions/ad-122.md](/decisions/ad-122.md))

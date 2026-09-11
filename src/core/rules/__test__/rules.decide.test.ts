@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { WHY_POINTER } from "../../diagnostics/diagnostics.message.ts";
 import { actionDecision, effectiveVerdict, evaluateRules, ruleMessage, strictest } from "../rules.decide.ts";
 import type { Observation } from "../rules.proof.ts";
 import type { Rule, RuleVerdict } from "../rules.types.ts";
@@ -102,7 +103,7 @@ describe("ruleMessage", () => {
   test("a rule with no body still says which rule and what is missing", () => {
     assert.equal(
       ruleMessage(rule({ body: "" }), ["gate(test) since HEAD"], "/repo", "abc1234"),
-      "rule review-before-pr (global): missing gate(test) since HEAD — checked /repo at abc1234",
+      `rule review-before-pr (global): missing gate(test) since HEAD — checked /repo at abc1234\n${WHY_POINTER}`,
     );
   });
 
@@ -112,7 +113,7 @@ describe("ruleMessage", () => {
 
     assert.equal(
       message,
-      "rule review-before-pr (global): missing gate(test) since HEAD — checked /some/worktree at def5678",
+      `rule review-before-pr (global): missing gate(test) since HEAD — checked /some/worktree at def5678\n${WHY_POINTER}`,
     );
   });
 
@@ -121,8 +122,23 @@ describe("ruleMessage", () => {
 
     assert.equal(
       message,
-      "rule review-before-pr (global): missing gate(test) since HEAD — checked /repo at no HEAD",
+      `rule review-before-pr (global): missing gate(test) since HEAD — checked /repo at no HEAD\n${WHY_POINTER}`,
     );
+  });
+
+  /**
+   * DIAG-11 — every denial in this family now points at `tlc harness why`, including an operator rule's own
+   * ([/decisions/ad-131.md](/decisions/ad-131.md)).
+   */
+  test("DIAG-11 the message points at tlc harness why, whether or not the rule has a body", () => {
+    const withBody = ruleMessage(rule(), ["subagent(the-jury) since HEAD"], "/repo", "abc1234");
+    const withoutBody = ruleMessage(rule({ body: "" }), ["gate(test) since HEAD"], "/repo", "abc1234");
+
+    assert.match(withBody, new RegExp(WHY_POINTER.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(withoutBody, new RegExp(WHY_POINTER.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    // why: the pointer sits before the operator's body, right after AD-120's own checked-root/sha line — not
+    // appended at the very end, where it would read as part of the operator's own prose.
+    assert.match(withBody, /checked \/repo at abc1234\nRun `tlc harness why`.*\n\nConvene the jury\./s);
   });
 });
 
