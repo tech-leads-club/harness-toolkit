@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
@@ -559,6 +559,48 @@ describe("filesClaimedByOtherLiveSessions", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  // why: a judge review found `gitRootOf` resolves symlinks (git's own behaviour), while a claim's own path
+  // often does not — macOS's `/tmp` → `/private/tmp` reproduced this exactly and broke the round-4 fix in CI.
+  // Symlink creation needs a privilege this CI's Windows runner may not grant an unprivileged process, so this
+  // skips rather than fails where that's the case — the same tolerance this suite gives any host-specific gap.
+  test("a git root reached through a symlinked ancestor still normalizes correctly", async (t) => {
+    const real = mkdtempSync(join(tmpdir(), "tlc-presence-real-"));
+    const linkParent = mkdtempSync(join(tmpdir(), "tlc-presence-link-"));
+    const link = join(linkParent, "link");
+    try {
+      symlinkSync(real, link, "junction");
+    } catch {
+      rmSync(real, { recursive: true, force: true });
+      rmSync(linkParent, { recursive: true, force: true });
+      t.skip("this host would not allow creating a symlink");
+      return;
+    }
+    const root = tempRoot();
+    const repoViaLink = join(link, "repo");
+    mkdirSync(join(repoViaLink, "packages", "web", "src"), { recursive: true });
+    execFileSync("git", ["-C", repoViaLink, "init", "-q"]);
+    writeFileSync(join(repoViaLink, "packages", "web", "src", "app.ts"), "export {};\n");
+    try {
+      register(root, { provider: "provider-a", session: "session-a", pid: 1, branch: "main" });
+      heartbeat(root, {
+        provider: "provider-a",
+        session: "session-a",
+        file: join(repoViaLink, "packages/web/src/app.ts"),
+      });
+
+      const claimed = await filesClaimedByOtherLiveSessions(root, repoViaLink, "provider-a", "session-b");
+
+      assert.ok(
+        claimed.has("packages/web/src/app.ts"),
+        "the claim must resolve to the repo's real path before relativizing, matching what gitRootOf itself returns",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(linkParent, { recursive: true, force: true });
+      rmSync(real, { recursive: true, force: true });
     }
   });
 });

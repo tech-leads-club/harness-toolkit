@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { handoffSessionPath } from "../../handoff/handoff.session-store.ts";
 import {
@@ -329,8 +329,8 @@ describe("gate artifacts are session-scoped", () => {
       const gatePath = lastGatePath(root, raw);
       const handoffPath = handoffSessionPath(root, raw);
       assert.equal(
-        gatePath.split("/").pop(),
-        handoffPath.split("/").pop(),
+        basename(gatePath),
+        basename(handoffPath),
         "both mechanisms must sanitize the same raw sessionKey identically",
       );
     } finally {
