@@ -62,6 +62,17 @@ const SHELL_SHAPES: Record<"pr-open" | "commit" | "push" | "pr-merge", readonly 
 };
 
 /**
+ * why colocated with `SHELL_SHAPES`, not left to `rules.decide.ts`: this is the human-readable half of the
+ * `excludeIfAny` fact above it. Only `pr-open` carries one today — a future trigger gaining its own
+ * `excludeIfAny` shape has this constant sitting right beside the reminder that its own message may need one
+ * too ([/decisions/ad-138.md](/decisions/ad-138.md)).
+ */
+export const TRIGGER_ESCAPE_HATCH_HINT: Partial<Record<RuleTrigger["kind"], string>> = {
+  "pr-open":
+    "A draft PR (`gh pr create --draft` or `-d`) is not gated by any pr-open rule — open it as a draft, satisfy this rule's proof, then `gh pr ready`, which is itself gated the normal way.",
+};
+
+/**
  * invariant: `tokenizeShell` already declines to emit segments from a heredoc body, so a body is never mistaken
  * for a command and a command after one is still seen. Measured both ways on
  * `cat <<EOF > runbook.md\ngh pr create --fill\nEOF` and on the same with a real command after the terminator:
