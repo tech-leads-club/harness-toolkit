@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { describe, test } from "node:test";
 import { presenceDir } from "../../../platform/paths.ts";
 import { sanitizeSegment } from "../../../platform/sanitize.ts";
 import {
   checkCollision,
+  filesClaimedByOtherLiveSessions,
   heartbeat,
   isSessionLive,
   listPresenceRecords,
@@ -348,4 +349,107 @@ test("release on a session that was never registered does not throw", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+/**
+ * AD-137 (round 2) — the reported symptom's actual mechanism: two sessions in the same checkout both see the
+ * same shared git working tree, so a file only one of them touched still shows up in the other's own diff.
+ * `filesClaimedByOtherLiveSessions` is what a caller subtracts from that diff before scoping a gate to it.
+ */
+describe("filesClaimedByOtherLiveSessions", () => {
+  test("a live neighbour's own claimed file is returned", () => {
+    const root = tempRoot();
+    try {
+      register(root, { provider: "provider-a", session: "session-a", pid: 1, branch: "main" });
+      heartbeat(root, { provider: "provider-a", session: "session-a", file: "src/app.ts" });
+
+      const claimed = filesClaimedByOtherLiveSessions(root, "provider-a", "session-b");
+
+      assert.ok(claimed.has("src/app.ts"), "session B must see session A's own claim");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("this session's own claimed file is never returned, even if it also appears in a neighbour's claims", () => {
+    const root = tempRoot();
+    try {
+      register(root, { provider: "provider-a", session: "session-a", pid: 1, branch: "main" });
+      heartbeat(root, { provider: "provider-a", session: "session-a", file: "src/shared.ts" });
+      register(root, { provider: "provider-a", session: "session-b", pid: 2, branch: "main" });
+      heartbeat(root, { provider: "provider-a", session: "session-b", file: "src/shared.ts" });
+
+      const claimed = filesClaimedByOtherLiveSessions(root, "provider-a", "session-b");
+
+      assert.equal(
+        claimed.has("src/shared.ts"),
+        false,
+        "a file both sessions touched must not be excluded from either one's own scope",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an unclaimed file (no session's own recent_files names it) is never returned", () => {
+    const root = tempRoot();
+    try {
+      register(root, { provider: "provider-a", session: "session-a", pid: 1, branch: "main" });
+      heartbeat(root, { provider: "provider-a", session: "session-a", file: "src/app.ts" });
+
+      const claimed = filesClaimedByOtherLiveSessions(root, "provider-a", "session-b");
+
+      assert.equal(
+        claimed.has("src/generated.ts"),
+        false,
+        "a file no presence record claims (a shell script, a generated output) must stay in scope for everyone",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a stale (not live) neighbour's claim is never returned", () => {
+    const root = tempRoot();
+    try {
+      const start = new Date("2026-07-29T10:00:00.000Z");
+      register(root, { provider: "provider-a", session: "session-a", pid: 1, branch: "main", now: start });
+      heartbeat(root, { provider: "provider-a", session: "session-a", file: "src/app.ts", now: start });
+
+      const later = new Date("2026-07-29T10:35:00.000Z");
+      const claimed = filesClaimedByOtherLiveSessions(root, "provider-a", "session-b", later);
+
+      assert.equal(
+        claimed.has("src/app.ts"),
+        false,
+        "a session gone quiet past the conversation window is not a live source to exclude on behalf of",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a different provider's own live session is still a source — the check is not provider-scoped", () => {
+    const root = tempRoot();
+    try {
+      register(root, { provider: "provider-b", session: "session-x", pid: 1, branch: "main" });
+      heartbeat(root, { provider: "provider-b", session: "session-x", file: "src/app.ts" });
+
+      const claimed = filesClaimedByOtherLiveSessions(root, "provider-a", "session-a");
+
+      assert.ok(claimed.has("src/app.ts"), "the shared working tree has no provider boundary either");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("with no other presence records at all, nothing is claimed — the common, single-session case", () => {
+    const root = tempRoot();
+    try {
+      const claimed = filesClaimedByOtherLiveSessions(root, "provider-a", "session-a");
+      assert.equal(claimed.size, 0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

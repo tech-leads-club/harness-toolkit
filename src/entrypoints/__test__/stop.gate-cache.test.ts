@@ -143,6 +143,39 @@ test("a second, different session's stop never reuses the first session's cached
   assert.ok(artifactB, "session B must have its own artifact, not merely a read of A's");
 });
 
+/**
+ * AD-137 (round 2) — the reported symptom itself, reproduced exactly: session B made no changes of its own,
+ * but the shared working tree still shows session A's edit as "changed" from B's own point of view (`git
+ * diff` has no concept of which agent wrote an uncommitted change). Before this record, B ran its own gate
+ * against A's own file and blocked on A's own failure — same final BLOCKED text, different cause than the
+ * first-round fix closed. Once session A's own presence record claims the file, session B's own gate scope
+ * excludes it, and B's turn is not blocked by work that was never B's own.
+ */
+test("a session with no claim on the dirty file is not blocked by a live neighbour's own edit", async () => {
+  process.env.TLC_HOME = newDir("tlc-cache-home-");
+  const root = dirtyRepo();
+  const gate = countingGate(1);
+  writePolicy(root, gate.command);
+
+  coreFacade.presence.register(root, { provider: "claude", session: "sess-agent-a", pid: 1, branch: "main" });
+  coreFacade.presence.heartbeat(root, {
+    provider: "claude",
+    session: "sess-agent-a",
+    file: "src/app.ts",
+  });
+
+  const outcome = await runHandler(stopHandler, stopEvent(root, "sess-agent-b"));
+
+  assert.equal(
+    gate.runs(),
+    0,
+    "session B must never run a gate scoped to a file only session A's own presence record claims",
+  );
+  if (outcome.decision.kind === "continue") {
+    assert.doesNotMatch(outcome.decision.text, /BLOCKED: lint failed/);
+  }
+});
+
 test("a content change runs the gate again", async () => {
   process.env.TLC_HOME = newDir("tlc-cache-home-");
   const root = dirtyRepo();
