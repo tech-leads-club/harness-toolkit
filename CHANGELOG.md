@@ -9,6 +9,7 @@ doctor reports against your own configuration.
 ## v0.15.1
 
 - **AD-137** — Gate artifacts are scoped per session, the same fix AD-122 already proved for handoff
+- **AD-138** — a pr-open rule's own denial names its draft escape hatch
 
 ## v0.15.0
 

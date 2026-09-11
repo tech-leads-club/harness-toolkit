@@ -16,6 +16,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 ## 2026-09-11
 
 - **AD-137** — Gate artifacts are scoped per session, the same fix AD-122 already proved for handoff ([/decisions/ad-137.md](/decisions/ad-137.md))
+- **AD-138** — a pr-open rule's own denial names its draft escape hatch ([/decisions/ad-138.md](/decisions/ad-138.md))
 
 ## 2026-09-10
 
