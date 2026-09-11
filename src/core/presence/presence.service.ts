@@ -1,6 +1,7 @@
 import { isAbsolute, relative } from "node:path";
 import type { Decision } from "../../contracts/decision.ts";
 import { gitRootOf } from "../../platform/git.ts";
+import { normalizeSeparators } from "../../platform/sanitize.ts";
 import {
   deletePresenceRecord,
   listPresenceRecords,
@@ -169,7 +170,7 @@ export function isSessionLive(
 // — and `relative()` against that non-root base miscomputes exactly like the mismatch this closes
 // ([/decisions/ad-137.md](/decisions/ad-137.md)).
 function relativeClaim(resolvedGitRoot: string, file: string): string {
-  return isAbsolute(file) ? relative(resolvedGitRoot, file) : file;
+  return isAbsolute(file) ? normalizeSeparators(relative(resolvedGitRoot, file)) : file;
 }
 
 /**

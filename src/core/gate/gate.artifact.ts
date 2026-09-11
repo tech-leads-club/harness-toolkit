@@ -165,13 +165,20 @@ export function pruneGateSessions(root: string, options: { now?: number; maxAgeM
     }
     const path = join(dir, name);
     const artifact = readJson<LastGateArtifact>(path);
-    const age = artifact ? now - Date.parse(artifact.ts) : Number.POSITIVE_INFINITY;
-    if (Number.isNaN(age) || age >= maxAgeMs) {
-      try {
-        unlinkSync(path);
-        pruned += 1;
-      } catch {}
+    // why: an unreadable or unparseable ts (a torn read racing a concurrent writer, or a shape from
+    // before this field existed) means "unknown", not "old" — the sibling handoff pruner
+    // ([/decisions/ad-122.md](/decisions/ad-122.md)) already treats doubt as a reason to keep a file, not
+    // delete it, and a false delete here costs a neighbour session's cached gate result.
+    const age = artifact ? now - Date.parse(artifact.ts) : Number.NaN;
+    if (Number.isNaN(age) || age < maxAgeMs) {
+      continue;
     }
+    // why: a file already gone between `readdirSync` and this `unlinkSync` needs no retry — the same
+    // silent swallow `clearGateReport` already uses for its own single-file unlink, above.
+    try {
+      unlinkSync(path);
+      pruned += 1;
+    } catch {}
   }
   return pruned;
 }

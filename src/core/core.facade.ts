@@ -153,7 +153,6 @@ import {
   checkCollision,
   filesClaimedByOtherLiveSessions,
   heartbeat,
-  isSessionLive,
   register,
   release,
   sweepStale,
@@ -541,7 +540,6 @@ export const coreFacade = {
     checkCollision,
     sweepStale,
     release,
-    isSessionLive,
     filesClaimedByOtherLiveSessions,
   },
   floor: {
