@@ -6,6 +6,10 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## Unreleased
+
+- **AD-137** — Gate artifacts are scoped per session, the same fix AD-122 already proved for handoff
+
 ## v0.15.0
 
 - **AD-135** — pr-open recognizes its MCP surface
