@@ -1,4 +1,5 @@
-import { isAbsolute, relative } from "node:path";
+import { realpathSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import type { Decision } from "../../contracts/decision.ts";
 import { gitRootOf } from "../../platform/git.ts";
 import { normalizeSeparators } from "../../platform/sanitize.ts";
@@ -165,12 +166,31 @@ export function isSessionLive(
   return record !== null && !isStale(record, now.getTime(), CONVERSATION_STALE_MS);
 }
 
-// why: a caller's `gitRoot` is often `shaScopeRoot(event)` — a tracked directory, but not always the
-// repository's top level (a worktree subdirectory, a `cd`'d session, [/decisions/ad-114.md](/decisions/ad-114.md))
-// — and `relative()` against that non-root base miscomputes exactly like the mismatch this closes
-// ([/decisions/ad-137.md](/decisions/ad-137.md)).
+// why: `gitRootOf` resolves symlinks and Windows short names, but a claim's own path is not guaranteed to be
+// — comparing a resolved base against an unresolved one miscomputes on macOS's `/tmp` → `/private/tmp`. Walking
+// to the nearest existing ancestor keeps both sides resolved even if the claimed file no longer exists.
+function realpathExistingPrefix(path: string): string {
+  let current = path;
+  let tail = "";
+  for (;;) {
+    try {
+      const real = realpathSync(current);
+      return tail ? join(real, tail) : real;
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) {
+        return path;
+      }
+      tail = tail ? join(basename(current), tail) : basename(current);
+      current = parent;
+    }
+  }
+}
+
 function relativeClaim(resolvedGitRoot: string, file: string): string {
-  return normalizeSeparators(isAbsolute(file) ? relative(resolvedGitRoot, file) : file);
+  return normalizeSeparators(
+    isAbsolute(file) ? relative(resolvedGitRoot, realpathExistingPrefix(file)) : file,
+  );
 }
 
 /**
@@ -188,7 +208,7 @@ export async function filesClaimedByOtherLiveSessions(
   sessionKey: string,
   now: Date = new Date(),
 ): Promise<Set<string>> {
-  const resolvedGitRoot = (await gitRootOf(gitRoot)) ?? gitRoot;
+  const resolvedGitRoot = realpathExistingPrefix((await gitRootOf(gitRoot)) ?? gitRoot);
   const mine = sessionIdFromSessionKey(provider, sessionKey);
   const own = readPresenceRecord(root, provider, mine);
   const ownFiles = new Set((own?.recent_files ?? []).map((file) => relativeClaim(resolvedGitRoot, file)));
