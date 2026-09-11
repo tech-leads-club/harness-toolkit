@@ -14,7 +14,7 @@
         "stop"
       ],
       "verdict": "follow-up",
-      "inspect": "tlc harness obs report \u2014 runs, wall-clock and total; the last verdict is in the project state directory as last-gate.json",
+      "inspect": "tlc harness obs report \u2014 runs, wall-clock and total; the last verdict is in the project state directory under gate-sessions/<session>.json",
       "asks": [
         "lintCommand",
         "testCommand",
@@ -335,7 +335,7 @@
         "stop"
       ],
       "verdict": "block-stop",
-      "inspect": "tlc harness obs report; the docs gate writes the same last-gate.json artifact the lint and test gates do",
+      "inspect": "tlc harness obs report; the docs gate writes the same gate-sessions/<session>.json artifact the lint and test gates do",
       "asks": [
         "command (exact argv array)",
         "severity: warn | deny"

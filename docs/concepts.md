@@ -116,8 +116,10 @@ A lock is reclaimed when it is older than 30 minutes, when it cannot be read, or
 — the last one only on the host that wrote it, since a pid means nothing on another machine
 ([/decisions/ad-024.md](/decisions/ad-024.md)).
 
-Each lint/test invocation writes `.tlc/harness/state/last-gate.json` (`harness.gate.v1`) with exit code,
-command, files, `outputTail`, and `findings`. Follow-up gaps and stagnation fingerprints use that artifact.
+Each lint/test invocation writes `.tlc/harness/state/gate-sessions/<session>.json` (`harness.gate.v1`) with
+exit code, command, files, `outputTail`, and `findings` — one file per session, so a concurrent neighbour's
+own gate outcome is never read as this session's own
+([/decisions/ad-137.md](/decisions/ad-137.md)). Follow-up gaps and stagnation fingerprints use that artifact.
 Optional: the child may write findings to the path in `HARNESS_GATE_REPORT` (JSON
 `{ "findings": [{ "summary": "..." }] }`).
 
