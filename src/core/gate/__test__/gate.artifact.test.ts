@@ -43,7 +43,7 @@ test("writeLastGate with a placeholder output falls back to the exit-code summar
   try {
     const artifact = writeLastGate({
       root,
-      sessionKey: "cursor-session-1",
+      sessionKey: "session-1",
       gate: "test",
       exitCode: 3,
       command: ["false"],
@@ -91,7 +91,7 @@ test("writeLastGate uses report findings over output-extracted ones", () => {
 
     const artifact = writeLastGate({
       root,
-      sessionKey: "cursor-session-2",
+      sessionKey: "session-2",
       gate: "test",
       exitCode: 1,
       command: ["false"],
@@ -113,7 +113,7 @@ test("readLastGate round-trips what writeLastGate wrote", () => {
   try {
     writeLastGate({
       root,
-      sessionKey: "cursor-session-3",
+      sessionKey: "session-3",
       gate: "lint",
       exitCode: 0,
       command: ["biome", "check"],
@@ -121,7 +121,7 @@ test("readLastGate round-trips what writeLastGate wrote", () => {
       durationMs: 5,
       output: "",
     });
-    const reloaded = readLastGate(root, "cursor-session-3");
+    const reloaded = readLastGate(root, "session-3");
     assert.equal(reloaded?.gate, "lint");
     assert.equal(reloaded?.passed, true);
   } finally {
@@ -134,7 +134,7 @@ test("computeGateFingerprint is order-independent across findings", () => {
   try {
     const artifact = writeLastGate({
       root,
-      sessionKey: "cursor-session-4",
+      sessionKey: "session-4",
       gate: "test",
       exitCode: 1,
       command: ["false"],
@@ -155,7 +155,7 @@ test("computeGateFingerprint differs when the findings differ", () => {
   try {
     const artifact = writeLastGate({
       root,
-      sessionKey: "cursor-session-5",
+      sessionKey: "session-5",
       gate: "test",
       exitCode: 1,
       command: ["false"],
@@ -196,7 +196,7 @@ test("the artifact records which project-scoping variables were set", () => {
     process.env.TLC_PROJECT_DIR = "/somewhere";
     const set = writeLastGate({
       root,
-      sessionKey: "cursor-session-6",
+      sessionKey: "session-6",
       gate: "test",
       exitCode: 1,
       command: ["node", "--test"],
@@ -209,7 +209,7 @@ test("the artifact records which project-scoping variables were set", () => {
     delete process.env.TLC_PROJECT_DIR;
     const none = writeLastGate({
       root,
-      sessionKey: "cursor-session-7",
+      sessionKey: "session-7",
       gate: "test",
       exitCode: 0,
       command: ["node", "--test"],
@@ -241,7 +241,7 @@ describe("gate artifacts are session-scoped", () => {
     try {
       writeLastGate({
         root,
-        sessionKey: "cursor-agent-fixing-code",
+        sessionKey: "agent-fixing-code",
         gate: "lint",
         exitCode: 1,
         command: ["lint"],
@@ -250,7 +250,7 @@ describe("gate artifacts are session-scoped", () => {
         output: "FAIL src/broken.ts",
       });
 
-      const readByOtherSession = readLastGate(root, "cursor-agent-researching");
+      const readByOtherSession = readLastGate(root, "agent-researching");
 
       assert.equal(
         readByOtherSession,
@@ -267,7 +267,7 @@ describe("gate artifacts are session-scoped", () => {
     try {
       writeLastGate({
         root,
-        sessionKey: "cursor-same-session",
+        sessionKey: "same-session",
         gate: "lint",
         exitCode: 1,
         command: ["lint"],
@@ -276,7 +276,7 @@ describe("gate artifacts are session-scoped", () => {
         output: "FAIL src/broken.ts",
       });
 
-      const reloaded = readLastGate(root, "cursor-same-session");
+      const reloaded = readLastGate(root, "same-session");
 
       assert.equal(reloaded?.gate, "lint");
       assert.equal(reloaded?.passed, false);
@@ -301,7 +301,7 @@ describe("gate artifacts are session-scoped", () => {
 
       writeLastGate({
         root,
-        sessionKey: "cursor-session-alpha",
+        sessionKey: "session-alpha",
         gate: "lint",
         exitCode: 1,
         command,
@@ -311,7 +311,7 @@ describe("gate artifacts are session-scoped", () => {
         inputsHash: inputs.hash,
       });
 
-      const forSessionBeta = readLastGate(root, "cursor-session-beta");
+      const forSessionBeta = readLastGate(root, "session-beta");
       assert.equal(
         forSessionBeta,
         null,
@@ -325,7 +325,7 @@ describe("gate artifacts are session-scoped", () => {
   test("PMS-04 the path matches handoffSessionPath's own sanitizing convention for the same raw key", () => {
     const root = tempRoot();
     try {
-      const raw = "cursor-conv/with:odd chars";
+      const raw = "session-conv/with:odd chars";
       const gatePath = lastGatePath(root, raw);
       const handoffPath = handoffSessionPath(root, raw);
       assert.equal(
@@ -362,7 +362,7 @@ describe("pruneGateSessions", () => {
   test("PMS-05 a gate-session file older than maxAgeMs is pruned", () => {
     const root = tempRoot();
     try {
-      const path = lastGatePath(root, "cursor-old-session");
+      const path = lastGatePath(root, "old-session");
       writeArtifactAt(path, "2020-01-01T00:00:00.000Z");
 
       const pruned = pruneGateSessions(root, { now: Date.parse("2026-01-01T00:00:00.000Z"), maxAgeMs: 1000 });
@@ -378,7 +378,7 @@ describe("pruneGateSessions", () => {
     const root = tempRoot();
     try {
       const now = Date.now();
-      const path = lastGatePath(root, "cursor-fresh-session");
+      const path = lastGatePath(root, "fresh-session");
       writeArtifactAt(path, new Date(now).toISOString());
 
       const pruned = pruneGateSessions(root, { now, maxAgeMs: 7 * 24 * 60 * 60 * 1000 });
