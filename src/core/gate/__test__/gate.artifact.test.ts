@@ -401,4 +401,20 @@ describe("pruneGateSessions", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test("PMS-08 a file with an unparseable ts is kept, not deleted — doubt is not evidence of age", () => {
+    const root = tempRoot();
+    try {
+      const path = lastGatePath(root, "torn-write-session");
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, '{"schema":"harness.gate.v1","gate":"lint","ts":"not-a-date"');
+
+      const pruned = pruneGateSessions(root, { now: Date.now(), maxAgeMs: 1000 });
+
+      assert.equal(pruned, 0);
+      assert.equal(existsSync(path), true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

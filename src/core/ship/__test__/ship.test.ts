@@ -80,7 +80,7 @@ test("the default excludes name .tlc/, and touchesRuntime honors it as the harne
   assert.ok(DEFAULTS.shipGate.runtimePathExcludes.includes(".tlc/"));
   assert.equal(
     touchesRuntime(
-      [".tlc/harness/state/last-gate.json"],
+      [".tlc/harness/state/gate-sessions/session.json"],
       DEFAULTS.shipGate.runtimePathPrefixes,
       DEFAULTS.shipGate.runtimePathExcludes,
     ),
