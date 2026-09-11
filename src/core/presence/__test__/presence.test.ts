@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, test } from "node:test";
 import { presenceDir } from "../../../platform/paths.ts";
 import { sanitizeSegment } from "../../../platform/sanitize.ts";
@@ -388,6 +396,35 @@ describe("filesClaimedByOtherLiveSessions", () => {
   function gitRoot(): string {
     return tempRoot();
   }
+
+  test("TEMP DIAGNOSTIC — dump raw path shapes on this platform", () => {
+    const repo = initRepo();
+    const subdir = join(repo, "packages", "web");
+    mkdirSync(subdir, { recursive: true });
+    const file = join(repo, "packages/web/src/app.ts");
+    const rawTop = execFileSync("git", ["-C", subdir, "rev-parse", "--show-toplevel"]).toString().trim();
+    console.error("DIAG repo:", JSON.stringify(repo));
+    console.error("DIAG subdir:", JSON.stringify(subdir));
+    console.error("DIAG file:", JSON.stringify(file));
+    console.error("DIAG git --show-toplevel:", JSON.stringify(rawTop));
+    try {
+      console.error("DIAG realpath(rawTop):", JSON.stringify(realpathSync(rawTop)));
+    } catch (e) {
+      console.error("DIAG realpath(rawTop) threw:", String(e));
+    }
+    try {
+      console.error("DIAG realpath(repo):", JSON.stringify(realpathSync(repo)));
+    } catch (e) {
+      console.error("DIAG realpath(repo) threw:", String(e));
+    }
+    try {
+      console.error("DIAG realpath(dirname(file)):", JSON.stringify(realpathSync(dirname(file))));
+    } catch (e) {
+      console.error("DIAG realpath(dirname(file)) threw:", String(e));
+    }
+    rmSync(repo, { recursive: true, force: true });
+    assert.ok(true);
+  });
 
   test("a live neighbour's own claimed file is returned, normalized to the git-relative form changedFiles uses", async () => {
     const root = tempRoot();
