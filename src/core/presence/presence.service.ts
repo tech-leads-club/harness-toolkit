@@ -170,7 +170,7 @@ export function isSessionLive(
 // — and `relative()` against that non-root base miscomputes exactly like the mismatch this closes
 // ([/decisions/ad-137.md](/decisions/ad-137.md)).
 function relativeClaim(resolvedGitRoot: string, file: string): string {
-  return isAbsolute(file) ? normalizeSeparators(relative(resolvedGitRoot, file)) : file;
+  return normalizeSeparators(isAbsolute(file) ? relative(resolvedGitRoot, file) : file);
 }
 
 /**
