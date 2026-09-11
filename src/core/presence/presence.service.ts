@@ -162,4 +162,38 @@ export function isSessionLive(
   return record !== null && !isStale(record, now.getTime(), CONVERSATION_STALE_MS);
 }
 
+/**
+ * hazard: two concurrent sessions in the same checkout both read `git diff` against the same shared working
+ * tree — a file only one of them ever touched still shows up in the *other's* own diff, because git has no
+ * concept of which agent wrote an uncommitted change. A file is excluded only when a *live* neighbour's own
+ * claim names it and this session's own claims do not — an unclaimed file (a shell script, a generated
+ * output) or one both sessions touched stays in scope, so the existing single-session behaviour this exists
+ * to leave alone is never narrowed by a guess ([/decisions/ad-137.md](/decisions/ad-137.md)).
+ */
+export function filesClaimedByOtherLiveSessions(
+  root: string,
+  provider: string,
+  sessionKey: string,
+  now: Date = new Date(),
+): Set<string> {
+  const mine = sessionIdFromSessionKey(provider, sessionKey);
+  const own = readPresenceRecord(root, provider, mine);
+  const ownFiles = new Set(own?.recent_files ?? []);
+  const claimed = new Set<string>();
+  for (const record of listPresenceRecords(root)) {
+    if (record.provider === provider && record.session === mine) {
+      continue;
+    }
+    if (isStale(record, now.getTime(), CONVERSATION_STALE_MS)) {
+      continue;
+    }
+    for (const file of record.recent_files) {
+      if (!ownFiles.has(file)) {
+        claimed.add(file);
+      }
+    }
+  }
+  return claimed;
+}
+
 export { listPresenceRecords, presenceSessionKey, readPresenceRecord };

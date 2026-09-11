@@ -496,7 +496,9 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
    * says so once at the end instead of three times ([/decisions/ad-073.md](/decisions/ad-073.md)).
    */
   const deferred: string[] = [];
-  const changedFiles = await listChangedRepoFiles(shaRoot, turnBase);
+  const rawChangedFiles = await listChangedRepoFiles(shaRoot, turnBase);
+  const otherSessionFiles = coreFacade.presence.filesClaimedByOtherLiveSessions(root, provider, sessionKey);
+  const changedFiles = rawChangedFiles.filter((file) => !otherSessionFiles.has(file));
   const codeTargets = filterCodeTargets(changedFiles, policy.codePaths);
   const testTargets = filterTestTargets(changedFiles);
   // why: the comment rail scopes by the syntax catalog (40+ languages), not `codeTargets`'s nine-extension
