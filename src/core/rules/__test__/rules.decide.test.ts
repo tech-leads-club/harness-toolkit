@@ -170,13 +170,18 @@ describe("ruleMessage", () => {
   /** AC3 — commit/push/pr-merge have no equivalent escape hatch in `SHELL_SHAPES`; claiming one would be false. */
   test("AC3 the hint is absent for commit, push, and pr-merge rules", () => {
     for (const kind of ["commit", "push", "pr-merge"] as const) {
+      assert.equal(TRIGGER_ESCAPE_HATCH_HINT[kind], undefined, kind);
       const message = ruleMessage(
         rule({ on: { kind }, body: "" }),
         ["gate(test) since HEAD"],
         "/repo",
         "abc1234",
       );
-      assert.doesNotMatch(message, new RegExp(PR_OPEN_HINT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), kind);
+      assert.equal(
+        message,
+        `rule review-before-pr (global): missing gate(test) since HEAD — checked /repo at abc1234\n${WHY_POINTER}`,
+        kind,
+      );
     }
   });
 
