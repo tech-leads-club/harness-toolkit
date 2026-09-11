@@ -157,11 +157,13 @@ test("a session with no claim on the dirty file is not blocked by a live neighbo
   const gate = countingGate(1);
   writePolicy(root, gate.command);
 
+  // why: `run.ts` writes `event.filePath` verbatim, and every real host sends an absolute path — a relative
+  // claim here would test a shape production never produces.
   coreFacade.presence.register(root, { provider: "claude", session: "sess-agent-a", pid: 1, branch: "main" });
   coreFacade.presence.heartbeat(root, {
     provider: "claude",
     session: "sess-agent-a",
-    file: "src/app.ts",
+    file: join(root, "src", "app.ts"),
   });
 
   const outcome = await runHandler(stopHandler, stopEvent(root, "sess-agent-b"));

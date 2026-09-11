@@ -327,6 +327,32 @@ describe("ship-gate: commit/push/pr-open run the same battery stop would, before
   });
 
   /**
+   * AD-137 (round 2, gap 2) — `computeTurnScope` (`support.ts`), the function `shipGateVerdict` calls, is a
+   * second, independent `listChangedRepoFiles` call site from `stop.ts`'s own inline duplicate. A live
+   * neighbour's own claimed file must be excluded here too, or a `push` from a session that made no changes
+   * of its own still denies on a file a different, concurrent session actually produced.
+   */
+  test("AC a session with no claim on the dirty file is not denied by a live neighbour's own edit", async () => {
+    const root = dirtyRepo();
+    writePolicy(root, { grind: { enabled: true, lintCommand: gate(1) } });
+
+    coreFacade.presence.register(root, { provider: "claude", session: "sess-owner", pid: 1, branch: "main" });
+    coreFacade.presence.heartbeat(root, {
+      provider: "claude",
+      session: "sess-owner",
+      file: join(root, "src", "app.ts"),
+    });
+
+    const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShip(root, PUSH)));
+
+    assert.notEqual(
+      outcome.decision.kind === "deny" ? outcome.decision.rule : "",
+      "ship-gate-lint",
+      "session sess-1 must not be denied over a file only sess-owner's own presence record claims",
+    );
+  });
+
+  /**
    * TFT-04 — `runCommand` no longer truncates its own output; the operator-facing bound on a gate command's
    * shown output now comes only from `trimOutputTail` downstream ([/decisions/ad-133.md](/decisions/ad-133.md)).
    * This proves that move is lossless.
