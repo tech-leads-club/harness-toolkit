@@ -108,7 +108,14 @@ export async function computeTurnScope(
   const seal = coreFacade.handoff.handoffInjectable(root, sessionKey);
   const handoff = seal.ok ? coreFacade.handoff.readHandoff(root, provider, sessionKey) : undefined;
   const turnBase = handoff?.turn_base_sha ?? "HEAD";
-  const changedFiles = await listChangedRepoFiles(gitRoot, turnBase);
+  const rawChangedFiles = await listChangedRepoFiles(gitRoot, turnBase);
+  const otherSessionFiles = coreFacade.presence.filesClaimedByOtherLiveSessions(
+    root,
+    gitRoot,
+    provider,
+    sessionKey,
+  );
+  const changedFiles = rawChangedFiles.filter((file) => !otherSessionFiles.has(file));
   const codeTargets = filterCodeTargets(changedFiles, policy.codePaths);
   const testTargets = filterTestTargets(changedFiles);
   const commentScope = changedFiles.filter((file) =>

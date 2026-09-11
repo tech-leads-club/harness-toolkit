@@ -497,7 +497,12 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
    */
   const deferred: string[] = [];
   const rawChangedFiles = await listChangedRepoFiles(shaRoot, turnBase);
-  const otherSessionFiles = coreFacade.presence.filesClaimedByOtherLiveSessions(root, provider, sessionKey);
+  const otherSessionFiles = coreFacade.presence.filesClaimedByOtherLiveSessions(
+    root,
+    shaRoot,
+    provider,
+    sessionKey,
+  );
   const changedFiles = rawChangedFiles.filter((file) => !otherSessionFiles.has(file));
   const codeTargets = filterCodeTargets(changedFiles, policy.codePaths);
   const testTargets = filterTestTargets(changedFiles);

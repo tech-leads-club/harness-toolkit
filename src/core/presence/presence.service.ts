@@ -1,3 +1,4 @@
+import { isAbsolute, relative } from "node:path";
 import type { Decision } from "../../contracts/decision.ts";
 import {
   deletePresenceRecord,
@@ -170,15 +171,20 @@ export function isSessionLive(
  * output) or one both sessions touched stays in scope, so the existing single-session behaviour this exists
  * to leave alone is never narrowed by a guess ([/decisions/ad-137.md](/decisions/ad-137.md)).
  */
+function relativeClaim(gitRoot: string, file: string): string {
+  return isAbsolute(file) ? relative(gitRoot, file) : file;
+}
+
 export function filesClaimedByOtherLiveSessions(
   root: string,
+  gitRoot: string,
   provider: string,
   sessionKey: string,
   now: Date = new Date(),
 ): Set<string> {
   const mine = sessionIdFromSessionKey(provider, sessionKey);
   const own = readPresenceRecord(root, provider, mine);
-  const ownFiles = new Set(own?.recent_files ?? []);
+  const ownFiles = new Set((own?.recent_files ?? []).map((file) => relativeClaim(gitRoot, file)));
   const claimed = new Set<string>();
   for (const record of listPresenceRecords(root)) {
     if (record.provider === provider && record.session === mine) {
@@ -187,7 +193,8 @@ export function filesClaimedByOtherLiveSessions(
     if (isStale(record, now.getTime(), CONVERSATION_STALE_MS)) {
       continue;
     }
-    for (const file of record.recent_files) {
+    for (const rawFile of record.recent_files) {
+      const file = relativeClaim(gitRoot, rawFile);
       if (!ownFiles.has(file)) {
         claimed.add(file);
       }
