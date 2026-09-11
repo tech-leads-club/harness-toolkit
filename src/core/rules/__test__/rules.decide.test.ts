@@ -168,10 +168,9 @@ describe("ruleMessage", () => {
   });
 
   /**
-   * AC1 (content) — a judge review found the earlier version of this test only checked that the message
-   * contained `PR_OPEN_HINT`, true by construction for any string that constant holds. A rewrite of the hint
-   * naming the wrong flags, or wrongly claiming `gh pr ready` is not gated, passed every other test in this
-   * file. This anchors the hint's actual words to the mechanism it describes, not to itself.
+   * why: asserting a message contains `PR_OPEN_HINT` is true by construction for any string that constant
+   * holds — it never checks the hint's own words match the mechanism they describe. A rewrite naming the
+   * wrong flags, or wrongly claiming `gh pr ready` is not gated, would pass every other test in this file.
    */
   test("AC1 the hint's content names the real flags, not just its own presence", () => {
     assert.match(PR_OPEN_HINT, /`gh pr create --draft` or `-d`/);
@@ -180,9 +179,9 @@ describe("ruleMessage", () => {
   });
 
   /**
-   * AC3 — no trigger kind other than `pr-open` has an equivalent escape hatch in `SHELL_SHAPES`; claiming one
-   * would be false. A judge review found the original per-kind loop only covered 3 of `RuleTrigger["kind"]`'s
-   * seven members — a decoy entry for `stop`, `tool`, or `command` passed undetected. This checks the whole map.
+   * why the whole map, not a per-kind loop over a few names: a loop naming only some of
+   * `RuleTrigger["kind"]`'s members lets a decoy entry survive on any name it omits. Asserting the map's own
+   * key set closes that regardless of how many members the union has today or gains later.
    */
   test("AC3 the hint exists for pr-open and for no other trigger kind", () => {
     assert.deepEqual(Object.keys(TRIGGER_ESCAPE_HATCH_HINT), ["pr-open"]);
