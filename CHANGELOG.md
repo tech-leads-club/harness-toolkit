@@ -8,8 +8,11 @@ doctor reports against your own configuration.
 
 ## Unreleased
 
-- **AD-139** — lessonsView joins ProviderPort, closing the one dispatcher that bypassed it
 - **AD-140** — an unrecognized shell wrapper can no longer hide a forced push
+
+## v0.15.3
+
+- **AD-139** — lessonsView joins ProviderPort, closing the one dispatcher that bypassed it
 
 ## v0.15.2
 
