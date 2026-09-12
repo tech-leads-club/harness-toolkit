@@ -145,6 +145,19 @@ function pathArgs(args: ShellWord[]): ShellWord[] {
   return args.filter((word) => !word.text.startsWith("-") && word.text !== "");
 }
 
+// why: `verbOf` only sees through a wrapper this gate already knows by name, and `WRAPPERS` cannot list
+// every proxy or shim an operator's shell might inject ahead of the real command — discovered live when one
+// such wrapper carried a force push straight past this rule. Matching the whole segment, not the resolved
+// head verb, means an unrecognized wrapper can delay `git` but not hide it.
+function forcedGitPush(segment: ShellSegment): boolean {
+  const texts = segment.words.map((word) => word.text);
+  return (
+    texts.includes("git") &&
+    texts.includes("push") &&
+    texts.some((text) => text === "--force" || text === "-f")
+  );
+}
+
 function checkShell(input: FloorInput): Decision {
   const command = input.command;
   if (!command) {
@@ -165,6 +178,17 @@ function checkShell(input: FloorInput): Decision {
   }
 
   for (const segment of segments) {
+    // why: checked before `verbOf` resolves anything — a wrapper this gate does not recognize can delay
+    // which word `verbOf` treats as the head, or exhaust the segment before a head is ever found, but it
+    // cannot remove `git`/`push`/`--force` from the segment's own words.
+    if (forcedGitPush(segment)) {
+      return denial(
+        "history-rewrite",
+        "`git push --force` discards remote commits that are not in your history. Use --force-with-lease, which refuses when the remote moved.",
+        "force push",
+      );
+    }
+
     const head = verbOf(segment.words);
     if (!head) {
       continue;
@@ -185,17 +209,6 @@ function checkShell(input: FloorInput): Decision {
 
     if (MACHINE_VERBS.has(verb)) {
       return denial("machine-control", `\`${verb}\` controls the machine, not the project.`, verb);
-    }
-
-    if (verb === "git" && args.some((word) => word.text === "push")) {
-      const forced = args.some((word) => word.text === "--force" || word.text === "-f");
-      if (forced) {
-        return denial(
-          "history-rewrite",
-          "`git push --force` discards remote commits that are not in your history. Use --force-with-lease, which refuses when the remote moved.",
-          "force push",
-        );
-      }
     }
 
     const destructive = DESTRUCTIVE_VERBS.has(verb) || isMkfs(verb);

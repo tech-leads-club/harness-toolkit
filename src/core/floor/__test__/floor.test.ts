@@ -134,6 +134,19 @@ test("ordinary and lease-guarded pushes are allowed", () => {
   assertAllowed("git push --force-with-lease origin main");
 });
 
+// why: `WRAPPERS` in floor.verb.ts is a known-name list, so it can only ever cover wrappers this gate has
+// already heard of. An operator's shell can inject any unlisted one ahead of the real command; the rule
+// must not depend on recognizing it by name.
+test("an unrecognized wrapper this gate has never heard of does not hide a forced push", () => {
+  assertDenied("some-unlisted-shell-proxy git push --force origin main", "history-rewrite");
+  assertDenied("another-unknown-wrapper sudo git push -f", "history-rewrite");
+});
+
+test("an unrecognized wrapper does not turn an ordinary push into a false positive", () => {
+  assertAllowed("some-unlisted-shell-proxy git push origin main");
+  assertAllowed("some-unlisted-shell-proxy git push --force-with-lease origin main");
+});
+
 test("reading credentials into the transcript is denied", () => {
   assertDenied("cat .env", "secret-access");
   assertDenied("cat .env.production", "secret-access");
