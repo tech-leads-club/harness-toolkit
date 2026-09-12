@@ -295,7 +295,7 @@ export function sessionReportScreen(rollup: SessionRollup): Screen {
           {
             label: "estimated",
             value: cost,
-            level: rollup.usage_reported && rollup.cost_incomplete ? "warn" : "info",
+            level: rollup.usage_reported !== false && rollup.cost_incomplete ? "warn" : "info",
           },
           {
             // why: the reading is the transcript tail's total, not the session's. Labelled for what it is, because

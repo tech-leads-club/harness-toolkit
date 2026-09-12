@@ -294,6 +294,21 @@ test("a token reading is assigned, never accumulated", async () => {
   }
 });
 
+// why: judge-found — a rollup missing usage_reported (a build before it existed) with
+// cost_incomplete: true still has a real, incomplete reading to warn about; `rollup.usage_reported
+// && rollup.cost_incomplete` evaluated to undefined (falsy) for it, so the text said "incomplete"
+// while the color said "info". `!== false` agrees with the text.
+test("the estimated-cost row warns on an incomplete reading even when usage_reported predates this field", async () => {
+  const { sessionReportScreen } = await import("../observability.report.ts");
+  const { usage_reported: _absentOnDisk, ...withoutUsageReported } = newRollup("p", "s1");
+  const rollup = { ...withoutUsageReported, estimated_cost_usd: 1.2, cost_incomplete: true };
+  const screen = sessionReportScreen(rollup as never);
+  const estimated = screen.sections
+    .flatMap((section) => section.rows ?? [])
+    .find((row) => row.label === "estimated");
+  assert.equal(estimated?.level, "warn");
+});
+
 // hazard: a successful shell call is `shell.end` and a failed one is `tool.fail`, so a shell tool in the tools
 // table can only ever show failures. It read `Bash: 0 ok, 23 fail` after hundreds of successful calls.
 test("a shell tool is not listed in the tools table it cannot be counted in", async () => {

@@ -231,11 +231,11 @@ function updateRollup(root: string, config: ObservabilityConfig, event: ObsEvent
    *
    * invariant: the latest reading replaces the previous one. A snapshot is assigned, never accumulated.
    */
+  const inTok = event.gen_ai?.input_tokens ?? 0;
+  const outTok = event.gen_ai?.output_tokens ?? 0;
   if (event.gen_ai) {
     rollup.usage_reported = true;
   }
-  const inTok = event.gen_ai?.input_tokens ?? 0;
-  const outTok = event.gen_ai?.output_tokens ?? 0;
   if (inTok || outTok) {
     rollup.input_tokens = inTok;
     rollup.output_tokens = outTok;
