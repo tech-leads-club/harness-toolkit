@@ -19,6 +19,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 - **AD-140** — an unrecognized shell wrapper can no longer hide a forced push ([/decisions/ad-140.md](/decisions/ad-140.md))
 - **AD-141** — Cursor's empty-string cwd no longer outranks the real project root ([/decisions/ad-141.md](/decisions/ad-141.md))
 - **AD-142** — Cursor's usageInPayload was never true ([/decisions/ad-142.md](/decisions/ad-142.md))
+- **AD-143** — a session with no usage source reads as unavailable, not as $0.0000 ([/decisions/ad-143.md](/decisions/ad-143.md))
 
 ## 2026-09-11
 

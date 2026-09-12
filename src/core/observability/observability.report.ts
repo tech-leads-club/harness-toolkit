@@ -42,6 +42,18 @@ export function groupByProvider(events: ObsEvent[]): Record<string, ProviderTota
   return groups;
 }
 
+// why: `$0.0000` and "no usage source ever reported" render identically without this — one is a real
+// answer, the other is a host this project cannot get a number from at all
+// ([/decisions/ad-142.md](/decisions/ad-142.md)). `cost_incomplete` is a different, narrower reason
+// (a reading arrived, its model had no catalog rate) and is still checked once this one clears.
+function costLabel(rollup: SessionRollup, prefix = ""): string {
+  if (!rollup.usage_reported) {
+    return "not available (this host reports no usage data)";
+  }
+  const amount = `${prefix}${rollup.estimated_cost_usd.toFixed(4)}`;
+  return rollup.cost_incomplete ? `${amount} (incomplete — some models lacked catalog rates)` : amount;
+}
+
 /**
  * why: the count alone is not actionable — "seven interruptions" names no switch. The breakdown renders only when
  * there is something in it, so a session that was never interrupted reads exactly as it did before.
@@ -173,9 +185,7 @@ export function sessionReportMarkdown(rollup: SessionRollup, activeRules: readon
   const subs = Object.entries(rollup.subagents)
     .map(([t, s]) => `| ${t} | ${s.count} | ${JSON.stringify(s.models)} |`)
     .join("\n");
-  const costLabel = rollup.cost_incomplete
-    ? `${rollup.estimated_cost_usd.toFixed(4)} (incomplete — some models lacked catalog rates)`
-    : rollup.estimated_cost_usd.toFixed(4);
+  const cost = costLabel(rollup);
 
   return `# Harness session report
 
@@ -188,7 +198,7 @@ export function sessionReportMarkdown(rollup: SessionRollup, activeRules: readon
 
 | Metric | Value |
 |--------|-------|
-| Estimated USD | ${costLabel} |
+| Estimated USD | ${cost} |
 | Input tokens | ${rollup.input_tokens} |
 | Output tokens | ${rollup.output_tokens} |
 | Cost alert sent | ${rollup.cost_alert_sent} |
@@ -249,9 +259,7 @@ export function sessionReportScreen(rollup: SessionRollup): Screen {
       .slice(0, limit)
       .map(([name, count]) => `${name} ${count}`);
 
-  const costLabel = rollup.cost_incomplete
-    ? `$${rollup.estimated_cost_usd.toFixed(4)} (incomplete — some models lacked catalog rates)`
-    : `$${rollup.estimated_cost_usd.toFixed(4)}`;
+  const cost = costLabel(rollup, "$");
 
   const shell = rollup.shell;
   // hazard: `rollup.tools` is fed only by `tool.start|end|fail`. A successful shell call is `shell.end` and a
@@ -279,7 +287,11 @@ export function sessionReportScreen(rollup: SessionRollup): Screen {
       {
         title: "Cost",
         rows: [
-          { label: "estimated", value: costLabel, level: rollup.cost_incomplete ? "warn" : "info" },
+          {
+            label: "estimated",
+            value: cost,
+            level: rollup.usage_reported && rollup.cost_incomplete ? "warn" : "info",
+          },
           {
             // why: the reading is the transcript tail's total, not the session's. Labelled for what it is, because
             // "Input tokens" invited the reading that produced 102.7M ([/decisions/ad-064.md](/decisions/ad-064.md)).

@@ -10,6 +10,7 @@ doctor reports against your own configuration.
 
 - **AD-141** — Cursor's empty-string cwd no longer outranks the real project root
 - **AD-142** — Cursor's usageInPayload was never true
+- **AD-143** — a session with no usage source reads as unavailable, not as $0.0000
 
 ## v0.15.4
 

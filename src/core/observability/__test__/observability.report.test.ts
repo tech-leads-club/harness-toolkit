@@ -62,9 +62,19 @@ test("sessionReportMarkdown names the owning provider and session", () => {
 
 test("sessionReportMarkdown flags an incomplete cost estimate", () => {
   const rollup = newRollup("session-a", "provider-a");
+  rollup.usage_reported = true;
   rollup.cost_incomplete = true;
   const markdown = sessionReportMarkdown(rollup);
   assert.ok(markdown.includes("incomplete"));
+});
+
+// why: a provider with no usage source at all must not read the same as a confirmed $0.0000, which
+// is what a session that never received a single gen_ai reading looked like before this existed.
+test("sessionReportMarkdown says cost is unavailable when no usage was ever reported", () => {
+  const rollup = newRollup("session-a", "provider-a");
+  const markdown = sessionReportMarkdown(rollup);
+  assert.ok(markdown.includes("not available"));
+  assert.ok(!markdown.includes("0.0000"));
 });
 
 // why: a count without an attribution names no switch. Six asks from the paired posture and one from the

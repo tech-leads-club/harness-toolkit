@@ -150,6 +150,7 @@ Handoff section and a link back to this index.
 | [AD-140](/decisions/ad-140.md) | an unrecognized shell wrapper can no longer hide a forced push | active |
 | [AD-141](/decisions/ad-141.md) | Cursor's empty-string cwd no longer outranks the real project root | active |
 | [AD-142](/decisions/ad-142.md) | Cursor's usageInPayload was never true | active |
+| [AD-143](/decisions/ad-143.md) | a session with no usage source reads as unavailable, not as $0.0000 | active |
 
 ## Archived
 
