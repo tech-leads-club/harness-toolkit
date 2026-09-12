@@ -22,12 +22,16 @@ export function complexityViolations(report: BiomeReport): BiomeDiagnostic[] {
   return (report.diagnostics ?? []).filter((diagnostic) => diagnostic.category === COMPLEXITY_CATEGORY);
 }
 
-// why: biome exits non-zero whenever any diagnostic exists at all, not only when this rule's own count grows
-// past the ceiling below — its JSON report is still written to stdout on that exit, so the count this check
-// cares about is read from there rather than from the process's own success.
+// why: biome exits non-zero whenever any diagnostic exists, not only when this rule's own count grows past
+// the ceiling below — its JSON report is still written to stdout on that exit, so the count is read from
+// there. `--max-diagnostics=none` guards the same call: biome documents its printed-diagnostics cap for the
+// text reporter, not `--reporter=json`, and this script should not depend on that staying true.
 export function runBiomeReport(cwd: string): BiomeReport {
   try {
-    const output = execFileSync("npx", ["biome", "check", "--reporter=json", "."], { cwd, encoding: "utf8" });
+    const output = execFileSync("npx", ["biome", "check", "--reporter=json", "--max-diagnostics=none", "."], {
+      cwd,
+      encoding: "utf8",
+    });
     return JSON.parse(output);
   } catch (error) {
     const stdout = (error as { stdout?: unknown }).stdout;
