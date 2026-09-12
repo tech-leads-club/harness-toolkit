@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { HarnessEvent } from "../../contracts/index.ts";
-import { currentGitBranch, currentGitSha, shaScopeRoot } from "../support.ts";
+import type { ProviderPort } from "../../providers/index.ts";
+import { providers } from "../../providers/index.ts";
+import { currentGitBranch, currentGitSha, renderProviderLessonsView, shaScopeRoot } from "../support.ts";
 
 function git(cwd: string, args: string[]): void {
   execFileSync("git", args, { cwd });
@@ -81,4 +83,43 @@ test("GRD-04 currentGitBranch is null for a directory with no git repository at 
   const dir = mkdtempSync(join(tmpdir(), "support-no-git-"));
   assert.equal(await currentGitBranch(dir), null);
   rmSync(dir, { recursive: true, force: true });
+});
+
+test("renderProviderLessonsView returns null for a name no registered provider carries", () => {
+  assert.equal(renderProviderLessonsView("no-such-provider", "/tmp"), null);
+});
+
+/**
+ * AD-139 — the whole reason `renderProviderLessonsView` moved off a name-checking chain: a provider
+ * pushed into the registry, with zero edit to this function, still gets its own `lessonsView` called.
+ */
+test("AD-139 a provider added to the registry is dispatched with no change to renderProviderLessonsView", () => {
+  const calls: string[] = [];
+  const fixture: ProviderPort = {
+    name: "fixture-lessons-provider",
+    detect: () => false,
+    capabilities: () => {
+      throw new Error("unused");
+    },
+    policyDefaults: () => ({ blockedPatterns: [], minEffort: null, untrustedTools: [] }),
+    toEvent: () => null,
+    render: () => ({ stdout: null, exitCode: 0 }),
+    wiring: () => ({ target: "/tmp/fixture-lessons.json", strategy: "replace" as const, entries: [] }),
+    wiringTargets: () => ["/tmp/fixture-lessons.json"],
+    lessonsView: (root: string) => {
+      calls.push(root);
+      return "rendered by the fixture";
+    },
+  };
+  providers.push(fixture);
+  try {
+    const result = renderProviderLessonsView("fixture-lessons-provider", "/tmp/some-root");
+    assert.equal(result, "rendered by the fixture");
+    assert.deepEqual(calls, ["/tmp/some-root"]);
+  } finally {
+    const index = providers.indexOf(fixture);
+    if (index >= 0) {
+      providers.splice(index, 1);
+    }
+  }
 });

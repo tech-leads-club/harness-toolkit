@@ -33,6 +33,7 @@ export function assertSatisfiesContract(provider: ProviderPort): void {
   assert.equal(typeof provider.render, "function");
   assert.equal(typeof provider.wiring, "function");
   assert.equal(typeof provider.wiringTargets, "function");
+  assert.equal(typeof provider.lessonsView, "function");
 
   const policyDefaults = provider.policyDefaults();
   /**
@@ -180,6 +181,9 @@ function makeFixtureProvider(): ProviderPort {
     },
     wiringTargets() {
       return ["/tmp/fixture.json"];
+    },
+    lessonsView() {
+      return null;
     },
   };
 }

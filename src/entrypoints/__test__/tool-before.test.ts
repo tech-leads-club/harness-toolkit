@@ -771,6 +771,7 @@ function makeFixtureWiringProvider(target: string): ProviderPort {
     wiringTargets(): string[] {
       return [target];
     },
+    lessonsView: base.lessonsView,
   };
 }
 

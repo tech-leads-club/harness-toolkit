@@ -29,6 +29,7 @@ function makeDriftFixture(name: string, capabilities: () => ProviderCapabilities
     render: (): Rendered => ({ stdout: null, exitCode: 0 }),
     wiring: () => ({ target: "/tmp/fixture-drift.json", strategy: "replace" as const, entries: [] }),
     wiringTargets: () => ["/tmp/fixture-drift.json"],
+    lessonsView: () => null,
   };
 }
 
