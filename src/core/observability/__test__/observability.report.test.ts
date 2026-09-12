@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { groupByProvider, railsNeverFired, sessionReportMarkdown } from "../observability.report.ts";
+import type { SessionRollup } from "../observability.store.ts";
 import { newRollup } from "../observability.store.ts";
 import type { ObsEvent } from "../observability.types.ts";
 
@@ -75,6 +76,18 @@ test("sessionReportMarkdown says cost is unavailable when no usage was ever repo
   const markdown = sessionReportMarkdown(rollup);
   assert.ok(markdown.includes("not available"));
   assert.ok(!markdown.includes("0.0000"));
+});
+
+// why: judge-found — a rollup a build before usage_reported existed wrote has that key entirely
+// absent (undefined, not false), and its estimated_cost_usd is a real answer from before this flag
+// existed to doubt it. Relabeling that as unavailable is the exact confusion this field removes,
+// pointed the other way.
+test("sessionReportMarkdown still shows a real cost for a rollup from before usage_reported existed", () => {
+  const { usage_reported: _absentOnDisk, ...withoutUsageReported } = newRollup("session-a", "provider-a");
+  const rollup = { ...withoutUsageReported, estimated_cost_usd: 4.2137 } as SessionRollup;
+  const markdown = sessionReportMarkdown(rollup);
+  assert.ok(markdown.includes("4.2137"));
+  assert.ok(!markdown.includes("not available"));
 });
 
 // why: a count without an attribution names no switch. Six asks from the paired posture and one from the

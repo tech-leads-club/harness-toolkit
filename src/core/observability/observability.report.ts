@@ -46,8 +46,13 @@ export function groupByProvider(events: ObsEvent[]): Record<string, ProviderTota
 // answer, the other is a host this project cannot get a number from at all
 // ([/decisions/ad-142.md](/decisions/ad-142.md)). `cost_incomplete` is a different, narrower reason
 // (a reading arrived, its model had no catalog rate) and is still checked once this one clears.
+
+// hazard: `=== false`, not a falsy check — a rollup a build before this field existed wrote has
+// `usage_reported: undefined`, and its `estimated_cost_usd` is a real number from before this flag
+// existed to doubt it. A falsy check would relabel that real answer as unavailable, the exact
+// confusion this field exists to remove, just pointed the other way.
 function costLabel(rollup: SessionRollup, prefix = ""): string {
-  if (!rollup.usage_reported) {
+  if (rollup.usage_reported === false) {
     return "not available (this host reports no usage data)";
   }
   const amount = `${prefix}${rollup.estimated_cost_usd.toFixed(4)}`;
