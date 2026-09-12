@@ -26,11 +26,15 @@ export function complexityViolations(report: BiomeReport): BiomeDiagnostic[] {
 // the ceiling below — its JSON report is still written to stdout on that exit, so the count is read from
 // there. `--max-diagnostics=none` guards the same call: biome documents its printed-diagnostics cap for the
 // text reporter, not `--reporter=json`, and this script should not depend on that staying true.
+
+// why: on Windows, `npx` is a `.cmd` shim, and spawning it by bare name without a shell fails with ENOENT —
+// the same reason `npm root -g` is spawned that way elsewhere in this codebase (`bin/tlc-cli.ts`).
 export function runBiomeReport(cwd: string): BiomeReport {
   try {
     const output = execFileSync("npx", ["biome", "check", "--reporter=json", "--max-diagnostics=none", "."], {
       cwd,
       encoding: "utf8",
+      shell: true,
     });
     return JSON.parse(output);
   } catch (error) {
