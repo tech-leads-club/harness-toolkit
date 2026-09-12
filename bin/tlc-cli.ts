@@ -1342,7 +1342,15 @@ export function buildTestSteps(): TestStep[] {
     // `error` in biome.json was measured instead and rejected: it enables each group's non-recommended rules too,
     // which produced 3763 findings and included `noBarrelFile` and `noReExportAll` — the two rules that forbid the
     // core facade this architecture is built on ([/decisions/ad-004.md](/decisions/ad-004.md)) — and `noNodejsModules` in a Node CLI.
-    { label: "biome check", bin: "npx", args: ["biome", "check", "--error-on-warnings"] },
+    // why: `--max-diagnostics=none`. Biome defaults to showing 20, and an `info`-level rule with a standing count
+    // above that (`noExcessiveCognitiveComplexity`, at `info` so it does not block on pre-existing debt — see
+    // `check-complexity.ts`) can fill the whole budget, leaving a real `error` finding unprinted though it still
+    // fails the step ([/decisions/ad-139.md](/decisions/ad-139.md)).
+    {
+      label: "biome check",
+      bin: "npx",
+      args: ["biome", "check", "--error-on-warnings", "--max-diagnostics=none"],
+    },
     { label: "tsc --noEmit", bin: "npx", args: ["tsc", "--noEmit"] },
     { label: "src suite", bin: "node", args: [...TEST_ENV_IMPORT, "--test", "src/**/__test__/*.test.ts"] },
     { label: "tools suite", bin: "node", args: [...TEST_ENV_IMPORT, "--test", "tools/__test__/*.test.ts"] },
@@ -1363,6 +1371,10 @@ export function buildTestSteps(): TestStep[] {
       args: ["knip", "--exports", "--max-issues", String(KNIP_EXPORTS_CEILING)],
     },
     { label: "check-boundaries", bin: "node", args: ["tools/dev/check-boundaries.ts"] },
+    // why: `noExcessiveCognitiveComplexity` runs at `info` in biome.json, so step 1 above never fails on it —
+    // this is the ceiling that catches growth instead, the same shape as the knip step above
+    // ([/decisions/ad-139.md](/decisions/ad-139.md)).
+    { label: "check-complexity", bin: "node", args: ["tools/dev/check-complexity.ts"] },
     // why: `--error-on-warnings` above cannot see a rule that was suppressed rather than fixed, and biome accepts
     // any text after the colon. This is what makes the reason a reason ([/decisions/ad-051.md](/decisions/ad-051.md)).
     { label: "check-suppressions", bin: "node", args: ["tools/dev/check-suppressions.ts"] },
