@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { HarnessEvent } from "../../contracts/index.ts";
 import type { ProviderPort } from "../../providers/index.ts";
-import { providers } from "../../providers/index.ts";
 import { currentGitBranch, currentGitSha, renderProviderLessonsView, shaScopeRoot } from "../support.ts";
 
 function git(cwd: string, args: string[]): void {
@@ -89,11 +88,9 @@ test("renderProviderLessonsView returns null for a name no registered provider c
   assert.equal(renderProviderLessonsView("no-such-provider", "/tmp"), null);
 });
 
-/**
- * AD-139 — the whole reason `renderProviderLessonsView` moved off a name-checking chain: a provider
- * pushed into the registry, with zero edit to this function, still gets its own `lessonsView` called.
- */
-test("AD-139 a provider added to the registry is dispatched with no change to renderProviderLessonsView", () => {
+// invariant: a registry entry is dispatched by identity, not by a name this function has to know in advance —
+// any `ProviderPort` reaching the array gets its own `lessonsView` called, unedited.
+test("a provider present in the registry is dispatched by its lessonsView, unedited", () => {
   const calls: string[] = [];
   const fixture: ProviderPort = {
     name: "fixture-lessons-provider",
@@ -111,15 +108,7 @@ test("AD-139 a provider added to the registry is dispatched with no change to re
       return "rendered by the fixture";
     },
   };
-  providers.push(fixture);
-  try {
-    const result = renderProviderLessonsView("fixture-lessons-provider", "/tmp/some-root");
-    assert.equal(result, "rendered by the fixture");
-    assert.deepEqual(calls, ["/tmp/some-root"]);
-  } finally {
-    const index = providers.indexOf(fixture);
-    if (index >= 0) {
-      providers.splice(index, 1);
-    }
-  }
+  const result = renderProviderLessonsView("fixture-lessons-provider", "/tmp/some-root", [fixture]);
+  assert.equal(result, "rendered by the fixture");
+  assert.deepEqual(calls, ["/tmp/some-root"]);
 });

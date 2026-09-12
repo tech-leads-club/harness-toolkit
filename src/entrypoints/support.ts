@@ -248,17 +248,19 @@ export function renderLessonLine(lesson: HarnessLesson): string {
   return coreFacade.lesson.renderLessonBlock(lesson);
 }
 
-/**
- * invariant: one dispatcher, imported by both session entrypoints. The durable view is written at session start and
- * again at session end, and a copy of this switch in each would be the AD-042 defect a second time.
- */
-/**
- * why a registry lookup, not a name-checking chain: a third adapter added to `providers` gets this
- * dispatched for free, the same way it already gets `detect`/`capabilities`/`render` for free — `ProviderPort`
- * itself, not this function, is what requires `lessonsView` to exist ([/decisions/ad-139.md](/decisions/ad-139.md)).
- */
-export function renderProviderLessonsView(providerName: string, root: string): string | null {
-  const provider = providers.find((candidate) => candidate.name === providerName);
+// invariant: a single dispatcher, called from both session entrypoints — the durable view is written at
+// session start and again at session end, so a second copy of this logic in either one would repeat the
+// AD-042 defect.
+
+// why: a registry lookup, not a name-checking chain — adding a third adapter to `providers` gets it
+// dispatched here for free, exactly as it already gets `detect`/`capabilities`/`render` for free —
+// `ProviderPort` itself, not this function, is what requires `lessonsView` to exist ([/decisions/ad-139.md](/decisions/ad-139.md)).
+export function renderProviderLessonsView(
+  providerName: string,
+  root: string,
+  registry: readonly ProviderPort[] = providers,
+): string | null {
+  const provider = registry.find((candidate) => candidate.name === providerName);
   return provider?.lessonsView(root) ?? null;
 }
 
