@@ -6,7 +6,7 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
-## v0.15.4
+## Unreleased
 
 - **AD-141** — Cursor's empty-string cwd no longer outranks the real project root
 - **AD-142** — Cursor's usageInPayload was never true
