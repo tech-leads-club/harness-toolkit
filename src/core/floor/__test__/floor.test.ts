@@ -142,6 +142,15 @@ test("an unrecognized wrapper this gate has never heard of does not hide a force
   assertDenied("another-unknown-wrapper sudo git push -f", "history-rewrite");
 });
 
+// why: `verbOf` compares a path's basename, not its literal text, so an unqualified `git` and a
+// path-qualified one must deny identically — a wrapper that expands `git` to its absolute path is exactly
+// the shape a path-qualifying proxy produces.
+test("a path-qualified git is denied exactly like the bare word", () => {
+  assertDenied("/usr/bin/git push --force origin main", "history-rewrite");
+  assertDenied("/usr/local/bin/git push -f origin main", "history-rewrite");
+  assertDenied("some-unlisted-shell-proxy /usr/bin/git push --force origin main", "history-rewrite");
+});
+
 test("an unrecognized wrapper does not turn an ordinary push into a false positive", () => {
   assertAllowed("some-unlisted-shell-proxy git push origin main");
   assertAllowed("some-unlisted-shell-proxy git push --force-with-lease origin main");

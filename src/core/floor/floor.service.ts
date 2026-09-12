@@ -149,10 +149,18 @@ function pathArgs(args: ShellWord[]): ShellWord[] {
 // every proxy or shim an operator's shell might inject ahead of the real command — discovered live when one
 // such wrapper carried a force push straight past this rule. Matching the whole segment, not the resolved
 // head verb, means an unrecognized wrapper can delay `git` but not hide it.
+
+// hazard: `verbOf` strips a path down to its basename before comparing (`/usr/bin/git` → `git`) — a
+// literal-text scan that skips the same normalization would deny `git push --force` but allow the identical
+// command run as `/usr/bin/git push --force`, which is exactly the shape a path-qualifying wrapper produces.
+function namesGit(text: string): boolean {
+  return (text.split("/").pop() ?? text) === "git";
+}
+
 function forcedGitPush(segment: ShellSegment): boolean {
   const texts = segment.words.map((word) => word.text);
   return (
-    texts.includes("git") &&
+    texts.some(namesGit) &&
     texts.includes("push") &&
     texts.some((text) => text === "--force" || text === "-f")
   );
