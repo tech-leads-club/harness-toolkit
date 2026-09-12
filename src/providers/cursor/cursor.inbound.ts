@@ -167,9 +167,14 @@ export function cursorToEvent(raw: Record<string, unknown>): HarnessEvent | null
       // (this event's `shell.before` half), not on `afterShellExecution` or any other event this
       // adapter maps. Never guessed onto an event kind the host does not report it for
       // ([/decisions/ad-114.md](/decisions/ad-114.md)).
+
+      // hazard: found live — Cursor sends `cwd: ""` on a command that never entered a worktree, not an
+      // absent field. `shaScopeRoot` treats any non-nullish `event.cwd` as an override, so `""` beat the
+      // real `projectDir` and resolved a rule proof's sha against the wrong directory entirely
+      // ([/decisions/ad-141.md](/decisions/ad-141.md)) — a truthy check, like `claude.inbound.ts` already uses.
       if (eventKind === "shell.before") {
         const cwd = asString(raw.cwd);
-        if (cwd !== undefined) {
+        if (cwd) {
           event.cwd = cwd;
         }
       }

@@ -17,6 +17,7 @@ newest first. For what landed in which npm release, see `CHANGELOG.md` at the re
 
 - **AD-139** — lessonsView joins ProviderPort, closing the one dispatcher that bypassed it ([/decisions/ad-139.md](/decisions/ad-139.md))
 - **AD-140** — an unrecognized shell wrapper can no longer hide a forced push ([/decisions/ad-140.md](/decisions/ad-140.md))
+- **AD-141** — Cursor's empty-string cwd no longer outranks the real project root ([/decisions/ad-141.md](/decisions/ad-141.md))
 
 ## 2026-09-11
 

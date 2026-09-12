@@ -76,6 +76,15 @@ test("afterShellExecution does not carry cwd, even when the raw payload has one"
   assert.equal(event?.cwd, undefined);
 });
 
+// invariant: found live — Cursor sends `cwd: ""` on a command that never entered a worktree, not an
+// absent field. `event.cwd` must come out undefined for it, the same as if the field were absent,
+// or shaScopeRoot's `event.cwd ?? event.projectDir` picks the empty string over the real root
+// ([/decisions/ad-141.md](/decisions/ad-141.md)).
+test("beforeShellExecution treats an empty-string cwd as absent, not as an override", () => {
+  const event = cursorToEvent({ ...fixture("shell-before"), cwd: "" });
+  assert.equal(event?.cwd, undefined);
+});
+
 test("beforeMCPExecution maps to mcp.before and carries toolName and toolInput", () => {
   const event = cursorToEvent(fixture("mcp-before"));
   assert.equal(event?.event, "mcp.before");
