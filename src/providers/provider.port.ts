@@ -18,4 +18,5 @@ export type ProviderPort = {
   render(decision: Decision, event: HarnessEvent): Rendered;
   wiring(runtime: RuntimePaths): ProviderWiring;
   wiringTargets(): string[];
+  lessonsView(root: string): string | null;
 };

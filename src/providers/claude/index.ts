@@ -2,6 +2,7 @@ import type { ProviderPort } from "../provider.port.ts";
 import { claudeCapabilities } from "./claude.capabilities.ts";
 import { detectClaude } from "./claude.detect.ts";
 import { claudeToEvent } from "./claude.inbound.ts";
+import { renderClaudeLessonsView } from "./claude.lessons-view.ts";
 import { claudeRender } from "./claude.outbound.ts";
 import { claudePolicyDefaults } from "./claude.policy-defaults.ts";
 import { claudeWiring, claudeWiringTargets } from "./claude.wiring.ts";
@@ -15,4 +16,5 @@ export const claudeProvider: ProviderPort = {
   render: claudeRender,
   wiring: claudeWiring,
   wiringTargets: claudeWiringTargets,
+  lessonsView: renderClaudeLessonsView,
 };

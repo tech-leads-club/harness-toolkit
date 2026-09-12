@@ -10,7 +10,7 @@ import {
 } from "../core/index.ts";
 import { filterCodeTargets, filterTestTargets, gitRootOf, listChangedRepoFiles } from "../platform/git.ts";
 import { runProcess } from "../platform/process.ts";
-import { type ProviderPort, renderClaudeLessonsView, renderCursorLessonsView } from "../providers/index.ts";
+import { type ProviderPort, providers } from "../providers/index.ts";
 
 // invariant: one definition, taken from core rather than restated.
 export const OBS_CONFIG = coreFacade.observability.DEFAULT_OBS;
@@ -252,14 +252,14 @@ export function renderLessonLine(lesson: HarnessLesson): string {
  * invariant: one dispatcher, imported by both session entrypoints. The durable view is written at session start and
  * again at session end, and a copy of this switch in each would be the AD-042 defect a second time.
  */
+/**
+ * why a registry lookup, not a name-checking chain: a third adapter added to `providers` gets this
+ * dispatched for free, the same way it already gets `detect`/`capabilities`/`render` for free — `ProviderPort`
+ * itself, not this function, is what requires `lessonsView` to exist ([/decisions/ad-139.md](/decisions/ad-139.md)).
+ */
 export function renderProviderLessonsView(providerName: string, root: string): string | null {
-  if (providerName === "cursor") {
-    return renderCursorLessonsView(root);
-  }
-  if (providerName === "claude") {
-    return renderClaudeLessonsView(root);
-  }
-  return null;
+  const provider = providers.find((candidate) => candidate.name === providerName);
+  return provider?.lessonsView(root) ?? null;
 }
 
 /**

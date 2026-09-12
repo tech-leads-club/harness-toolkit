@@ -141,6 +141,8 @@ export const ${name}Provider: ProviderPort = {
   render: ${name}Render,
   wiring: ${name}Wiring,
   wiringTargets: ${name}WiringTargets,
+  // why: null until this host has its own durable lessons view (see cursor.lessons-view.ts / claude.lessons-view.ts for the shape a real one takes).
+  lessonsView: (_root: string): string | null => null,
 };
 `;
 }
