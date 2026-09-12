@@ -23,7 +23,11 @@ export function cursorCapabilities(): ProviderCapabilities {
     // code path ([/decisions/ad-050.md](/decisions/ad-050.md)).
     sessionStartContextReliable: false,
     toolOutputAtAfter: true,
-    usageInPayload: true,
+    // hazard: found live — a real session's cost report read $0.0000 throughout. No hook payload this
+    // adapter has observed carries a token field, and `transcript_path` is a plain message/tool-call
+    // log with no usage field either ([/decisions/ad-142.md](/decisions/ad-142.md)). `true` made
+    // `usageGenAi` skip its one real fallback for a host with nothing to read there either.
+    usageInPayload: false,
     effortSignal: false,
     thoughtEvent: true,
   };

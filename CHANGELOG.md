@@ -9,6 +9,7 @@ doctor reports against your own configuration.
 ## v0.15.4
 
 - **AD-141** — Cursor's empty-string cwd no longer outranks the real project root
+- **AD-142** — Cursor's usageInPayload was never true
 
 ## v0.15.4
 

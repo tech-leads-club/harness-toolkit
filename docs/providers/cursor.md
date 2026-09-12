@@ -35,7 +35,7 @@ Source: `src/providers/cursor/`.
 | `contextAtStop` | `false` |
 | `sessionStartContextReliable` | `false` |
 | `toolOutputAtAfter` | `true` |
-| `usageInPayload` | `true` |
+| `usageInPayload` | `false` |
 | `effortSignal` | `false` |
 | `thoughtEvent` | `true` |
 

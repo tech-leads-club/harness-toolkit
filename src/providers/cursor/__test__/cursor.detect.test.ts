@@ -79,7 +79,7 @@ test("capabilities match the design table exactly", () => {
     toolOutputAtAfter: true,
     contextAtStop: false,
     sessionStartContextReliable: false,
-    usageInPayload: true,
+    usageInPayload: false,
     effortSignal: false,
     thoughtEvent: true,
   });

@@ -383,7 +383,11 @@ test("tool.failure writes an audit.jsonl record", async () => {
   }
 });
 
-test("cost estimation is skipped when usage arrives in the payload (Cursor)", async () => {
+// why: cursorCapabilities().usageInPayload is false ([/decisions/ad-142.md](/decisions/ad-142.md)) —
+// Cursor has no known source of usage data, payload or transcript — and cursor.inbound.ts never maps
+// raw.transcript_path onto event.transcriptPath regardless, so a transcript_path in the raw payload
+// changes nothing for this host either way.
+test("cost estimation produces no gen_ai for Cursor — no payload field and no transcript path mapped", async () => {
   const root = tempRoot();
   try {
     const outcome = await runHandler(

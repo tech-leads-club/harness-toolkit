@@ -149,6 +149,7 @@ Handoff section and a link back to this index.
 | [AD-139](/decisions/ad-139.md) | lessonsView joins ProviderPort, closing the one dispatcher that bypassed it | active |
 | [AD-140](/decisions/ad-140.md) | an unrecognized shell wrapper can no longer hide a forced push | active |
 | [AD-141](/decisions/ad-141.md) | Cursor's empty-string cwd no longer outranks the real project root | active |
+| [AD-142](/decisions/ad-142.md) | Cursor's usageInPayload was never true | active |
 
 ## Archived
 
