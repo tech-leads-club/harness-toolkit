@@ -9,6 +9,7 @@ doctor reports against your own configuration.
 ## v0.15.2
 
 - **AD-138** — a pr-open rule's own denial names its draft escape hatch
+- **AD-139** — lessonsView joins ProviderPort, closing the one dispatcher that bypassed it
 
 ## v0.15.1
 

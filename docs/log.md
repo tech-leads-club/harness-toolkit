@@ -13,6 +13,10 @@ Generated from `docs/decisions/` — do not edit by hand. Run `node tools/render
 A reserved file of the [OKF v0.1](/decisions/ad-013.md) bundle: entries grouped under ISO 8601 headings,
 newest first. For what landed in which npm release, see `CHANGELOG.md` at the repository root.
 
+## 2026-09-12
+
+- **AD-139** — lessonsView joins ProviderPort, closing the one dispatcher that bypassed it ([/decisions/ad-139.md](/decisions/ad-139.md))
+
 ## 2026-09-11
 
 - **AD-137** — Gate artifacts are scoped per session, the same fix AD-122 already proved for handoff ([/decisions/ad-137.md](/decisions/ad-137.md))
