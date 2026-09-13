@@ -6,6 +6,10 @@ Each entry is an architectural decision record: what changed, why, what was refu
 A **Needs your action** line is a change `tlc harness doctor` cannot detect for you; everything else
 doctor reports against your own configuration.
 
+## v0.16.0
+
+No decision records landed in this release.
+
 ## v0.15.5
 
 - **AD-141** — Cursor's empty-string cwd no longer outranks the real project root
