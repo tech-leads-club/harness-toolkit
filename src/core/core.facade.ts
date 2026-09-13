@@ -25,6 +25,7 @@ import {
   commentEditAdvisory,
   commentViolationMessage,
   declaresReason,
+  diskLineReader,
   filterCommentTargets,
   findAddedComments,
   isCommentLine,
@@ -491,6 +492,7 @@ export const coreFacade = {
     filterCommentTargets,
     unknownExtensions,
     KNOWN_EXTENSION_COUNT,
+    diskLineReader,
   },
   ship: {
     detectShipClaim,

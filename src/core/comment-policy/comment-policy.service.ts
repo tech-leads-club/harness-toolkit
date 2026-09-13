@@ -278,7 +278,7 @@ export function findAddedComments(
 
 // hazard: documenting an existing export touches only the comment, so the declaration it attaches to is
 // absent from the diff and has to be read from disk.
-function diskLineReader(gitRoot: string): NextCodeLine {
+export function diskLineReader(gitRoot: string): NextCodeLine {
   const cache = new Map<string, string[]>();
   return (file, line) => {
     let lines = cache.get(file);
