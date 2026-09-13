@@ -7,6 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, describe, test } from "node:test";
+import { coreFacade } from "../../core/index.ts";
 import { projectConfigPath } from "../../platform/paths.ts";
 import { runHandler } from "../run.ts";
 import { toolBeforeHandler } from "../tool-before.ts";
@@ -284,6 +285,56 @@ describe("CGPD-05: an unconfirmed tool_name abstains", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test("MultiEdit is unaffected — spec's own named example of an unconfirmed shape", async () => {
+    const root = tempRepo();
+    try {
+      withComments(root);
+      const payload = JSON.stringify({
+        hook_event_name: "PreToolUse",
+        cwd: root,
+        session_id: "sess-1",
+        tool_name: "MultiEdit",
+        tool_input: {
+          file_path: "src/index.ts",
+          edits: [{ old_string: "export const a = 1;", new_string: "// added this turn" }],
+        },
+      });
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(payload));
+      assert.notEqual(outcome.decision.kind, "deny");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("edge case: empty proposedContent is treated as no comment present", () => {
+  test("Write with content: '' is not denied", async () => {
+    const root = tempRepo();
+    try {
+      withComments(root);
+      const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeWrite(root, "src/index.ts", "")));
+      assert.notEqual(outcome.decision.kind, "deny");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("edge case: a file outside policy.codePaths abstains", () => {
+  test("Write to docs/readme.ts with an undeclared comment is not denied", async () => {
+    const root = tempRepo();
+    try {
+      withComments(root);
+      const outcome = await runHandler(
+        toolBeforeHandler,
+        stdinOf(claudeWrite(root, "docs/readme.ts", "# doc\n// added this turn\n")),
+      );
+      assert.notEqual(outcome.decision.kind, "deny");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("CGPD-06: a confirmed tool_name missing its expected field abstains, not a crash", () => {
@@ -348,8 +399,15 @@ describe("CGPD-08: the deny reason is produced by commentViolationMessage verbat
       );
       assert.equal(outcome.decision.kind, "deny");
       const reason = outcome.decision.kind === "deny" ? outcome.decision.reason : "";
-      assert.match(reason, /^BLOCKED: this turn added 1 comment\(s\)\./);
-      assert.match(reason, /NEED: delete each line below, or restate it as why: \/ hazard: \/ invariant:/);
+      const expectedHits = [
+        {
+          file: "src/index.ts",
+          line: 2,
+          reason: "undeclared comment added this turn",
+          text: "// added this turn",
+        },
+      ];
+      assert.equal(reason, coreFacade.commentPolicy.commentViolationMessage(expectedHits, "declared"));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
