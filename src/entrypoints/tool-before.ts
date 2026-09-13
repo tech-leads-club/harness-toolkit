@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import type { Decision, HarnessEvent } from "../contracts/index.ts";
 import { coreFacade } from "../core/index.ts";
-import { localRepoRemote } from "../platform/git.ts";
+import type { AddedLine } from "../platform/git.ts";
+import { diffProposedAgainstDisk, gitRootOf, localRepoRemote } from "../platform/git.ts";
+import { normalizeSeparators } from "../platform/sanitize.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
 import { shipGateVerdict } from "./ship-gate.ts";
@@ -44,6 +48,92 @@ async function commentGateBeforeCommit(event: HarnessEvent, ctx: HandlerContext)
     reason: `${coreFacade.commentPolicy.commentViolationMessage(hits, ctx.policy.comments.mode)}\n\n${diag.footer}`,
     rule: "comment-policy-before-ship",
     diagnostic: diag.summary,
+  };
+}
+
+// why: `Edit`'s `new_string` is not at line 1 of the file — locating `old_string` on disk gives the real
+// starting line, so `diskLineReader`'s JSDoc-identifier lookup reads the right context after it.
+function editAddedLines(
+  currentContent: string,
+  oldContent: string,
+  newContent: string,
+  file: string,
+): AddedLine[] | null {
+  const idx = currentContent.indexOf(oldContent);
+  if (idx === -1) {
+    return null;
+  }
+  const startLine = currentContent.slice(0, idx).split("\n").length;
+  return newContent.split("\n").map((text, i) => ({ file, line: startLine + i, text }));
+}
+
+/**
+ * why after `commentGateBeforeCommit`, before `shipGuard`: same tier — a built-in capability check, reads
+ * policy, not operator-authored ([/decisions/ad-115.md](/decisions/ad-115.md)).
+ */
+async function commentGateBeforeEdit(event: HarnessEvent, ctx: HandlerContext): Promise<Decision> {
+  const { policy } = ctx;
+  if (!policy.comments.enabled || policy.comments.onViolation !== "followup") {
+    return { kind: "abstain" };
+  }
+  if (event.proposedContent === undefined || event.proposedContent === "") {
+    return { kind: "abstain" };
+  }
+  const filePath = filePathOf(event);
+  if (!filePath) {
+    return { kind: "abstain" };
+  }
+  // why: a Write/Edit `tool_input.file_path` arrives relative to the project root, not to this process's own
+  // cwd — resolving it first is `resolveTarget`'s own approach (`src/core/floor/floor.paths.ts`); `relative()`
+  // alone treats a bare relative path as relative to `process.cwd()`, which only happens to equal `projectDir`
+  // when a real hook process's cwd was set there.
+  const absoluteFilePath = isAbsolute(filePath) ? filePath : resolve(event.projectDir, filePath);
+  const relativePath = normalizeSeparators(relative(event.projectDir, absoluteFilePath));
+  if (relativePath.startsWith("..") || !coreFacade.policy.isUnderCodePaths(relativePath, policy.codePaths)) {
+    return { kind: "abstain" };
+  }
+  if (coreFacade.commentPolicy.filterCommentTargets([relativePath]).length === 0) {
+    return { kind: "abstain" };
+  }
+
+  const gitRoot = (await gitRootOf(event.projectDir)) ?? event.projectDir;
+  let added: AddedLine[];
+  let nextCodeLine: ((file: string, line: number) => string | undefined) | undefined;
+
+  if (event.toolName === "Write") {
+    added = await diffProposedAgainstDisk(gitRoot, relativePath, event.proposedContent);
+    const proposedLines = event.proposedContent.split("\n");
+    nextCodeLine = (_file, line) => proposedLines[line - 1];
+  } else if (event.toolName === "Edit" && event.proposedOldContent !== undefined) {
+    let currentContent: string;
+    try {
+      currentContent = readFileSync(join(gitRoot, relativePath), "utf8");
+    } catch {
+      return { kind: "abstain" };
+    }
+    const edited = editAddedLines(
+      currentContent,
+      event.proposedOldContent,
+      event.proposedContent,
+      relativePath,
+    );
+    if (edited === null) {
+      return { kind: "abstain" };
+    }
+    added = edited;
+    nextCodeLine = coreFacade.commentPolicy.diskLineReader(gitRoot);
+  } else {
+    return { kind: "abstain" };
+  }
+
+  const hits = coreFacade.commentPolicy.findAddedComments(added, policy.comments.mode, nextCodeLine);
+  if (hits.length === 0) {
+    return { kind: "abstain" };
+  }
+  return {
+    kind: "deny",
+    reason: coreFacade.commentPolicy.commentViolationMessage(hits, policy.comments.mode),
+    rule: "comment-policy-before-edit",
   };
 }
 
@@ -274,6 +364,11 @@ export const toolBeforeHandler: Handler = async (
   if (commitGuard.kind !== "abstain") {
     recordShellDecisionIfShell(event, ctx, commitGuard);
     return commitGuard;
+  }
+
+  const editGuard = await commentGateBeforeEdit(event, ctx);
+  if (editGuard.kind !== "abstain") {
+    return editGuard;
   }
 
   /**
