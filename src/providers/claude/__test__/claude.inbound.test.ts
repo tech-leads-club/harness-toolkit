@@ -69,6 +69,24 @@ test("PreToolUse + Write fans out to tool.before with filePath for the collision
   assert.equal(event?.filePath, "src/new-file.ts");
 });
 
+test("PreToolUse + Write carries proposedContent from tool_input.content", () => {
+  const event = claudeToEvent(fixture("pre-tool-use-write"));
+  assert.equal(event?.proposedContent, "export {};");
+  assert.equal(event?.proposedOldContent, undefined);
+});
+
+test("PreToolUse + Edit carries proposedContent from new_string and proposedOldContent from old_string", () => {
+  const event = claudeToEvent(fixture("pre-tool-use-edit"));
+  assert.equal(event?.proposedContent, "b");
+  assert.equal(event?.proposedOldContent, "a");
+});
+
+test("PreToolUse + Task leaves proposedContent and proposedOldContent unset", () => {
+  const event = claudeToEvent(fixture("pre-tool-use-task"));
+  assert.equal(event?.proposedContent, undefined);
+  assert.equal(event?.proposedOldContent, undefined);
+});
+
 test("PostToolUse + Bash fans out to shell.after with command", () => {
   const event = claudeToEvent(fixture("post-tool-use-bash"));
   assert.equal(event?.event, "shell.after");

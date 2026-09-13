@@ -250,6 +250,22 @@ export function claudeToEvent(raw: Record<string, unknown>): HarnessEvent | null
       if (spawnModel) {
         event.spawnModel = spawnModel;
       }
+      if (toolName === "Write") {
+        const proposedContent = toolInput ? asString(toolInput.content) : undefined;
+        if (proposedContent !== undefined) {
+          event.proposedContent = proposedContent;
+        }
+      }
+      if (toolName === "Edit") {
+        const proposedContent = toolInput ? asString(toolInput.new_string) : undefined;
+        if (proposedContent !== undefined) {
+          event.proposedContent = proposedContent;
+        }
+        const proposedOldContent = toolInput ? asString(toolInput.old_string) : undefined;
+        if (proposedOldContent !== undefined) {
+          event.proposedOldContent = proposedOldContent;
+        }
+      }
       break;
     }
     case "subagent.start":
