@@ -192,17 +192,11 @@ async function noIndexDiffLines(fileA: string, fileB: string): Promise<string[]>
 
 // invariant: never writes to `.git/objects` or the working tree — two temp files carry both sides,
 // removed in `finally`.
-export async function diffProposedAgainstDisk(
-  gitRoot: string,
-  file: string,
+export async function diffTwoStrings(
+  currentContent: string,
   proposedContent: string,
+  file: string,
 ): Promise<AddedLine[]> {
-  let currentContent = "";
-  try {
-    currentContent = readFileSync(join(gitRoot, file), "utf8");
-  } catch {
-    currentContent = "";
-  }
   if (currentContent === proposedContent) {
     return [];
   }
@@ -218,6 +212,20 @@ export async function diffProposedAgainstDisk(
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
+}
+
+export async function diffProposedAgainstDisk(
+  gitRoot: string,
+  file: string,
+  proposedContent: string,
+): Promise<AddedLine[]> {
+  let currentContent = "";
+  try {
+    currentContent = readFileSync(join(gitRoot, file), "utf8");
+  } catch {
+    currentContent = "";
+  }
+  return diffTwoStrings(currentContent, proposedContent, file);
 }
 
 function isUnderPrefixes(relativePath: string, prefixes: string[]): boolean {

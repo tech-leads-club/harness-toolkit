@@ -327,7 +327,7 @@ export function commentViolationMessage(hits: CommentFinding[], mode: CommentMod
           ];
   return [
     `BLOCKED: this turn added ${hits.length} comment(s).`,
-    "TRIED: compared the lines this turn added against the commit it started from; pre-existing",
+    "TRIED: compared the proposed lines against what already exists there; pre-existing",
     "comments are never counted.",
     "Each entry is one comment, reported at its first line.",
     ...need,

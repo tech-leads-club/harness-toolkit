@@ -212,6 +212,68 @@ describe("CGPD-02: Edit introducing an undeclared comment via new_string is deni
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test("false-positive guard: a pre-existing comment carried through old_string into new_string for context is not re-flagged", async () => {
+    const root = tempRepo();
+    try {
+      writeFileSync(
+        join(root, "src", "index.ts"),
+        "// legacy note, written by a human long ago\nexport const a = 1;\n",
+      );
+      git(root, "add", ".");
+      git(root, "commit", "-q", "-m", "pre-existing declared-looking comment");
+      withComments(root);
+
+      // why: Claude's own Edit tool requires old_string to be unique, so the model routinely widens it with
+      // surrounding context (here, the comment above) that it never intended to touch.
+      const outcome = await runHandler(
+        toolBeforeHandler,
+        stdinOf(
+          claudeEdit(
+            root,
+            "src/index.ts",
+            "// legacy note, written by a human long ago\nexport const a = 1;",
+            "// legacy note, written by a human long ago\nexport const a = 2;",
+          ),
+        ),
+      );
+      assert.notEqual(outcome.decision.kind, "deny");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("regression: relativePath resolves against event.projectDir, not a separately-resolved git root", () => {
+  test("a Write to an existing file in a project directory nested inside a larger git repo is diffed correctly, not misread as a brand-new file", async () => {
+    const outerRoot = mkdtempSync(join(tmpdir(), "tlc-comment-edit-gate-monorepo-"));
+    try {
+      git(outerRoot, "init", "-q");
+      const projectDir = join(outerRoot, "packages", "app");
+      mkdirSync(join(projectDir, "src"), { recursive: true });
+      writeFileSync(
+        join(projectDir, "src", "index.ts"),
+        "// legacy note, written by a human long ago\nexport const a = 1;\n",
+      );
+      git(outerRoot, "add", ".");
+      git(outerRoot, "commit", "-q", "-m", "one");
+      withComments(projectDir);
+
+      const outcome = await runHandler(
+        toolBeforeHandler,
+        stdinOf(
+          claudeWrite(
+            projectDir,
+            "src/index.ts",
+            "// legacy note, written by a human long ago\nexport const a = 2;\n",
+          ),
+        ),
+      );
+      assert.notEqual(outcome.decision.kind, "deny");
+    } finally {
+      rmSync(outerRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("CGPD-03: no false positive on a properly declared or absent comment", () => {
@@ -407,7 +469,13 @@ describe("CGPD-08: the deny reason is produced by commentViolationMessage verbat
           text: "// added this turn",
         },
       ];
-      assert.equal(reason, coreFacade.commentPolicy.commentViolationMessage(expectedHits, "declared"));
+      const expectedMessage = coreFacade.commentPolicy.commentViolationMessage(expectedHits, "declared");
+      const expectedDiagnostic = coreFacade.diagnostics.rootDiagnostic(root);
+      assert.equal(reason, `${expectedMessage}\n\n${expectedDiagnostic.footer}`);
+      assert.equal(
+        outcome.decision.kind === "deny" ? outcome.decision.diagnostic : "",
+        expectedDiagnostic.summary,
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

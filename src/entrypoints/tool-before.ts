@@ -3,7 +3,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import type { Decision, HarnessEvent } from "../contracts/index.ts";
 import { coreFacade } from "../core/index.ts";
 import type { AddedLine } from "../platform/git.ts";
-import { diffProposedAgainstDisk, gitRootOf, localRepoRemote } from "../platform/git.ts";
+import { diffProposedAgainstDisk, diffTwoStrings, localRepoRemote } from "../platform/git.ts";
 import { normalizeSeparators } from "../platform/sanitize.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
@@ -51,20 +51,29 @@ async function commentGateBeforeCommit(event: HarnessEvent, ctx: HandlerContext)
   };
 }
 
-// why: `Edit`'s `new_string` is not at line 1 of the file — locating `old_string` on disk gives the real
-// starting line, so `diskLineReader`'s JSDoc-identifier lookup reads the right context after it.
-function editAddedLines(
+/**
+ * hazard: `new_string` routinely carries lines copied verbatim from `old_string` — Claude's own Edit tool
+ * asks for surrounding context to make `old_string` unique. Treating every `new_string` line as added
+ * flagged a pre-existing comment the model never touched. Diffing `oldContent` against `newContent` (the
+ * same real-diff machinery `diffProposedAgainstDisk` already uses) isolates only what actually changed.
+ *
+ * why: `old_string`'s own start line, located on disk, offsets the diff's line numbers onto the real file —
+ * `new_string` is not at line 1, and `diskLineReader`'s JSDoc-identifier lookup needs the real line to read
+ * the right context after it.
+ */
+async function editAddedLines(
   currentContent: string,
   oldContent: string,
   newContent: string,
   file: string,
-): AddedLine[] | null {
+): Promise<AddedLine[] | null> {
   const idx = currentContent.indexOf(oldContent);
   if (idx === -1) {
     return null;
   }
   const startLine = currentContent.slice(0, idx).split("\n").length;
-  return newContent.split("\n").map((text, i) => ({ file, line: startLine + i, text }));
+  const diff = await diffTwoStrings(oldContent, newContent, file);
+  return diff.map((line) => ({ ...line, line: line.line + startLine - 1 }));
 }
 
 /**
@@ -96,22 +105,24 @@ async function commentGateBeforeEdit(event: HarnessEvent, ctx: HandlerContext): 
     return { kind: "abstain" };
   }
 
-  const gitRoot = (await gitRootOf(event.projectDir)) ?? event.projectDir;
+  // why: `relativePath` was just computed against `event.projectDir`, not any resolved git root — a
+  // monorepo package whose `projectDir` sits below the repo's real root joined it onto the wrong base and
+  // either read the wrong file or, worse, read nothing and silently treated an existing file as brand new.
   let added: AddedLine[];
   let nextCodeLine: ((file: string, line: number) => string | undefined) | undefined;
 
   if (event.toolName === "Write") {
-    added = await diffProposedAgainstDisk(gitRoot, relativePath, event.proposedContent);
+    added = await diffProposedAgainstDisk(event.projectDir, relativePath, event.proposedContent);
     const proposedLines = event.proposedContent.split("\n");
     nextCodeLine = (_file, line) => proposedLines[line - 1];
   } else if (event.toolName === "Edit" && event.proposedOldContent !== undefined) {
     let currentContent: string;
     try {
-      currentContent = readFileSync(join(gitRoot, relativePath), "utf8");
+      currentContent = readFileSync(join(event.projectDir, relativePath), "utf8");
     } catch {
       return { kind: "abstain" };
     }
-    const edited = editAddedLines(
+    const edited = await editAddedLines(
       currentContent,
       event.proposedOldContent,
       event.proposedContent,
@@ -121,7 +132,7 @@ async function commentGateBeforeEdit(event: HarnessEvent, ctx: HandlerContext): 
       return { kind: "abstain" };
     }
     added = edited;
-    nextCodeLine = coreFacade.commentPolicy.diskLineReader(gitRoot);
+    nextCodeLine = coreFacade.commentPolicy.diskLineReader(event.projectDir);
   } else {
     return { kind: "abstain" };
   }
@@ -130,10 +141,15 @@ async function commentGateBeforeEdit(event: HarnessEvent, ctx: HandlerContext): 
   if (hits.length === 0) {
     return { kind: "abstain" };
   }
+  // why: every deny in this battery names what it checked and points at `tlc harness why`
+  // ([/decisions/ad-131.md](/decisions/ad-131.md)) — this one has no commit sha to reproduce against, so
+  // it names the directory it checked, the same minimal form `rootDiagnostic` already gives a gate failure.
+  const diag = coreFacade.diagnostics.rootDiagnostic(event.projectDir);
   return {
     kind: "deny",
-    reason: coreFacade.commentPolicy.commentViolationMessage(hits, policy.comments.mode),
+    reason: `${coreFacade.commentPolicy.commentViolationMessage(hits, policy.comments.mode)}\n\n${diag.footer}`,
     rule: "comment-policy-before-edit",
+    diagnostic: diag.summary,
   };
 }
 
