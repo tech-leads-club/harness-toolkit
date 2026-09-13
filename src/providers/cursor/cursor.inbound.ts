@@ -151,6 +151,12 @@ export function cursorToEvent(raw: Record<string, unknown>): HarnessEvent | null
       if (toolSpawnType) {
         event.spawnSubagentType = toolSpawnType;
       }
+      if (toolName === "Write") {
+        const proposedContent = toolInput ? asString(toolInput.content) : undefined;
+        if (proposedContent !== undefined) {
+          event.proposedContent = proposedContent;
+        }
+      }
       break;
     }
     case "shell.before":

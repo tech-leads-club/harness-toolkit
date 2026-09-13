@@ -38,6 +38,25 @@ test("preToolUse maps to tool.before and carries toolName, toolInput, subagentTy
   assert.equal(event?.subagentType, "explore");
 });
 
+test("preToolUse with tool_name Write carries proposedContent from tool_input.content", () => {
+  const event = cursorToEvent({
+    hook_event_name: "preToolUse",
+    conversation_id: "conv-abc",
+    session_id: "sess-1",
+    workspace_roots: ["/repo"],
+    tool_name: "Write",
+    tool_input: { file_path: "src/index.ts", content: "export const a = 1;\n" },
+  });
+  assert.equal(event?.event, "tool.before");
+  assert.equal(event?.proposedContent, "export const a = 1;\n");
+});
+
+test("preToolUse with any other tool_name leaves proposedContent unset", () => {
+  const event = cursorToEvent(fixture("tool-before"));
+  assert.equal(event?.toolName, "Task");
+  assert.equal(event?.proposedContent, undefined);
+});
+
 test("postToolUse maps to tool.after and carries toolName", () => {
   const event = cursorToEvent(fixture("tool-after"));
   assert.equal(event?.event, "tool.after");
