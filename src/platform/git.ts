@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runProcess } from "./process.ts";
 import { normalizeSeparators } from "./sanitize.ts";
@@ -120,6 +121,28 @@ export type AddedLine = {
   text: string;
 };
 
+// why: shared by `listAddedLines` (a real git-history diff) and `diffProposedAgainstDisk` (a diff of two
+// in-memory strings never committed anywhere) — one parser for one diff format, not two.
+function parseUnifiedAdded(diffLines: string[], file: string): AddedLine[] {
+  const out: AddedLine[] = [];
+  let lineNo = 0;
+  for (const row of diffLines) {
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(row);
+    if (hunk) {
+      lineNo = Number(hunk[1]);
+      continue;
+    }
+    if (row.startsWith("+++")) {
+      continue;
+    }
+    if (row.startsWith("+")) {
+      out.push({ file, line: lineNo, text: row.slice(1) });
+      lineNo += 1;
+    }
+  }
+  return out;
+}
+
 export async function listAddedLines(
   projectDir: string,
   relativePaths: string[],
@@ -149,23 +172,52 @@ export async function listAddedLines(
       continue;
     }
     const diff = await gitLines(root, ["diff", "--unified=0", base, "--", file]);
-    let lineNo = 0;
-    for (const row of diff) {
-      const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(row);
-      if (hunk) {
-        lineNo = Number(hunk[1]);
-        continue;
-      }
-      if (row.startsWith("+++")) {
-        continue;
-      }
-      if (row.startsWith("+")) {
-        out.push({ file, line: lineNo, text: row.slice(1) });
-        lineNo += 1;
-      }
-    }
+    out.push(...parseUnifiedAdded(diff, file));
   }
   return out;
+}
+
+// hazard: exit 1 means "diff found" here, not failure like every other git call in this file — reusing
+// `gitLines` would read every real diff as empty.
+async function noIndexDiffLines(fileA: string, fileB: string): Promise<string[]> {
+  const result = await runProcess({ command: ["git", "diff", "--no-index", "--unified=0", fileA, fileB] });
+  if (result.exitCode >= 2) {
+    return [];
+  }
+  return result.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+// invariant: never writes to `.git/objects` or the working tree — two temp files carry both sides,
+// removed in `finally`.
+export async function diffProposedAgainstDisk(
+  gitRoot: string,
+  file: string,
+  proposedContent: string,
+): Promise<AddedLine[]> {
+  let currentContent = "";
+  try {
+    currentContent = readFileSync(join(gitRoot, file), "utf8");
+  } catch {
+    currentContent = "";
+  }
+  if (currentContent === proposedContent) {
+    return [];
+  }
+
+  const scratch = mkdtempSync(join(tmpdir(), "tlc-comment-gate-"));
+  try {
+    const currentPath = join(scratch, "current");
+    const proposedPath = join(scratch, "proposed");
+    writeFileSync(currentPath, currentContent, "utf8");
+    writeFileSync(proposedPath, proposedContent, "utf8");
+    const diff = await noIndexDiffLines(currentPath, proposedPath);
+    return parseUnifiedAdded(diff, file);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 function isUnderPrefixes(relativePath: string, prefixes: string[]): boolean {

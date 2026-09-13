@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import {
+  diffProposedAgainstDisk,
   filterCodeTargets,
   filterTestTargets,
   gitRootOf,
@@ -288,6 +289,88 @@ describe("the turn's base, not the HEAD at stop", () => {
       assert.deepEqual(await listAddedLines(dir, ["a.ts"]), []);
     });
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+/**
+ * CGPD-01 — the mechanism `commentGateBeforeEdit` needs to isolate genuinely new lines out of a full-file
+ * `Write` to an EXISTING file, without a false positive on a comment that was already there before this
+ * session. Real `git diff --no-index` against two temp files, never the working tree or `.git/objects`.
+ */
+describe("diffProposedAgainstDisk", () => {
+  test("a file that does not exist yet reports every proposed line as added", async () => {
+    const root = mkdtempSync(join(tmpdir(), "diff-proposed-"));
+    const proposed = "export function add(a, b) {\n  return a + b;\n}\n";
+
+    const added = await diffProposedAgainstDisk(root, "new.ts", proposed);
+
+    assert.deepEqual(
+      added.map((line) => ({ line: line.line, text: line.text })),
+      [
+        { line: 1, text: "export function add(a, b) {" },
+        { line: 2, text: "  return a + b;" },
+        { line: 3, text: "}" },
+      ],
+    );
+    assert.ok(added.every((line) => line.file === "new.ts"));
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("a pre-existing undeclared comment already on disk is not reported, only the genuine addition is", async () => {
+    const root = mkdtempSync(join(tmpdir(), "diff-proposed-"));
+    writeFileSync(
+      join(root, "existing.ts"),
+      "export function add(a, b) {\n  // old comment\n  return a + b;\n}\n",
+      "utf8",
+    );
+    const proposed =
+      "export function add(a, b) {\n  // old comment\n  return a + b;\n}\nexport function sub(a, b) {\n  // new comment\n  return a - b;\n}\n";
+
+    const added = await diffProposedAgainstDisk(root, "existing.ts", proposed);
+
+    assert.deepEqual(
+      added.map((line) => line.text),
+      ["export function sub(a, b) {", "  // new comment", "  return a - b;", "}"],
+    );
+    assert.equal(
+      added.some((line) => line.text === "  // old comment"),
+      false,
+      "the pre-existing comment must never be reported as an addition",
+    );
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("proposed content identical to what is on disk reports no added lines", async () => {
+    const root = mkdtempSync(join(tmpdir(), "diff-proposed-"));
+    const content = "export const a = 1;\n";
+    writeFileSync(join(root, "same.ts"), content, "utf8");
+
+    const added = await diffProposedAgainstDisk(root, "same.ts", content);
+
+    assert.deepEqual(added, []);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("binary content on both sides does not throw and reports no line-shaped additions", async () => {
+    const root = mkdtempSync(join(tmpdir(), "diff-proposed-"));
+    writeFileSync(join(root, "bin.dat"), Buffer.from([0, 1, 2]).toString("latin1"), "utf8");
+
+    await assert.doesNotReject(async () => {
+      const added = await diffProposedAgainstDisk(root, "bin.dat", Buffer.from([0, 1, 3]).toString("latin1"));
+      assert.deepEqual(added, []);
+    });
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("the scratch temp directory is removed after the call, success or failure", async () => {
+    const root = mkdtempSync(join(tmpdir(), "diff-proposed-"));
+    const before = readdirSync(tmpdir()).filter((name) => name.startsWith("tlc-comment-gate-"));
+
+    await diffProposedAgainstDisk(root, "new.ts", "a\nb\n");
+
+    const after = readdirSync(tmpdir()).filter((name) => name.startsWith("tlc-comment-gate-"));
+    assert.deepEqual(after, before);
+    rmSync(root, { recursive: true, force: true });
   });
 });
 
