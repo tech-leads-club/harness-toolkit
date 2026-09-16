@@ -28,7 +28,7 @@ const ENTRY_SPECS: readonly EntrySpec[] = [
   { hookEvent: "preCompact", handler: "compact-before", timeoutSeconds: 5 },
   { hookEvent: "subagentStart", handler: "subagent-start", timeoutSeconds: 5, failClosed: true },
   { hookEvent: "subagentStop", handler: "subagent-stop", timeoutSeconds: 5 },
-  { hookEvent: "preToolUse", handler: "tool-before", timeoutSeconds: 5, failClosed: true },
+  { hookEvent: "preToolUse", handler: "tool-before", timeoutSeconds: 10, failClosed: true },
   { hookEvent: "postToolUse", handler: "tool-after", timeoutSeconds: 5 },
   { hookEvent: "postToolUseFailure", handler: "tool-failure", timeoutSeconds: 5 },
   { hookEvent: "beforeShellExecution", handler: "tool-before", timeoutSeconds: 10, failClosed: true },
