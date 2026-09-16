@@ -163,6 +163,23 @@ test("turn_base_sha reflects the event's own cwd, not CLAUDE_PROJECT_DIR", async
   }
 });
 
+// why: AD-144 — the sha alone cannot later be told apart from one captured in an unrelated worktree;
+// the git root it came from has to travel with it.
+test("prompt.submit also records turn_base_root, the git root turn_base_sha was captured from", async () => {
+  const mainCheckout = gitRepo("tlc-prompt-root-main-");
+  const worktree = gitRepo("tlc-prompt-root-worktree-");
+  process.env.CLAUDE_PROJECT_DIR = mainCheckout;
+  try {
+    await runHandler(promptSubmitHandler, stdinOf(claudePromptSubmit(worktree)));
+
+    const handoff = coreFacade.handoff.readHandoff(mainCheckout, "claude", "claude-sess-1");
+    assert.equal(handoff.turn_base_root, worktree);
+  } finally {
+    rmSync(mainCheckout, { recursive: true, force: true });
+    rmSync(worktree, { recursive: true, force: true });
+  }
+});
+
 test("compact.before emits a provider-tagged obs record under Cursor", async () => {
   const root = tempRoot();
   try {

@@ -6,7 +6,13 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { HarnessEvent } from "../../contracts/index.ts";
 import type { ProviderPort } from "../../providers/index.ts";
-import { currentGitBranch, currentGitSha, renderProviderLessonsView, shaScopeRoot } from "../support.ts";
+import {
+  currentGitBranch,
+  currentGitSha,
+  renderProviderLessonsView,
+  resolveTurnBase,
+  shaScopeRoot,
+} from "../support.ts";
 
 function git(cwd: string, args: string[]): void {
   execFileSync("git", args, { cwd });
@@ -111,4 +117,60 @@ test("a provider present in the registry is dispatched by its lessonsView, unedi
   const result = renderProviderLessonsView("fixture-lessons-provider", "/tmp/some-root", [fixture]);
   assert.equal(result, "rendered by the fixture");
   assert.deepEqual(calls, ["/tmp/some-root"]);
+});
+
+// why: AD-144 — `turn_base_sha` alone cannot tell "captured here" from "captured in an unrelated
+// worktree three turns ago." These pin the guard that tells the two apart.
+test("resolveTurnBase returns HEAD when no slice is recorded", async () => {
+  const dir = initRepo();
+  try {
+    assert.equal(await resolveTurnBase(undefined, dir), "HEAD");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveTurnBase returns HEAD when turn_base_sha is set but turn_base_root is missing", async () => {
+  const dir = initRepo();
+  try {
+    const sha = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    assert.equal(await resolveTurnBase({ turn_base_sha: sha }, dir), "HEAD");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveTurnBase returns the recorded sha when turn_base_root matches the current git root", async () => {
+  const dir = initRepo();
+  try {
+    const sha = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: dir, encoding: "utf8" }).trim();
+    const resolved = await resolveTurnBase({ turn_base_sha: sha, turn_base_root: root }, dir);
+    assert.equal(resolved, sha);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveTurnBase returns HEAD when turn_base_root names a different git root than the one being diffed", async () => {
+  const capturedIn = initRepo();
+  const diffedIn = initRepo();
+  try {
+    const staleSha = execFileSync("git", ["rev-parse", "--short", "HEAD"], {
+      cwd: capturedIn,
+      encoding: "utf8",
+    }).trim();
+    const capturedRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: capturedIn,
+      encoding: "utf8",
+    }).trim();
+    const resolved = await resolveTurnBase(
+      { turn_base_sha: staleSha, turn_base_root: capturedRoot },
+      diffedIn,
+    );
+    assert.equal(resolved, "HEAD");
+  } finally {
+    rmSync(capturedIn, { recursive: true, force: true });
+    rmSync(diffedIn, { recursive: true, force: true });
+  }
 });

@@ -309,6 +309,54 @@ describe("ship-gate: worktree scoping, AD-129", () => {
   });
 });
 
+/**
+ * AD-144 — the production incident this closes: a long session moves between many worktrees of the
+ * same repo. `turn_base_sha` is captured in one (at `prompt.submit`) and read back in a different one
+ * (at `stop`/ship time). Both worktrees share one object database, so the captured sha is a perfectly
+ * valid, resolvable commit in the second worktree too — just an old one, an ancestor of its current HEAD
+ * — so a comment landed on the shared branch *after* the capture reads as "added this turn" in a worktree
+ * whose own tree never changed at all.
+ */
+describe("ship-gate: turn_base_sha captured in one worktree, read in an unrelated one, AD-144", () => {
+  test("a comment already on HEAD before this worktree even existed is not read as added this turn", async () => {
+    const main = cleanRepo();
+    const worktreeA = addWorktree(main, "feature-early");
+
+    // why: captured while the shared branch is still at its very first commit — an ancestor of
+    // everything that lands on `main` afterwards.
+    await runHandler(promptSubmitHandler, stdinOf(claudePromptSubmitInWorktree(main, worktreeA)));
+
+    writePolicy(main, { comments: { enabled: true, onViolation: "followup", mode: "declared" } });
+    // why: lands on the shared branch *after* turn_base_sha was captured — the exact shape of the real
+    // incident's three-week-old commit, confirmed an ancestor of the worktree that reads it.
+    writeFileSync(join(main, "src", "old.ts"), "export const b = 2;\n// undeclared narration, weeks old\n");
+    git(main, "add", ".");
+    git(main, "commit", "-q", "-m", "an unrelated commit lands on the shared branch");
+
+    const worktreeB = addWorktree(main, "feature-later");
+    const capturedSha = execFileSync("git", ["-C", worktreeA, "rev-parse", "HEAD"], {
+      encoding: "utf8",
+    }).trim();
+    const isAncestor = execFileSync(
+      "git",
+      ["-C", worktreeB, "merge-base", "--is-ancestor", capturedSha, "HEAD"],
+      { encoding: "utf8" },
+    );
+    assert.equal(isAncestor, "", "test setup: the captured sha must be an ancestor of worktreeB's HEAD");
+
+    const outcome = await runHandler(toolBeforeHandler, stdinOf(claudeShipInWorktree(main, worktreeB, PUSH)));
+
+    // why: the ship-gate battery abstains (no comment targets, nothing else configured), and the shell rail
+    // that answers next allows a plain `git push` with no stall/catastrophic shape — "allow", not "abstain",
+    // is the observable proof that the comment gate never fired.
+    assert.equal(
+      outcome.decision.kind,
+      "allow",
+      `expected allow, got ${JSON.stringify(outcome.decision)} — an old, already-landed comment must not block a turn that changed nothing`,
+    );
+  });
+});
+
 const PUSH = "git push";
 const PR_MERGE = "gh pr merge 42";
 
