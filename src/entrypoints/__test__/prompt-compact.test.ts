@@ -143,6 +143,12 @@ function headSha(dir: string): string {
   return execFileSync("git", ["-C", dir, "rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
 }
 
+// why: `gitRootOf` runs `git rev-parse --show-toplevel`, which normalizes separators and, on Windows,
+// expands 8.3 short names (`RUNNER~1` -> `runneradmin`) — a raw `mkdtempSync` path is not that value.
+function gitToplevel(dir: string): string {
+  return execFileSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+}
+
 test("turn_base_sha reflects the event's own cwd, not CLAUDE_PROJECT_DIR", async () => {
   const mainCheckout = gitRepo("tlc-prompt-main-");
   const worktree = gitRepo("tlc-prompt-worktree-");
@@ -173,7 +179,7 @@ test("prompt.submit also records turn_base_root, the git root turn_base_sha was 
     await runHandler(promptSubmitHandler, stdinOf(claudePromptSubmit(worktree)));
 
     const handoff = coreFacade.handoff.readHandoff(mainCheckout, "claude", "claude-sess-1");
-    assert.equal(handoff.turn_base_root, worktree);
+    assert.equal(handoff.turn_base_root, gitToplevel(worktree));
   } finally {
     rmSync(mainCheckout, { recursive: true, force: true });
     rmSync(worktree, { recursive: true, force: true });
