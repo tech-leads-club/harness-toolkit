@@ -18,6 +18,7 @@ import {
   currentGitSha,
   formatLessonsBlock,
   obsConfigFor,
+  resolveTurnBase,
   sessionIdFromKey,
   shaScopeRoot,
 } from "./support.ts";
@@ -489,8 +490,9 @@ export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerCont
   // past its own changes, and every gate below then saw an empty diff and skipped — the comment gate in a repo
   // whose task was "schema v2 + tests + commit" ([/decisions/ad-058.md](/decisions/ad-058.md)).
   //
-  // invariant: absent, this is the string `HEAD`, which is exactly the previous behaviour.
-  const turnBase = handoff.turn_base_sha ?? "HEAD";
+  // invariant: absent, or captured from a different git root than `shaRoot`, this is the string `HEAD`,
+  // which is exactly the previous behaviour for the absent case ([/decisions/ad-144.md](/decisions/ad-144.md)).
+  const turnBase = await resolveTurnBase(handoff, shaRoot);
   /**
    * why: collected rather than returned. A turn may defer more than one gate to the same neighbour, and the reply
    * says so once at the end instead of three times ([/decisions/ad-073.md](/decisions/ad-073.md)).

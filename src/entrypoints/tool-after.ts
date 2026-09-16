@@ -6,7 +6,7 @@ import { normalizeSeparators } from "../platform/sanitize.ts";
 import { readClaudeUsage } from "../providers/index.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
-import { OBS_CONFIG_AUDIT, obsConfigFor, observeForRules } from "./support.ts";
+import { OBS_CONFIG_AUDIT, obsConfigFor, observeForRules, resolveTurnBase } from "./support.ts";
 
 const OBS_KIND_BY_EVENT: Partial<Record<HarnessEventKind, ObsKind>> = {
   "tool.after": "tool.end",
@@ -73,7 +73,7 @@ async function commentEditAdvisory(event: HarnessEvent, ctx: HandlerContext): Pr
     event.projectDir,
     targets,
     policy.comments.mode,
-    handoff.turn_base_sha ?? "HEAD",
+    await resolveTurnBase(handoff, event.projectDir),
   );
   if (hits.length === 0) {
     return null;

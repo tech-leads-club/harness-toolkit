@@ -92,8 +92,9 @@ export type TurnScope = {
  * at `stop` or, since AD-116, before `commit`/`push`/`pr-open` ships it. A second, differently-scoped
  * answer to the same question is the drift AD-071 already named once ([/decisions/ad-116.md](/decisions/ad-116.md)).
  *
- * invariant: `turn_base_sha` falls back to `HEAD` when the handoff is absent or its seal diverged —
- * identical to `stop.ts`'s own fallback.
+ * invariant: `turn_base_sha` falls back to `HEAD` when the handoff is absent, its seal diverged, or
+ * `resolveTurnBase` finds a different git root — identical to `stop.ts`'s own fallback
+ * ([/decisions/ad-144.md](/decisions/ad-144.md)).
  * why: `root` is state (worktree-stable, AD-114); `gitRoot` is where the turn's files actually are
  * (`shaScopeRoot(event)`) — diffing a worktree-valid sha from the wrong directory read a whole unrelated
  * branch as added ([/decisions/ad-129.md](/decisions/ad-129.md)).
@@ -107,7 +108,7 @@ export async function computeTurnScope(
 ): Promise<TurnScope> {
   const seal = coreFacade.handoff.handoffInjectable(root, sessionKey);
   const handoff = seal.ok ? coreFacade.handoff.readHandoff(root, provider, sessionKey) : undefined;
-  const turnBase = handoff?.turn_base_sha ?? "HEAD";
+  const turnBase = await resolveTurnBase(handoff, gitRoot);
   const rawChangedFiles = await listChangedRepoFiles(gitRoot, turnBase);
   const otherSessionFiles = await coreFacade.presence.filesClaimedByOtherLiveSessions(
     root,
@@ -157,6 +158,27 @@ export async function pendingCommentViolations(
     policy.comments.mode,
     scope.turnBase,
   );
+}
+
+/**
+ * why: `turn_base_sha` alone cannot tell "this session's own HEAD" from "the HEAD of a worktree the shell
+ * was sitting in three turns ago" — both are just a sha. Comparing the git root it was captured from
+ * against the root being diffed against is what tells the two apart, the same way an absent
+ * `turn_base_sha` already falls back to `HEAD` rather than diffing against nothing, instead of diffing one
+ * repository's turn against an unrelated one's entire history ([/decisions/ad-144.md](/decisions/ad-144.md)).
+ *
+ * invariant: a slice with a sha but no recorded root (state written before this existed) resolves to
+ * `HEAD`, the same as no slice at all — safe by default, and self-healing on the next `prompt.submit`.
+ */
+export async function resolveTurnBase(
+  slice: { turn_base_sha?: string; turn_base_root?: string } | undefined,
+  gitRoot: string,
+): Promise<string> {
+  if (!slice?.turn_base_sha || !slice.turn_base_root) {
+    return "HEAD";
+  }
+  const currentRoot = await gitRootOf(gitRoot);
+  return currentRoot !== null && currentRoot === slice.turn_base_root ? slice.turn_base_sha : "HEAD";
 }
 
 export async function currentGitSha(root: string): Promise<string | null> {
