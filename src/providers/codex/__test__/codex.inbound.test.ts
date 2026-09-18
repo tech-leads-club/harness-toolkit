@@ -126,7 +126,7 @@ test("tool_response is serialised onto the after-event and absent from the befor
 /**
  * invariant: the boolean never becomes the count. `effectiveLoopCount` compares `loopCount` against the grind cap
  * as a number, so a boolean mapped in would yield at most 1 and the cap would never be reached
- * ([/decisions/ad-123.md](/decisions/ad-123.md)).
+ * ([/decisions/ad-145.md](/decisions/ad-145.md)).
  */
 test("stop_hook_active never reaches loopCount", () => {
   assert.equal(codexToEvent(fixture("stop-loop-active.json"))?.loopCount, undefined);

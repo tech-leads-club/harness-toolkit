@@ -75,36 +75,17 @@ function afterKind(toolName: string | undefined): HarnessEventKind {
   return "tool.after";
 }
 
-/** Never throws on a malformed payload — returns null instead. */
-export function codexToEvent(raw: Record<string, unknown>): HarnessEvent | null {
-  const hookEventName = asString(raw.hook_event_name);
-  if (!hookEventName) {
-    return null;
-  }
-
-  const toolName = asString(raw.tool_name);
-  const toolInput = asRecord(raw.tool_input);
-
-  let eventKind: HarnessEventKind | undefined;
+function eventKindFor(hookEventName: string, toolName: string | undefined): HarnessEventKind | undefined {
   if (hookEventName === "PreToolUse" || hookEventName === "PermissionRequest") {
-    eventKind = beforeKind(toolName);
-  } else if (hookEventName === "PostToolUse") {
-    eventKind = afterKind(toolName);
-  } else {
-    eventKind = EVENT_KIND_BY_HOOK[hookEventName];
+    return beforeKind(toolName);
   }
-  if (!eventKind) {
-    return null;
+  if (hookEventName === "PostToolUse") {
+    return afterKind(toolName);
   }
+  return EVENT_KIND_BY_HOOK[hookEventName];
+}
 
-  const event: HarnessEvent = {
-    provider: "codex",
-    event: eventKind,
-    sessionKey: sessionKeyFor(raw),
-    projectDir: projectDirFor(raw),
-    raw,
-  };
-
+function applySessionFields(event: HarnessEvent, raw: Record<string, unknown>): void {
   const permissionMode = asString(raw.permission_mode);
   if (permissionMode) {
     event.permissionMode = permissionMode;
@@ -118,13 +99,33 @@ export function codexToEvent(raw: Record<string, unknown>): HarnessEvent | null 
     event.transcriptPath = transcriptPath;
   }
 
-  const isSpawnEvent = eventKind === "subagent.start" || eventKind === "subagent.stop";
+  const isSpawnEvent = event.event === "subagent.start" || event.event === "subagent.stop";
   const model = isSpawnEvent ? undefined : asString(raw.model);
   if (model) {
     event.model = model;
   }
+}
 
-  switch (eventKind) {
+function applyToolFields(
+  event: HarnessEvent,
+  toolName: string | undefined,
+  toolInput: Record<string, unknown> | undefined,
+): void {
+  if (toolName) {
+    event.toolName = toolName;
+  }
+  if (toolInput) {
+    event.toolInput = toolInput;
+  }
+}
+
+function applyKindFields(
+  event: HarnessEvent,
+  raw: Record<string, unknown>,
+  toolName: string | undefined,
+  toolInput: Record<string, unknown> | undefined,
+): void {
+  switch (event.event) {
     case "prompt.submit": {
       const text = asString(raw.prompt);
       if (text !== undefined) {
@@ -143,15 +144,9 @@ export function codexToEvent(raw: Record<string, unknown>): HarnessEvent | null 
     case "mcp.before":
     case "mcp.after":
     case "tool.before":
-    case "tool.after": {
-      if (toolName) {
-        event.toolName = toolName;
-      }
-      if (toolInput) {
-        event.toolInput = toolInput;
-      }
+    case "tool.after":
+      applyToolFields(event, toolName, toolInput);
       break;
-    }
     case "subagent.start":
     case "subagent.stop": {
       // why `agent_type` lands in the label and not in the type: it is what the spawn was called, and a rule that
@@ -165,24 +160,55 @@ export function codexToEvent(raw: Record<string, unknown>): HarnessEvent | null 
     default:
       break;
   }
+}
 
-  /**
-   * why the after-events only: `tool_response` is documented on `PostToolUse` and nowhere else, which is what
-   * `toolOutputAtAfter: true` records. It is an object here, unlike the string one host uses, and serialising it
-   * is the translation this layer exists to do ([/decisions/ad-004.md](/decisions/ad-004.md)).
-   */
-  if (hookEventName === "PostToolUse") {
-    const toolOutput = raw.tool_response;
-    if (toolOutput !== undefined && toolOutput !== null) {
-      event.toolOutput = typeof toolOutput === "string" ? toolOutput : JSON.stringify(toolOutput);
-    }
+/**
+ * why the after-events only: `tool_response` is documented on `PostToolUse` and nowhere else, which is what
+ * `toolOutputAtAfter: true` records. It is an object here, unlike the string one host uses, and serialising it
+ * is the translation this layer exists to do ([/decisions/ad-004.md](/decisions/ad-004.md)).
+ */
+function applyToolOutput(event: HarnessEvent, raw: Record<string, unknown>, hookEventName: string): void {
+  if (hookEventName !== "PostToolUse") {
+    return;
+  }
+  const toolOutput = raw.tool_response;
+  if (toolOutput !== undefined && toolOutput !== null) {
+    event.toolOutput = typeof toolOutput === "string" ? toolOutput : JSON.stringify(toolOutput);
+  }
+}
+
+/**
+ * Never throws on a malformed payload — returns null instead.
+ *
+ * invariant: `stop_hook_active` never reaches `loopCount`. It is a boolean saying a hook already forced this
+ * turn to continue; `loopCount` is a number the grind cap compares against, so a boolean mapped in would yield
+ * at most 1 and the cap would never be reached ([/decisions/ad-145.md](/decisions/ad-145.md)).
+ */
+export function codexToEvent(raw: Record<string, unknown>): HarnessEvent | null {
+  const hookEventName = asString(raw.hook_event_name);
+  if (!hookEventName) {
+    return null;
   }
 
-  /**
-   * invariant: `stop_hook_active` never reaches `loopCount`. It is a boolean saying a hook already forced this
-   * turn to continue; `loopCount` is a number the grind cap compares against, so a boolean mapped in would yield
-   * at most 1 and the cap would never be reached ([/decisions/ad-123.md](/decisions/ad-123.md)).
-   */
+  const toolName = asString(raw.tool_name);
+  const toolInput = asRecord(raw.tool_input);
+
+  const eventKind = eventKindFor(hookEventName, toolName);
+  if (!eventKind) {
+    return null;
+  }
+
+  const event: HarnessEvent = {
+    provider: "codex",
+    event: eventKind,
+    sessionKey: sessionKeyFor(raw),
+    projectDir: projectDirFor(raw),
+    raw,
+  };
+
+  applySessionFields(event, raw);
+  applyKindFields(event, raw, toolName, toolInput);
+  applyToolOutput(event, raw, hookEventName);
 
   return event;
 }

@@ -36,7 +36,7 @@ test("every ask kind is a real HarnessEventKind and is a before-kind", () => {
 
 /**
  * invariant: this is the copy-paste detector. The two generations disagree on six rows, and which six is the
- * whole argument for registering opencode twice ([/decisions/ad-124.md](/decisions/ad-124.md)). A descriptor
+ * whole argument for registering opencode twice ([/decisions/ad-146.md](/decisions/ad-146.md)). A descriptor
  * copied from its sibling collapses this list and fails here.
  */
 const EXPECTED_DIVERGENCE: readonly (keyof ProviderCapabilities)[] = [
@@ -60,7 +60,7 @@ test("the two descriptors differ on exactly the six documented rows and agree on
 test("the rows the spec pins are the same on both generations", () => {
   for (const descriptor of [legacy, namespaced]) {
     assert.equal(descriptor.enforcesHooks, true);
-    assert.equal(descriptor.toolOutputRewrite, true);
+    assert.deepEqual(descriptor.toolOutputRewriteOn, []);
     assert.equal(descriptor.sessionStartContextReliable, false);
     assert.equal(descriptor.thoughtEvent, false);
   }

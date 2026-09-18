@@ -1,5 +1,10 @@
+import { readFileSync } from "node:fs";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import type { Decision, HarnessEvent } from "../contracts/index.ts";
 import { coreFacade } from "../core/index.ts";
+import type { AddedLine } from "../platform/git.ts";
+import { diffProposedAgainstDisk, diffTwoStrings, localRepoRemote } from "../platform/git.ts";
+import { normalizeSeparators } from "../platform/sanitize.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
 import { shipGateVerdict } from "./ship-gate.ts";
@@ -26,14 +31,125 @@ async function commentGateBeforeCommit(event: HarnessEvent, ctx: HandlerContext)
   if (!coreFacade.rules.triggerMatches({ kind: "commit" }, context)) {
     return { kind: "abstain" };
   }
-  const hits = await pendingCommentViolations(event.projectDir, event.provider, event.sessionKey, ctx.policy);
+  const shaRoot = shaScopeRoot(event);
+  const hits = await pendingCommentViolations(
+    event.projectDir,
+    shaRoot,
+    event.provider,
+    event.sessionKey,
+    ctx.policy,
+  );
   if (hits.length === 0) {
     return { kind: "abstain" };
   }
+  const diag = coreFacade.diagnostics.diffDiagnostic(shaRoot, await currentGitSha(shaRoot), hits);
   return {
     kind: "deny",
-    reason: coreFacade.commentPolicy.commentViolationMessage(hits, ctx.policy.comments.mode),
+    reason: `${coreFacade.commentPolicy.commentViolationMessage(hits, ctx.policy.comments.mode)}\n\n${diag.footer}`,
     rule: "comment-policy-before-ship",
+    diagnostic: diag.summary,
+  };
+}
+
+/**
+ * hazard: `new_string` routinely carries lines copied verbatim from `old_string` — Claude's own Edit tool
+ * asks for surrounding context to make `old_string` unique. Treating every `new_string` line as added
+ * flagged a pre-existing comment the model never touched. Diffing `oldContent` against `newContent` (the
+ * same real-diff machinery `diffProposedAgainstDisk` already uses) isolates only what actually changed.
+ *
+ * why: `old_string`'s own start line, located on disk, offsets the diff's line numbers onto the real file —
+ * `new_string` is not at line 1, and `diskLineReader`'s JSDoc-identifier lookup needs the real line to read
+ * the right context after it.
+ */
+async function editAddedLines(
+  currentContent: string,
+  oldContent: string,
+  newContent: string,
+  file: string,
+): Promise<AddedLine[] | null> {
+  const idx = currentContent.indexOf(oldContent);
+  if (idx === -1) {
+    return null;
+  }
+  const startLine = currentContent.slice(0, idx).split("\n").length;
+  const diff = await diffTwoStrings(oldContent, newContent, file);
+  return diff.map((line) => ({ ...line, line: line.line + startLine - 1 }));
+}
+
+/**
+ * why after `commentGateBeforeCommit`, before `shipGuard`: same tier — a built-in capability check, reads
+ * policy, not operator-authored ([/decisions/ad-115.md](/decisions/ad-115.md)).
+ */
+async function commentGateBeforeEdit(event: HarnessEvent, ctx: HandlerContext): Promise<Decision> {
+  const { policy } = ctx;
+  if (!policy.comments.enabled || policy.comments.onViolation !== "followup") {
+    return { kind: "abstain" };
+  }
+  if (event.proposedContent === undefined || event.proposedContent === "") {
+    return { kind: "abstain" };
+  }
+  const filePath = filePathOf(event);
+  if (!filePath) {
+    return { kind: "abstain" };
+  }
+  // why: a Write/Edit `tool_input.file_path` arrives relative to the project root, not to this process's own
+  // cwd — resolving it first is `resolveTarget`'s own approach (`src/core/floor/floor.paths.ts`); `relative()`
+  // alone treats a bare relative path as relative to `process.cwd()`, which only happens to equal `projectDir`
+  // when a real hook process's cwd was set there.
+  const absoluteFilePath = isAbsolute(filePath) ? filePath : resolve(event.projectDir, filePath);
+  const relativePath = normalizeSeparators(relative(event.projectDir, absoluteFilePath));
+  if (relativePath.startsWith("..") || !coreFacade.policy.isUnderCodePaths(relativePath, policy.codePaths)) {
+    return { kind: "abstain" };
+  }
+  if (coreFacade.commentPolicy.filterCommentTargets([relativePath]).length === 0) {
+    return { kind: "abstain" };
+  }
+
+  // why: `relativePath` was just computed against `event.projectDir`, not any resolved git root — a
+  // monorepo package whose `projectDir` sits below the repo's real root joined it onto the wrong base and
+  // either read the wrong file or, worse, read nothing and silently treated an existing file as brand new.
+  let added: AddedLine[];
+  let nextCodeLine: ((file: string, line: number) => string | undefined) | undefined;
+
+  if (event.toolName === "Write") {
+    added = await diffProposedAgainstDisk(event.projectDir, relativePath, event.proposedContent);
+    const proposedLines = event.proposedContent.split("\n");
+    nextCodeLine = (_file, line) => proposedLines[line - 1];
+  } else if (event.toolName === "Edit" && event.proposedOldContent !== undefined) {
+    let currentContent: string;
+    try {
+      currentContent = readFileSync(join(event.projectDir, relativePath), "utf8");
+    } catch {
+      return { kind: "abstain" };
+    }
+    const edited = await editAddedLines(
+      currentContent,
+      event.proposedOldContent,
+      event.proposedContent,
+      relativePath,
+    );
+    if (edited === null) {
+      return { kind: "abstain" };
+    }
+    added = edited;
+    nextCodeLine = coreFacade.commentPolicy.diskLineReader(event.projectDir);
+  } else {
+    return { kind: "abstain" };
+  }
+
+  const hits = coreFacade.commentPolicy.findAddedComments(added, policy.comments.mode, nextCodeLine);
+  if (hits.length === 0) {
+    return { kind: "abstain" };
+  }
+  // why: every deny in this battery names what it checked and points at `tlc harness why`
+  // ([/decisions/ad-131.md](/decisions/ad-131.md)) — this one has no commit sha to reproduce against, so
+  // it names the directory it checked, the same minimal form `rootDiagnostic` already gives a gate failure.
+  const diag = coreFacade.diagnostics.rootDiagnostic(event.projectDir);
+  return {
+    kind: "deny",
+    reason: `${coreFacade.commentPolicy.commentViolationMessage(hits, policy.comments.mode)}\n\n${diag.footer}`,
+    rule: "comment-policy-before-edit",
+    diagnostic: diag.summary,
   };
 }
 
@@ -66,6 +182,7 @@ function recordShellDecision(event: HarnessEvent, ctx: HandlerContext, decision:
       // why: unattributed rather than guessed. A rate an operator cannot trace to a switch is a number, not a
       // signal.
       rule: "rule" in decision && decision.rule ? decision.rule : "none",
+      diagnostic: "diagnostic" in decision && decision.diagnostic ? decision.diagnostic : "none",
     },
   });
 }
@@ -83,7 +200,12 @@ function recordShellDecisionIfShell(event: HarnessEvent, ctx: HandlerContext, de
  */
 async function rulesDecision(event: HarnessEvent, ctx: HandlerContext): Promise<Decision> {
   const config = ctx.policy.rules;
-  const trigger = { event: event.event, toolName: event.toolName, command: event.command };
+  const trigger = {
+    event: event.event,
+    toolName: event.toolName,
+    command: event.command,
+    toolInput: event.toolInput,
+  };
   const shaRoot = shaScopeRoot(event);
   const dryRun = coreFacade.rules.decideAction(event.projectDir, config, trigger, {
     sha: null,
@@ -94,15 +216,27 @@ async function rulesDecision(event: HarnessEvent, ctx: HandlerContext): Promise<
   if (dryRun.outcomes.length === 0) {
     return { kind: "abstain" };
   }
-  // why twice: the first pass answers whether any rule fired at all, which costs no git. Only then is the sha
-  // worth a process, and the second pass is the one whose verdict counts.
-  const sha = await currentGitSha(shaRoot);
-  const verdict = coreFacade.rules.decideAction(event.projectDir, config, trigger, {
-    sha,
-    sessionKey: event.sessionKey,
-    mode: ctx.policy.mode,
-    shaRoot,
-  });
+  // why: the first pass answers whether any rule fired at all, which costs no git. The remote is a second
+  // process, spent only when the command could possibly be a gh api call naming a different repository
+  // ([/decisions/ad-130.md](/decisions/ad-130.md)) — a CLI shape or an unrelated trigger never reads it.
+  const [sha, repoRemote] = await Promise.all([
+    currentGitSha(shaRoot),
+    (event.command && coreFacade.rules.mentionsGhApi(event.command)) ||
+    coreFacade.rules.mentionsMcpAct(event.toolName)
+      ? localRepoRemote(shaRoot)
+      : undefined,
+  ]);
+  const verdict = coreFacade.rules.decideAction(
+    event.projectDir,
+    config,
+    { ...trigger, repoRemote },
+    {
+      sha,
+      sessionKey: event.sessionKey,
+      mode: ctx.policy.mode,
+      shaRoot,
+    },
+  );
   return verdict.decision;
 }
 
@@ -183,6 +317,7 @@ export const toolBeforeHandler: Handler = async (
     filePath: filePathOf(event),
     command: event.command,
     isReadEvent: event.event === "read.before",
+    protectedPaths: ctx.protectedPaths,
   });
   if (floor.kind !== "allow") {
     // invariant: one rail owns the record of every shell decision. The floor short-circuits before the shell
@@ -245,6 +380,11 @@ export const toolBeforeHandler: Handler = async (
   if (commitGuard.kind !== "abstain") {
     recordShellDecisionIfShell(event, ctx, commitGuard);
     return commitGuard;
+  }
+
+  const editGuard = await commentGateBeforeEdit(event, ctx);
+  if (editGuard.kind !== "abstain") {
+    return editGuard;
   }
 
   /**

@@ -134,6 +134,28 @@ test("ordinary and lease-guarded pushes are allowed", () => {
   assertAllowed("git push --force-with-lease origin main");
 });
 
+// why: `WRAPPERS` in floor.verb.ts is a known-name list, so it can only ever cover wrappers this gate has
+// already heard of. An operator's shell can inject any unlisted one ahead of the real command; the rule
+// must not depend on recognizing it by name.
+test("an unrecognized wrapper this gate has never heard of does not hide a forced push", () => {
+  assertDenied("some-unlisted-shell-proxy git push --force origin main", "history-rewrite");
+  assertDenied("another-unknown-wrapper sudo git push -f", "history-rewrite");
+});
+
+// why: `verbOf` compares a path's basename, not its literal text, so an unqualified `git` and a
+// path-qualified one must deny identically — a wrapper that expands `git` to its absolute path is exactly
+// the shape a path-qualifying proxy produces.
+test("a path-qualified git is denied exactly like the bare word", () => {
+  assertDenied("/usr/bin/git push --force origin main", "history-rewrite");
+  assertDenied("/usr/local/bin/git push -f origin main", "history-rewrite");
+  assertDenied("some-unlisted-shell-proxy /usr/bin/git push --force origin main", "history-rewrite");
+});
+
+test("an unrecognized wrapper does not turn an ordinary push into a false positive", () => {
+  assertAllowed("some-unlisted-shell-proxy git push origin main");
+  assertAllowed("some-unlisted-shell-proxy git push --force-with-lease origin main");
+});
+
 test("reading credentials into the transcript is denied", () => {
   assertDenied("cat .env", "secret-access");
   assertDenied("cat .env.production", "secret-access");
@@ -169,6 +191,98 @@ test("read.before is gated even when the tool name is unknown", () => {
 test("writing a credential file is not a floor concern — only reading one is", () => {
   const decision = evaluateFloor({ projectDir: PROJECT, toolName: "Write", filePath: join(PROJECT, ".env") });
   assert.equal(decision.kind, "allow");
+});
+
+/**
+ * wiring-tamper (EFH-01, EFH-02, EFH-03, EFH-05, EFH-06) — a registered provider's wiring target is protected
+ * the same way the harness's own policy surface already is, but under a distinct rule name.
+ */
+const WIRING_TARGET = join(HOME, ".editor-x", "settings.json");
+
+test("a shell redirect into a protectedPaths entry is denied under wiring-tamper", () => {
+  const decision = withEnv({ HOME, USERPROFILE: HOME }, () =>
+    evaluateFloor({
+      projectDir: PROJECT,
+      command: `echo '{}' > ${WIRING_TARGET}`,
+      protectedPaths: [WIRING_TARGET],
+    }),
+  );
+  assert.equal(ruleOf(decision), "wiring-tamper");
+});
+
+test("a shell in-place edit of a protectedPaths entry is denied under wiring-tamper", () => {
+  const decision = withEnv({ HOME, USERPROFILE: HOME }, () =>
+    evaluateFloor({
+      projectDir: PROJECT,
+      command: `sed -i s/a/b/ ${WIRING_TARGET}`,
+      protectedPaths: [WIRING_TARGET],
+    }),
+  );
+  assert.equal(ruleOf(decision), "wiring-tamper");
+});
+
+test("a destructive-verb shell command against a protectedPaths entry is denied under wiring-tamper, not outside-project-destruction", () => {
+  const rm = withEnv({ HOME, USERPROFILE: HOME }, () =>
+    evaluateFloor({
+      projectDir: PROJECT,
+      command: `rm ${WIRING_TARGET}`,
+      protectedPaths: [WIRING_TARGET],
+    }),
+  );
+  assert.equal(ruleOf(rm), "wiring-tamper");
+
+  const truncate = withEnv({ HOME, USERPROFILE: HOME }, () =>
+    evaluateFloor({
+      projectDir: PROJECT,
+      command: `truncate -s 0 ${WIRING_TARGET}`,
+      protectedPaths: [WIRING_TARGET],
+    }),
+  );
+  assert.equal(ruleOf(truncate), "wiring-tamper");
+});
+
+test("an Edit/Write/MultiEdit tool call against a protectedPaths entry is denied under wiring-tamper", () => {
+  for (const toolName of ["Edit", "Write", "MultiEdit"]) {
+    const decision = evaluateFloor({
+      projectDir: PROJECT,
+      toolName,
+      filePath: WIRING_TARGET,
+      protectedPaths: [WIRING_TARGET],
+    });
+    assert.equal(decision.kind, "deny", toolName);
+    assert.equal(ruleOf(decision), "wiring-tamper", toolName);
+  }
+});
+
+test("a read of a protectedPaths entry is still allowed, by shell and by Read", () => {
+  const shellRead = withEnv({ HOME, USERPROFILE: HOME }, () =>
+    evaluateFloor({
+      projectDir: PROJECT,
+      command: `cat ${WIRING_TARGET}`,
+      protectedPaths: [WIRING_TARGET],
+    }),
+  );
+  assert.equal(shellRead.kind, "allow");
+
+  const toolRead = evaluateFloor({
+    projectDir: PROJECT,
+    toolName: "Read",
+    filePath: WIRING_TARGET,
+    protectedPaths: [WIRING_TARGET],
+  });
+  assert.equal(toolRead.kind, "allow");
+});
+
+test("with protectedPaths empty or undefined, behavior is unchanged", () => {
+  const withEmpty = evaluateFloor({
+    projectDir: PROJECT,
+    toolName: "Write",
+    filePath: WIRING_TARGET,
+    protectedPaths: [],
+  });
+  const withUndefined = evaluateFloor({ projectDir: PROJECT, toolName: "Write", filePath: WIRING_TARGET });
+  assert.equal(withEmpty.kind, "allow");
+  assert.equal(withUndefined.kind, "allow");
 });
 
 test("every denial names its rule and refuses the config escape", () => {

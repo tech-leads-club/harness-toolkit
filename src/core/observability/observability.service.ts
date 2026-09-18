@@ -28,7 +28,7 @@ function shortId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 16);
 }
 
-function deriveTraceId(sessionKey?: string): string {
+export function deriveTraceId(sessionKey?: string): string {
   const seed = sessionKey || randomUUID();
   return createHash("sha256").update(seed).digest("hex").slice(0, 32);
 }
@@ -233,6 +233,9 @@ function updateRollup(root: string, config: ObservabilityConfig, event: ObsEvent
    */
   const inTok = event.gen_ai?.input_tokens ?? 0;
   const outTok = event.gen_ai?.output_tokens ?? 0;
+  if (event.gen_ai) {
+    rollup.usage_reported = true;
+  }
   if (inTok || outTok) {
     rollup.input_tokens = inTok;
     rollup.output_tokens = outTok;

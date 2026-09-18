@@ -74,7 +74,7 @@ function renderPermission(
     // hazard: a refusal raised at any other event has no channel this host honours, so it is dropped and the
     // action it refused proceeds. The events that document `decision: "block"` carry a stop advisory rather
     // than a permission verdict, and routing a refusal through one would be inventing a rail
-    // ([/decisions/ad-125.md](/decisions/ad-125.md)).
+    // ([/decisions/ad-147.md](/decisions/ad-147.md)).
     return SILENT;
   }
   const hookSpecificOutput: Record<string, unknown> = { hookEventName, permissionDecision };
@@ -92,7 +92,7 @@ export function vscodeRender(decision: Decision, event: HarnessEvent): Rendered 
     /**
      * why all three verdicts go through one function: `PreToolUse` is the only event whose hook may return
      * `permissionDecision`, and it takes `allow`, `deny` and `ask` alike — which is what `askSupportedOn` lists
-     * the four before-kinds for (spec P4 AC4, [/decisions/ad-125.md](/decisions/ad-125.md)).
+     * the four before-kinds for (spec P4 AC4, [/decisions/ad-147.md](/decisions/ad-147.md)).
      */
     case "allow":
       return renderPermission("allow", hookEventName, undefined);
@@ -149,6 +149,10 @@ export function vscodeRender(decision: Decision, event: HarnessEvent): Rendered 
             exitCode: 0,
           }
         : SILENT;
+    // why unreachable in practice: `toolOutputRewriteOn: []` has `degrade()` turn this into a context notice first.
+    // Silent for a caller that skipped it, because this host documents no field that replaces a tool's output.
+    case "rewriteOutput":
+      return SILENT;
     default: {
       const exhaustive: never = decision;
       throw new Error(`unreachable decision kind: ${JSON.stringify(exhaustive)}`);

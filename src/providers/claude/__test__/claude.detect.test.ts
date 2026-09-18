@@ -70,7 +70,7 @@ test("capabilities match the design table exactly", () => {
     nativeLoopCounter: false,
     dedicatedShellEvent: false,
     toolInputRewrite: true,
-    toolOutputRewrite: true,
+    toolOutputRewriteOn: ["tool.after", "tool.failure"],
     contextAtToolBefore: true,
     contextAtToolAfter: true,
     toolOutputAtAfter: true,

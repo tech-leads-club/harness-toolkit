@@ -69,7 +69,7 @@ test("an allow at PreToolUse renders permissionDecision allow and no reason", ()
 /**
  * spec P4 AC4, corrected against the published reference: context rides `hookSpecificOutput.additionalContext`
  * on `PreToolUse`, `PostToolUse`, `SessionStart` and `SubagentStart`
- * ([/decisions/ad-125.md](/decisions/ad-125.md)).
+ * ([/decisions/ad-147.md](/decisions/ad-147.md)).
  */
 test("context rides hookSpecificOutput.additionalContext on each of the four events that accept it", () => {
   for (const [fixtureName, hookEventName] of [
@@ -109,7 +109,7 @@ test("context on an event outside those four renders nothing rather than a field
 /**
  * `Stop` is the one context channel this host refuses: the published reference lists `additionalContext` on
  * `PreToolUse`, `PostToolUse`, `SessionStart` and `SubagentStart` and on no other event
- * ([/decisions/ad-125.md](/decisions/ad-125.md)).
+ * ([/decisions/ad-147.md](/decisions/ad-147.md)).
  */
 test("context at stop is stripped by degrade, and context at the two tool events survives it", () => {
   const capabilities = vscodeCapabilities();
@@ -151,7 +151,7 @@ test("abstain renders silence", () => {
 
 /**
  * `toolInputRewrite` is true — `hookSpecificOutput.updatedInput` is documented on `PreToolUse`
- * ([/decisions/ad-125.md](/decisions/ad-125.md)) — so `degrade()` carries a rewrite through untouched instead of
+ * ([/decisions/ad-147.md](/decisions/ad-147.md)) — so `degrade()` carries a rewrite through untouched instead of
  * converting it to an ask.
  */
 test("a rewrite survives degrade and renders hookSpecificOutput.updatedInput at PreToolUse", () => {
@@ -172,7 +172,7 @@ test("a rewrite outside PreToolUse renders silence", () => {
 /**
  * One pair, two placements. On `Stop` the reference documents `decision` and `reason` inside
  * `hookSpecificOutput` beside `hookEventName`; on `PostToolUse` and `SubagentStop` it documents them top-level
- * ([/decisions/ad-125.md](/decisions/ad-125.md)).
+ * ([/decisions/ad-147.md](/decisions/ad-147.md)).
  */
 test("a continue at Stop nests decision and reason inside hookSpecificOutput", () => {
   const parsed = stdoutOf({ kind: "continue", text: "the gate has not run" }, eventFrom("stop.json"));
@@ -195,7 +195,7 @@ test("a continue at PostToolUse and SubagentStop puts the same pair top-level", 
 /**
  * hazard: a refusal raised outside `PreToolUse` is dropped, because `permissionDecision` is exclusive to that
  * event and emitting it elsewhere claimed a channel the host reads on no other event
- * ([/decisions/ad-125.md](/decisions/ad-125.md), [/decisions/ad-050.md](/decisions/ad-050.md)).
+ * ([/decisions/ad-147.md](/decisions/ad-147.md), [/decisions/ad-050.md](/decisions/ad-050.md)).
  */
 test("a deny outside PreToolUse renders silence rather than a field this host ignores", () => {
   for (const fixtureName of ["user-prompt-submit.json", "post-tool-use-edit.json", "stop.json"]) {

@@ -57,6 +57,7 @@ Every refusal names one. The name is the pointer — the reasoning lives in the 
 | `history-rewrite` | `git push --force`. `--force-with-lease` is allowed |
 | `machine-control` | `shutdown`, `reboot`, `halt`, `poweroff` |
 | `policy-surface-write` | any route an agent has to harness policy or state |
+| `wiring-tamper` | a shell redirect, in-place edit, or delete into a registered provider's wiring target, or a direct `Edit`/`Write`/`MultiEdit` call against it |
 | `policy-baseline-divergence` | a policy file changed mid-session with no `tlc harness` command behind it |
 | `untrusted-command` | a shell command that appears verbatim in content this session fetched — put to you before it runs |
 | `edit-collision` | another live session touched this file recently |

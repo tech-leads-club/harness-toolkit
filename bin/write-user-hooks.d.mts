@@ -33,7 +33,7 @@ export type ClaudeApplyResult =
 
 /**
  * The wiring kind whose writer exists and is deliberately not called: nothing on the machine changes it, so it
- * is neither a refusal nor a failure ([/decisions/ad-126.md](/decisions/ad-126.md)).
+ * is neither a refusal nor a failure ([/decisions/ad-148.md](/decisions/ad-148.md)).
  */
 export type DeferredApplyResult = { status: "deferred"; target: string; reason: string };
 

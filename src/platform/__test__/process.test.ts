@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import { hostname } from "node:os";
+import { mkdtempSync, rmSync } from "node:fs";
+import { hostname, tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, test } from "node:test";
-import { isProcessAlive, runProcess } from "../process.ts";
+import { isProcessAlive, runCommand, runProcess } from "../process.ts";
 
 describe("runProcess", () => {
   test("resolves with exit code 0 and captures stdout for a successful command", async () => {
@@ -43,6 +45,29 @@ describe("runProcess", () => {
     });
     assert.equal(result.exitCode, 0);
     assert.equal(result.stdout.trim(), "done");
+  });
+});
+
+/**
+ * hazard: moved here from `git.ts`'s own test file — `runCommand` shapes output for a human reading a gate
+ * log, and belongs next to `runProcess`, the primitive it wraps, not next to git-specific structured readers
+ * ([/decisions/ad-134.md](/decisions/ad-134.md)).
+ */
+describe("runCommand", () => {
+  test("returns '(no output captured)' when the command produces no output", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run-command-"));
+    const result = await runCommand(dir, ["node", "-e", ""]);
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.output, "(no output captured)");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns the full output untruncated, even past 8000 characters", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run-command-"));
+    const result = await runCommand(dir, ["node", "-e", "process.stdout.write('x'.repeat(9000) + 'END')"]);
+    assert.equal(result.output.length, 9003);
+    assert.equal(result.output.endsWith("END"), true);
+    rmSync(dir, { recursive: true, force: true });
   });
 });
 

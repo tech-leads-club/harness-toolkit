@@ -2,6 +2,7 @@ import type { ProviderPort } from "../provider.port.ts";
 import { opencodeLegacyCapabilities, opencodeNamespacedCapabilities } from "./opencode.capabilities.ts";
 import { detectOpencodeLegacy, detectOpencodeNamespaced } from "./opencode.detect.ts";
 import { opencodeToEvent } from "./opencode.inbound.ts";
+import { renderOpencodeLessonsView } from "./opencode.lessons-view.ts";
 import { opencodeRender } from "./opencode.outbound.ts";
 import { opencodePolicyDefaults } from "./opencode.policy-defaults.ts";
 import {
@@ -9,12 +10,13 @@ import {
   OPENCODE_NAMESPACED_PROVIDER,
   opencodeLegacyWiring,
   opencodeNamespacedWiring,
+  opencodeWiringTargets,
 } from "./opencode.wiring.ts";
 
 /**
  * why two ports and not one: the two plugin API generations differ in what the harness can do — an ask channel
  * and a shell interception the legacy API does not have — and `capabilities()` takes no arguments, so one port
- * would have to lie in one direction or the other ([/decisions/ad-124.md](/decisions/ad-124.md)). The inbound
+ * would have to lie in one direction or the other ([/decisions/ad-146.md](/decisions/ad-146.md)). The inbound
  * parser, the renderer, and the policy defaults are shared; the descriptor, the wiring, and the emitted bridge
  * are not.
  */
@@ -26,6 +28,8 @@ export const opencodeLegacyProvider: ProviderPort = {
   toEvent: opencodeToEvent,
   render: opencodeRender,
   wiring: opencodeLegacyWiring,
+  wiringTargets: opencodeWiringTargets,
+  lessonsView: renderOpencodeLessonsView,
 };
 
 export const opencodeNamespacedProvider: ProviderPort = {
@@ -36,4 +40,6 @@ export const opencodeNamespacedProvider: ProviderPort = {
   toEvent: opencodeToEvent,
   render: opencodeRender,
   wiring: opencodeNamespacedWiring,
+  wiringTargets: opencodeWiringTargets,
+  lessonsView: renderOpencodeLessonsView,
 };

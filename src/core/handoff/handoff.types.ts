@@ -36,6 +36,13 @@ export type HandoffProviderSlice = {
    * ([/decisions/ad-058.md](/decisions/ad-058.md)).
    */
   turn_base_sha?: string;
+  /**
+   * why: the git root `turn_base_sha` was captured from. A session that moves between independent
+   * worktrees can submit one turn's prompt from one root and stop it from another; without this, the
+   * stale sha from the first root gets diffed against the second, reading months of someone else's
+   * history as "added this turn" ([/decisions/ad-144.md](/decisions/ad-144.md)).
+   */
+  turn_base_root?: string;
   plan_paths?: string[];
   plan_at?: string;
   plan_snippet?: string;

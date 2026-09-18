@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "beforeMCPExecution",
+  "conversation_id": "conv-abc",
+  "session_id": "sess-1",
+  "workspace_roots": ["/repo"],
+  "tool_name": "create_pull_request",
+  "tool_input": "{\"owner\":\"acme\",\"repo\":\"widgets\",\"title\":\"fix: x\"}",
+  "url": "https://example.com/mcp"
+}

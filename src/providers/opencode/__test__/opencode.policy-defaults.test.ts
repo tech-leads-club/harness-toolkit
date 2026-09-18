@@ -13,7 +13,7 @@ test("opencodePolicyDefaults marks opencode's own two web tools untrusted", () =
 });
 
 // why: opencode names its tools in lower case. Claude's `WebFetch` or Cursor's `Fetch` here would match nothing
-// and the rail would go quiet with no error ([/decisions/ad-124.md](/decisions/ad-124.md)).
+// and the rail would go quiet with no error ([/decisions/ad-146.md](/decisions/ad-146.md)).
 test("the untrusted tool names are opencode's lower-case spellings, not another host's", () => {
   for (const tool of opencodePolicyDefaults().untrustedTools) {
     assert.equal(tool, tool.toLowerCase());

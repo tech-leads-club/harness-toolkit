@@ -4,7 +4,7 @@ import type { ProviderCapabilities } from "../../contracts/index.ts";
  * why two descriptors and not one with a branch: `capabilities()` takes no arguments, so a single opencode
  * adapter would have to either claim an ask channel the legacy plugin API cannot honour or discard the one the
  * namespaced API offers. Every value below is cited per generation in
- * [/decisions/ad-124.md](/decisions/ad-124.md), and no value is carried sideways between the two.
+ * [/decisions/ad-146.md](/decisions/ad-146.md), and no value is carried sideways between the two.
  */
 export function opencodeLegacyCapabilities(): ProviderCapabilities {
   return {
@@ -22,10 +22,10 @@ export function opencodeLegacyCapabilities(): ProviderCapabilities {
     // why: the reference shows `output.args.command` and `output.args.filePath` as mutable at
     // `tool.execute.before`.
     toolInputRewrite: true,
-    // hazard: the weakest value in this table. The legacy reference documents no output object on
-    // `tool.execute.after` at all; `true` rests on the transcription's measured bridge behaviour, which is
-    // admissible provenance and nothing more. The first legacy session anyone runs should check this one.
-    toolOutputRewrite: true,
+    // hazard: empty because the emitted bridge discards the decision on `tool.execute.after`, not because the host
+    // cannot do it. This flag now routes the secret mask: naming an event here that the bridge does not write
+    // would drop the mask and the fallback notice together. Members are added by the change that writes them.
+    toolOutputRewriteOn: [],
     // why: measured — the bridge appends a context decision to `output.context`.
     contextAtToolBefore: true,
     contextAtToolAfter: false,
@@ -49,7 +49,7 @@ export function opencodeNamespacedCapabilities(): ProviderCapabilities {
      *
      * hazard: *which* tools reach a permission decision is undocumented. If opencode never routes a `read`
      * through permission evaluation, an ask rule on `read.before` prompts nobody and reports nothing
-     * ([/decisions/ad-124.md](/decisions/ad-124.md)).
+     * ([/decisions/ad-146.md](/decisions/ad-146.md)).
      */
     askSupportedOn: ["shell.before", "mcp.before", "read.before", "tool.before"],
     sessionEnv: false,
@@ -61,8 +61,10 @@ export function opencodeNamespacedCapabilities(): ProviderCapabilities {
     // documents no mutation of it. Undocumented and unmeasured, so the safe value — the legacy `true` above is a
     // different API's evidence and does not transfer.
     toolInputRewrite: false,
-    // why: documented outright — `if (event.status === "completed") event.result = { ...event.result, … }`.
-    toolOutputRewrite: true,
+    // hazard: the host documents the channel — `event.result = { ...event.result, … }` on a completed call — and
+    // the emitted bridge uses it for context only. Empty until the bridge writes a rewrite there, so a masked
+    // output degrades to a notice instead of vanishing.
+    toolOutputRewriteOn: [],
     // why: the transcription's measurement was taken against the legacy bridge, so it stops at the API boundary.
     contextAtToolBefore: false,
     // why: the same mutable `event.result` is the carrier.

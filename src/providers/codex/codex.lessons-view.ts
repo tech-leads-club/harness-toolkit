@@ -19,7 +19,7 @@ function lessonsPointer(root: string): string {
 /**
  * The durable route for a host that does not need one by default.
  *
- * `sessionStartContextReliable` is `true` here ([/decisions/ad-123.md](/decisions/ad-123.md)), so
+ * `sessionStartContextReliable` is `true` here ([/decisions/ad-145.md](/decisions/ad-145.md)), so
  * `durableViewVerdict` writes nothing under the default `auto` — lessons ride the session-start hook. This view
  * exists for the operator who sets `syncRulesFile: "always"` (spec P4 AC7).
  *

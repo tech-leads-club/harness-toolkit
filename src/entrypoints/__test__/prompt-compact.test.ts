@@ -27,7 +27,8 @@ function obsRecords(root: string): Array<Record<string, unknown>> {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .filter((record) => record.kind !== "hook.enter");
 }
 
 function cursorPromptSubmit(root: string, overrides: Record<string, unknown> = {}): string {
@@ -142,6 +143,12 @@ function headSha(dir: string): string {
   return execFileSync("git", ["-C", dir, "rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
 }
 
+// why: `gitRootOf` runs `git rev-parse --show-toplevel`, which normalizes separators and, on Windows,
+// expands 8.3 short names (`RUNNER~1` -> `runneradmin`) — a raw `mkdtempSync` path is not that value.
+function gitToplevel(dir: string): string {
+  return execFileSync("git", ["-C", dir, "rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
+}
+
 test("turn_base_sha reflects the event's own cwd, not CLAUDE_PROJECT_DIR", async () => {
   const mainCheckout = gitRepo("tlc-prompt-main-");
   const worktree = gitRepo("tlc-prompt-worktree-");
@@ -156,6 +163,23 @@ test("turn_base_sha reflects the event's own cwd, not CLAUDE_PROJECT_DIR", async
       headSha(mainCheckout),
       "the two repos must genuinely differ to prove anything",
     );
+  } finally {
+    rmSync(mainCheckout, { recursive: true, force: true });
+    rmSync(worktree, { recursive: true, force: true });
+  }
+});
+
+// why: AD-144 — the sha alone cannot later be told apart from one captured in an unrelated worktree;
+// the git root it came from has to travel with it.
+test("prompt.submit also records turn_base_root, the git root turn_base_sha was captured from", async () => {
+  const mainCheckout = gitRepo("tlc-prompt-root-main-");
+  const worktree = gitRepo("tlc-prompt-root-worktree-");
+  process.env.CLAUDE_PROJECT_DIR = mainCheckout;
+  try {
+    await runHandler(promptSubmitHandler, stdinOf(claudePromptSubmit(worktree)));
+
+    const handoff = coreFacade.handoff.readHandoff(mainCheckout, "claude", "claude-sess-1");
+    assert.equal(handoff.turn_base_root, gitToplevel(worktree));
   } finally {
     rmSync(mainCheckout, { recursive: true, force: true });
     rmSync(worktree, { recursive: true, force: true });

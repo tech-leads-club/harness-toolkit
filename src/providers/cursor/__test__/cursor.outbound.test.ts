@@ -100,6 +100,27 @@ test("rewriteInput never leaks the reason field into rendered output", () => {
   assert.ok(rendered.stdout && !rendered.stdout.includes("should not appear"));
 });
 
+test("rewriteOutput at mcp.after renders updated_mcp_tool_output.result_json", () => {
+  const mcpAfterEvent: HarnessEvent = { ...EVENT, event: "mcp.after" };
+  const decision: Decision = { kind: "rewriteOutput", output: "masked result" };
+  const rendered = cursorRender(decision, mcpAfterEvent);
+  assert.equal(rendered.stdout, golden("rewrite-output"));
+});
+
+// invariant: proves T13's own done-when condition without adding a branch to cursorRender for the case — the
+// safety net is degrade(), not the renderer.
+test("a rewriteOutput at shell.after never reaches the renderer as rewriteOutput — degrade converts it to context first", () => {
+  const shellAfterEvent: HarnessEvent = { ...EVENT, event: "shell.after" };
+  const decision: Decision = { kind: "rewriteOutput", output: "masked result" };
+  const degraded = degrade(decision, shellAfterEvent, cursorCapabilities());
+  assert.equal(degraded.kind, "context");
+  const rendered = cursorRender(degraded, shellAfterEvent);
+  assert.ok(rendered.stdout !== null);
+  const parsed = JSON.parse(rendered.stdout as string);
+  assert.equal(typeof parsed.additional_context, "string");
+  assert.ok(!(rendered.stdout as string).includes("updated_mcp_tool_output"));
+});
+
 test("deny with no userNote omits user_message and keeps agent_message", () => {
   const rendered = cursorRender({ kind: "deny", reason: "no explicit model", rule: "test-deny" }, EVENT);
   assert.equal(rendered.stdout, '{"permission":"deny","agent_message":"no explicit model"}');
@@ -119,6 +140,7 @@ test("every decision kind renders with exit code 0 — exit code is never a poli
     { kind: "context", text: "t" },
     { kind: "continue", text: "t" },
     { kind: "rewriteInput", input: {}, reason: "r" },
+    { kind: "rewriteOutput", output: "masked" },
   ];
   for (const decision of decisions) {
     assert.equal(cursorRender(decision, EVENT).exitCode, 0, decision.kind);

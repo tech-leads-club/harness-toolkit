@@ -1,7 +1,7 @@
 /**
  * why: opencode does not pipe its own payload to the launcher. It loads a bridge plugin this harness writes, and
  * that bridge stamps the envelope every fixture under `__test__/fixtures/` carries. Detection is therefore a
- * marker check, not a fingerprint of a vendor shape ([/decisions/ad-124.md](/decisions/ad-124.md)).
+ * marker check, not a fingerprint of a vendor shape ([/decisions/ad-146.md](/decisions/ad-146.md)).
  */
 const OPENCODE_MARKER = "opencode";
 

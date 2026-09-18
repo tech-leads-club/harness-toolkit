@@ -16,7 +16,7 @@ export type ResolveResult = {
  *
  * why the two opencode adapters can sit anywhere in it: both match on a marker their own bridge stamps, and the
  * generation stamp makes them mutually exclusive, so neither can shadow the other or claim a foreign payload
- * ([/decisions/ad-124.md](/decisions/ad-124.md)). Order matters only for the hosts that share a payload shape.
+ * ([/decisions/ad-146.md](/decisions/ad-146.md)). Order matters only for the hosts that share a payload shape.
  *
  * why Codex sits ahead of Claude: its payloads are a superset-shaped sibling of Claude's, so ordered after Claude
  * a Codex `PreToolUse` would be claimed by Claude's detector first (design §4). Claude also declines a

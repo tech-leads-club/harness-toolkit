@@ -49,7 +49,7 @@ test("every entry launches with the provider hint", () => {
 /**
  * invariant: VS Code's documented event list and nothing else. `SessionEnd`, `PostToolUseFailure` and
  * `MessageDisplay` belong to the host whose payload shape this reuses, and wiring them would register hooks
- * VS Code never fires ([/decisions/ad-125.md](/decisions/ad-125.md)).
+ * VS Code never fires ([/decisions/ad-147.md](/decisions/ad-147.md)).
  */
 test("the entries name exactly the events VS Code documents", () => {
   assert.deepEqual(

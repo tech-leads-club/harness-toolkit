@@ -91,6 +91,15 @@ export type HarnessEvent = {
    * that assumed presence would be blind on the majority of one host's traffic.
    */
   toolOutput?: string;
+  /**
+   * The new text an Edit/Write-shaped tool call is about to introduce, when this project has confirmed the
+   * shape: full file content for a whole-file write, or the replacement fragment for a targeted edit. Absent
+   * for every other tool_name — the signal a downstream check uses to abstain rather than guess a field name
+   * (same per-adapter-translation pattern as `toolOutput` above, [/decisions/ad-077.md](/decisions/ad-077.md)).
+   */
+  proposedContent?: string;
+  /** Targeted-edit shape only: the text being replaced, needed to locate the edit's real position in the on-disk file. */
+  proposedOldContent?: string;
   /** Adapter-only escape hatch — core must not read this. */
   raw: Record<string, unknown>;
 };

@@ -5,7 +5,7 @@ import { basename, join } from "node:path";
 import { runtimePathKind, runtimeVersion } from "../bin/tlc-cli.ts";
 import { findBunOnPath, writeRuntimeCache } from "../bin/tlc-exec.mjs";
 import { isCursorWired, providerHomeDir } from "../bin/write-user-hooks.mjs";
-import type { ProviderWiring } from "../src/contracts/index.ts";
+import type { ProviderWiring, WiringEntry } from "../src/contracts/index.ts";
 import { coreFacade } from "../src/core/index.ts";
 import { emitJson, takeJsonFlag } from "../src/platform/cli-output.ts";
 import {
@@ -351,7 +351,7 @@ export function checkHookRuntime(
 }
 
 // why no `deferred` member any more: every kind in the union now has a writer that runs. A status no
-// branch can return is a row an operator can never see ([/decisions/ad-126.md](/decisions/ad-126.md)).
+// branch can return is a row an operator can never see ([/decisions/ad-148.md](/decisions/ad-148.md)).
 export type ProviderWiringStatus = "wired" | "detected-but-unwired" | "not-installed";
 
 /**
@@ -394,58 +394,66 @@ export function providerWiringStatus(wiring: ProviderWiring<ProviderWiringKind>)
     return "not-installed";
   }
   switch (wiring.kind) {
-    case "cursor-hooks-json": {
-      if (!isCursorWired(wiring.target)) {
-        return "detected-but-unwired";
-      }
-      // invariant: the marker says the file is ours; the problems say whether it works. Both must pass.
-      return wiringProblems(wiring).length === 0 ? "wired" : "detected-but-unwired";
-    }
-    case "claude-settings-json": {
-      const existingText = existsSync(wiring.target) ? readFileSync(wiring.target, "utf8") : null;
-      const result = mergeClaudeSettings(existingText, wiring.entries);
-      return result.ok && !result.changed ? "wired" : "detected-but-unwired";
-    }
-    /**
-     * why byte-equality and not marker presence: the bridge is generated wholesale from the wiring, so the only
-     * file that behaves is the one this build would write. A stale bridge still carries the marker and still
-     * names a launcher — and would report `wired` while calling a handler set that has since changed
-     * ([/decisions/ad-032.md](/decisions/ad-032.md) is the same failure on the Cursor branch).
-     */
+    case "cursor-hooks-json":
+      return cursorWiringStatus(wiring);
+    case "claude-settings-json":
+      return mergedWiringStatus(wiring, mergeClaudeSettings);
     case "opencode-plugin":
-    case "opencode-plugin-ns": {
-      if (!existsSync(wiring.target)) {
-        return "detected-but-unwired";
-      }
-      const existing = readFileSync(wiring.target, "utf8");
-      if (!isOpencodeManaged(existing)) {
-        return "detected-but-unwired";
-      }
-      return existing === renderOpencodePlugin(wiring) ? "wired" : "detected-but-unwired";
-    }
-    // why the same shape as the Claude branch: both are merges into a file the operator also writes, so "wired"
-    // means a merge would change nothing — not that the file exists.
-    case "codex-hooks-json": {
-      const existingText = existsSync(wiring.target) ? readFileSync(wiring.target, "utf8") : null;
-      const result = mergeCodexHooks(existingText, wiring.entries);
-      return result.ok && !result.changed ? "wired" : "detected-but-unwired";
-    }
-    // why the same shape as the opencode branch: a replaced file is ours only if we would write it byte for
-    // byte, so a stale document from an older harness reads as unwired rather than as wired.
+    case "opencode-plugin-ns":
+      return replacedWiringStatus(wiring, isOpencodeManaged, () => renderOpencodePlugin(wiring));
+    case "codex-hooks-json":
+      return mergedWiringStatus(wiring, mergeCodexHooks);
     case "vscode-hooks-json": {
-      if (!existsSync(wiring.target)) {
-        return "detected-but-unwired";
-      }
-      const existing = readFileSync(wiring.target, "utf8");
       const launcherPath = wiring.entries[0]?.args?.[0] ?? "";
-      if (!isVSCodeManaged(existing, launcherPath)) {
-        return "detected-but-unwired";
-      }
-      return existing === renderVSCodeHooksText(wiring.entries) ? "wired" : "detected-but-unwired";
+      return replacedWiringStatus(
+        wiring,
+        (text) => isVSCodeManaged(text, launcherPath),
+        () => renderVSCodeHooksText(wiring.entries),
+      );
     }
     default:
       return unreachableWiringKind(wiring.kind);
   }
+}
+
+function cursorWiringStatus(wiring: ProviderWiring<ProviderWiringKind>): ProviderWiringStatus {
+  if (!isCursorWired(wiring.target)) {
+    return "detected-but-unwired";
+  }
+  // invariant: the marker says the file is ours; the problems say whether it works. Both must pass.
+  return wiringProblems(wiring).length === 0 ? "wired" : "detected-but-unwired";
+}
+
+// why "a merge would change nothing" and not "the file exists": these are files the operator also writes, so
+// presence says nothing about whether our entries are in them.
+function mergedWiringStatus(
+  wiring: ProviderWiring<ProviderWiringKind>,
+  merge: (existingText: string | null, entries: readonly WiringEntry[]) => { ok: boolean; changed?: boolean },
+): ProviderWiringStatus {
+  const existingText = existsSync(wiring.target) ? readFileSync(wiring.target, "utf8") : null;
+  const result = merge(existingText, wiring.entries);
+  return result.ok && !result.changed ? "wired" : "detected-but-unwired";
+}
+
+/**
+ * why byte-equality and not marker presence: a replaced file is generated wholesale from the wiring, so the only
+ * file that behaves is the one this build would write. A stale one still carries the marker and still names a
+ * launcher — and would report `wired` while calling a handler set that has since changed
+ * ([/decisions/ad-032.md](/decisions/ad-032.md) is the same failure on the Cursor branch).
+ */
+function replacedWiringStatus(
+  wiring: ProviderWiring<ProviderWiringKind>,
+  isManaged: (text: string) => boolean,
+  render: () => string | null,
+): ProviderWiringStatus {
+  if (!existsSync(wiring.target)) {
+    return "detected-but-unwired";
+  }
+  const existing = readFileSync(wiring.target, "utf8");
+  if (!isManaged(existing)) {
+    return "detected-but-unwired";
+  }
+  return existing === render() ? "wired" : "detected-but-unwired";
 }
 
 function unreachableWiringKind(kind: never): never {

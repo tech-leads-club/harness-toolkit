@@ -166,7 +166,9 @@ the session-start hook and the durable view is written only under
 
 A new provider is a new directory under `src/providers/<name>/` plus one line in
 `src/providers/provider.registry.ts` (see [/decisions/ad-004.md](/decisions/ad-004.md) and
-[/decisions/ad-009.md](/decisions/ad-009.md) item 7) — never a change to `core/`.
+[/decisions/ad-009.md](/decisions/ad-009.md) item 7) — never a change to `core/`. `node
+tools/dev/new-provider.ts <name>`, run from a clone, scaffolds the stub files and a doc skeleton — a
+contributor-only tool, not a published CLI command ([/decisions/ad-126.md](/decisions/ad-126.md)).
 
 A wiring format it needs is a new member of `ProviderWiringKind` in `src/providers/provider.port.ts`, added by
 the change that introduces its writer rather than ahead of it: the `never` guard in `providerWiringStatus` makes

@@ -1,7 +1,7 @@
 import type { ProviderCapabilities } from "../../contracts/index.ts";
 
 /**
- * Every value below is cited in [/decisions/ad-125.md](/decisions/ad-125.md), which draws one line and holds it:
+ * Every value below is cited in [/decisions/ad-147.md](/decisions/ad-147.md), which draws one line and holds it:
  * what a hook *receives* comes from GitHub's Copilot hooks reference, what a hook may *return and have honoured*
  * comes from VS Code's own Agent Hooks page. The Copilot reference's `modifiedArgs`, `modifiedResult` and
  * `additionalContext`-at-`postToolUse` belong to GitHub's CLI and cloud agent, so they settle nothing here.
@@ -9,7 +9,7 @@ import type { ProviderCapabilities } from "../../contracts/index.ts";
  * why three of them changed: VS Code has since published its own per-event hooks reference
  * (<https://code.visualstudio.com/docs/agents/reference/hooks-reference>, read 2026-09-05), which documents
  * `updatedInput` on `PreToolUse` and `additionalContext` on `PreToolUse` and `PostToolUse`. The rule above did
- * not change — the VS Code page simply now carries the fields (AD-125's correction section).
+ * not change — the VS Code page simply now carries the fields (AD-147's correction section).
  *
  * invariant: no value is carried across from Claude. This host reuses Claude's payload shape, which makes Claude's
  * descriptor the one most likely to be copied and the copy hardest to notice.
@@ -42,7 +42,7 @@ export function vscodeCapabilities(): ProviderCapabilities {
     toolInputRewrite: true,
     // why: unmeasured, same split — the VS Code page documents no result replacement on `PostToolUse`.
     // `modifiedResult` is the Copilot CLI's.
-    toolOutputRewrite: false,
+    toolOutputRewriteOn: [],
     // why: the published hooks reference lists `PreToolUse` among the four events that accept
     // `additionalContext`. That overrides the Copilot reference's claim that `preToolUse` does not return it.
     contextAtToolBefore: true,

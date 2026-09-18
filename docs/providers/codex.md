@@ -34,26 +34,42 @@ Two consequences worth knowing:
 
 ## Capability descriptor
 
-`codex.capabilities.ts`. Every value is cited in [/decisions/ad-123.md](/decisions/ad-123.md), against OpenAI's
+`codex.capabilities.ts`. Every value is cited in [/decisions/ad-145.md](/decisions/ad-145.md), against OpenAI's
 published hooks reference or behaviour measured in the feature's source transcription.
 
+<!-- generated:capabilities -->
+
 | Capability | Value |
-| --- | --- |
+|---|---|
 | `enforcesHooks` | `true` |
-| `askSupportedOn` | `[]` — the reference states `permissionDecision: "ask"` is *parsed but unsupported*: Codex parses it and runs the tool anyway |
-| `sessionEnv` | `false` — `PLUGIN_ROOT` / `PLUGIN_DATA` are documented for plugin-bundled hooks only |
-| `nativeLoopCounter` | `false` — `stop_hook_active` is a boolean and the flag claims a count |
-| `dedicatedShellEvent` | `false` — shell is `PreToolUse` with a `^Bash$` matcher |
-| `toolInputRewrite` | `true` — `PreToolUse` accepts `updatedInput` |
-| `toolOutputRewrite` | `false` |
+| `askSupportedOn` | `[]` |
+| `sessionEnv` | `false` |
+| `nativeLoopCounter` | `false` |
+| `dedicatedShellEvent` | `false` |
+| `toolInputRewrite` | `true` |
+| `toolOutputRewriteOn` | `[]` |
 | `contextAtToolBefore` | `true` |
 | `contextAtToolAfter` | `true` |
-| `contextAtStop` | `false` — `Stop` documents only `decision: "block"` with `reason` |
-| `sessionStartContextReliable` | `true` — the least certain value in the table; a host can accept a field and drop it |
-| `toolOutputAtAfter` | `true` — `PostToolUse` carries `tool_response` |
+| `contextAtStop` | `false` |
+| `sessionStartContextReliable` | `true` |
+| `toolOutputAtAfter` | `true` |
 | `usageInPayload` | `false` |
 | `effortSignal` | `false` |
 | `thoughtEvent` | `false` |
+
+<!-- /generated -->
+
+Why each value that is not self-evident:
+
+- `askSupportedOn` — the reference states `permissionDecision: "ask"` is *parsed but unsupported*: Codex parses it and runs the tool anyway
+- `sessionEnv` — `PLUGIN_ROOT` / `PLUGIN_DATA` are documented for plugin-bundled hooks only
+- `nativeLoopCounter` — `stop_hook_active` is a boolean and the flag claims a count
+- `dedicatedShellEvent` — shell is `PreToolUse` with a `^Bash$` matcher
+- `toolInputRewrite` — `PreToolUse` accepts `updatedInput`
+- `toolOutputRewriteOn` — `PostToolUse` accepts `decision: "block"`, `reason` and `additionalContext`, and no field that replaces what the tool returned. A masked output degrades to a context notice
+- `contextAtStop` — `Stop` documents only `decision: "block"` with `reason`
+- `sessionStartContextReliable` — the least certain value in the table; a host can accept a field and drop it
+- `toolOutputAtAfter` — `PostToolUse` carries `tool_response`
 
 `askSupportedOn: []` is the load-bearing one. `degrade()` turns an `ask` rule into a `deny` for this host, so the
 rule author still writes one rule and no core code learns a host name.
@@ -160,7 +176,7 @@ observe would ever clear is one an operator learns to scroll past.
 
 ## Known limitations
 
-Recorded in [/decisions/ad-123.md](/decisions/ad-123.md), with what each costs:
+Recorded in [/decisions/ad-145.md](/decisions/ad-145.md), with what each costs:
 
 - **`WebSearch` never reaches the v1 hook pipeline** — a `WebSearch` rail sees nothing.
 - **`write_stdin` on an already-approved session never reaches it either** — an approved session can take further
@@ -172,4 +188,4 @@ Recorded in [/decisions/ad-123.md](/decisions/ad-123.md), with what each costs:
 
 - [/providers/index.md](/providers/index.md)
 - [/providers/claude-code.md](/providers/claude-code.md) — the payload shape this host resembles
-- [/decisions/ad-123.md](/decisions/ad-123.md)
+- [/decisions/ad-145.md](/decisions/ad-145.md)

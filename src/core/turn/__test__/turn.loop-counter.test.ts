@@ -27,7 +27,7 @@ function capabilities(overrides: Partial<ProviderCapabilities> = {}): ProviderCa
     nativeLoopCounter: false,
     dedicatedShellEvent: false,
     toolInputRewrite: false,
-    toolOutputRewrite: false,
+    toolOutputRewriteOn: [],
     contextAtToolBefore: false,
     contextAtToolAfter: false,
     contextAtStop: false,

@@ -14,8 +14,8 @@ test("the descriptor declares all 15 fields", () => {
   assert.equal(Object.keys(vscode).length, FIELD_COUNT);
 });
 
-/** The whole table, asserted as one value against [/decisions/ad-125.md](/decisions/ad-125.md). */
-test("every flag matches the value AD-125 cites", () => {
+/** The whole table, asserted as one value against [/decisions/ad-147.md](/decisions/ad-147.md). */
+test("every flag matches the value AD-147 cites", () => {
   assert.deepEqual(vscode, {
     enforcesHooks: true,
     askSupportedOn: ["shell.before", "mcp.before", "read.before", "tool.before"],
@@ -23,7 +23,7 @@ test("every flag matches the value AD-125 cites", () => {
     nativeLoopCounter: false,
     dedicatedShellEvent: false,
     toolInputRewrite: true,
-    toolOutputRewrite: false,
+    toolOutputRewriteOn: [],
     contextAtToolBefore: true,
     contextAtToolAfter: true,
     contextAtStop: false,
@@ -48,15 +48,15 @@ test("askSupportedOn lists exactly the four before-kinds PreToolUse fans out to"
   ]);
 });
 
-// spec P4 AC2: toolOutputRewrite false, sessionStartContextReliable true, thoughtEvent false.
+// spec P4 AC2: toolOutputRewriteOn empty, sessionStartContextReliable true, thoughtEvent false.
 test("the three flags spec P4 AC2 names directly carry the values it names", () => {
-  assert.equal(vscode.toolOutputRewrite, false);
+  assert.deepEqual(vscode.toolOutputRewriteOn, []);
   assert.equal(vscode.sessionStartContextReliable, true);
   assert.equal(vscode.thoughtEvent, false);
 });
 
 /**
- * AD-125's correction: the published hooks reference lists `additionalContext` on exactly four events —
+ * AD-147's correction: the published hooks reference lists `additionalContext` on exactly four events —
  * `PreToolUse`, `PostToolUse`, `SessionStart` and `SubagentStart`. `Stop` is not one of them, so that flag alone
  * stays false and `degrade()` still strips a context decision at `stop`.
  */
@@ -66,7 +66,7 @@ test("context is claimed at the tool events the reference lists, and refused at 
   assert.equal(vscode.contextAtStop, false);
 });
 
-/** AD-125's correction: `hookSpecificOutput.updatedInput` is documented on `PreToolUse`. */
+/** AD-147's correction: `hookSpecificOutput.updatedInput` is documented on `PreToolUse`. */
 test("an input rewrite is claimed, because updatedInput is documented on PreToolUse", () => {
   assert.equal(vscode.toolInputRewrite, true);
 });
@@ -90,12 +90,12 @@ test("the descriptor is none of Claude's, Cursor's, or Codex's", () => {
  * it. `askSupportedOn` is compared as a set, because the two hosts list the same four kinds in a different order
  * and an ordering difference is not a capability difference.
  */
-test("the three rows VS Code differs from Claude on are the three AD-125 settles against the VS Code page", () => {
+test("the three rows VS Code differs from Claude on are the three AD-147 settles against the VS Code page", () => {
   const claude = claudeCapabilities();
   const canonical = (value: unknown): string =>
     JSON.stringify(Array.isArray(value) ? [...value].sort() : value);
   const differing = (Object.keys(vscode) as (keyof typeof vscode)[])
     .filter((key) => canonical(vscode[key]) !== canonical(claude[key]))
     .sort();
-  assert.deepEqual(differing, ["contextAtStop", "effortSignal", "toolOutputRewrite"]);
+  assert.deepEqual(differing, ["contextAtStop", "effortSignal", "toolOutputRewriteOn"]);
 });

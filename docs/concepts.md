@@ -116,8 +116,10 @@ A lock is reclaimed when it is older than 30 minutes, when it cannot be read, or
 — the last one only on the host that wrote it, since a pid means nothing on another machine
 ([/decisions/ad-024.md](/decisions/ad-024.md)).
 
-Each lint/test invocation writes `.tlc/harness/state/last-gate.json` (`harness.gate.v1`) with exit code,
-command, files, `outputTail`, and `findings`. Follow-up gaps and stagnation fingerprints use that artifact.
+Each lint/test invocation writes `.tlc/harness/state/gate-sessions/<session>.json` (`harness.gate.v1`) with
+exit code, command, files, `outputTail`, and `findings` — one file per session, so a concurrent neighbour's
+own gate outcome is never read as this session's own
+([/decisions/ad-137.md](/decisions/ad-137.md)). Follow-up gaps and stagnation fingerprints use that artifact.
 Optional: the child may write findings to the path in `HARNESS_GATE_REPORT` (JSON
 `{ "findings": [{ "summary": "..." }] }`).
 
@@ -285,6 +287,17 @@ are not signal events.
 `shell.stallDetection`. When enabled, repeating the same shell command N times (`stallRepeatThreshold`) is denied with a
 change-approach follow-up. Trade-off: stops loops; can block intentional retries.
 
+## secret redaction
+
+`secrets.redactOutput`, on by default. After a tool or shell command runs, its output is scanned for a
+recognised secret signature (AWS access key, GitHub/Slack/Stripe token, PEM private-key block, JWT) or an
+unlabelled high-entropy string, and any match is replaced with a deterministic placeholder
+(`[REDACTED:<kind>:<hash>]`) before it reaches the model — the same value always yields the same placeholder
+within a session. On a host or event where a real rewrite is unsupported, the model instead gets a context
+notice that a secret was masked and must not be repeated; the raw value already reached it there, which is a
+stated structural limit, not a silent gap. Trade-off: a synchronous regex-plus-entropy pass per output, with the
+usual false-positive/false-negative risk of that detector shape.
+
 ## intelligence (rails)
 
 | Key | Effect |
@@ -318,7 +331,7 @@ rather than reporting nothing, because an inert mechanism and a working one othe
 
 ```markdown
 ---
-on: pr-open                            # pr-open | commit | push | stop | tool(<name>) | command(<pattern>)
+on: pr-open                            # pr-open | commit | push | pr-merge | stop | tool(<name>) | command(<pattern>)
 require:
   - subagent(the-jury) since HEAD      # subagent | command | gate | file, since HEAD or since session
 otherwise: deny                        # deny | ask | follow-up | warn
@@ -395,9 +408,28 @@ Posture reaches `ask` and nothing else: it interrupts under `paired` and hardens
 `focus`. `deny`, `follow-up` and `warn` are verification and are identical at all three
 ([/decisions/ad-025.md](/decisions/ad-025.md)).
 
-A pattern trigger is policy rather than containment. A script written to disk and executed later, a command name
-built at runtime, `gh api` instead of `gh pr create`, or a pull request opened in a browser all escape it — the
-rule covers the agent's shell path ([/decisions/ad-100.md](/decisions/ad-100.md)).
+A pattern trigger is policy rather than containment. `pr-open` and `push` recognize their `gh api` REST
+equivalent (`POST` to a path ending in `pulls`; `POST`/`PATCH` to a path touching `git/refs`) alongside the CLI
+shape, and `pr-merge` recognizes `gh pr merge` and `PUT` to a path ending in `merge` under `pulls`
+([/decisions/ad-128.md](/decisions/ad-128.md)) — scoped to the local checkout's own remote, so a `gh api` push
+to an unrelated repository (a template repo, a sibling project) is never gated by this project's own local
+state ([/decisions/ad-130.md](/decisions/ad-130.md)). `pr-open` also recognizes the GitHub MCP server's
+`create_pull_request` tool call, on both `mcp__<server>__create_pull_request` (Claude Code, any server name)
+and the bare or host-prefixed form Cursor sends, with the same repository scoping
+([/decisions/ad-135.md](/decisions/ad-135.md)) — but that is the one evidenced MCP tool name, not MCP as a
+class: a different MCP server or tool name performing the same act is not covered. A script written to disk
+and executed later, a command name built at runtime, a GraphQL mutation, `curl` direct to the API, a `gh api`
+call that flips a pull request to ready without going through `gh pr ready`, or a pull request opened,
+approved, or merged in a browser all still escape every trigger this project has
+([/decisions/ad-100.md](/decisions/ad-100.md)).
+
+**The durable, non-bypassable boundary is GitHub's own branch protection, not this mechanism.** A required
+status check (posted by whatever proof this project's rule already demands — the-jury's review, a gate
+passing) combined with "do not allow bypassing the above settings" turned on and no automation account holding
+admin closes the remainder, because it is enforced server-side at merge time regardless of which client
+attempted it. A `pr-open`/`push`/`pr-merge` rule here is a fast local nudge in front of that boundary — worth
+having, because it catches a cooperative agent's mistake before a round trip to GitHub, but not a substitute
+for configuring the boundary that actually holds against one that doesn't cooperate.
 
 `pr-open` does not fire on opening a **draft** pull request — only on a non-draft create and on converting a
 draft to ready. This matters when a `require:` proof itself depends on the pull request already existing (a

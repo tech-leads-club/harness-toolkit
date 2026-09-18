@@ -82,6 +82,35 @@ test("project config overrides a field while preserving unrelated nested default
   }
 });
 
+test("EFH-10: loadPolicy on a project with no secrets key resolves redactOutput true", () => {
+  const root = tempRoot();
+  const home = tempRoot();
+  try {
+    withTlcHome(home, () => {
+      const policy = loadPolicy(root);
+      assert.equal(policy.secrets.redactOutput, true);
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("EFH-10: a project config setting secrets.redactOutput false overrides the default", () => {
+  const root = tempRoot();
+  const home = tempRoot();
+  try {
+    withTlcHome(home, () => {
+      writeProjectConfig(root, { secrets: { redactOutput: false } });
+      const policy = loadPolicy(root);
+      assert.equal(policy.secrets.redactOutput, false);
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("project config wins over user config on conflicting fields", () => {
   const root = tempRoot();
   const home = tempRoot();

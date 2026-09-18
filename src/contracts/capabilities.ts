@@ -7,7 +7,14 @@ export type ProviderCapabilities = {
   nativeLoopCounter: boolean;
   dedicatedShellEvent: boolean;
   toolInputRewrite: boolean;
-  toolOutputRewrite: boolean;
+  /**
+   * The events on which a rewritten tool output actually reaches the model. Measured as per-event rather than
+   * per-host: one host documents its rewrite field for every after-event it fires, while another scopes its
+   * equivalent to a single after-event and leaves the rest observation-only
+   * ([/decisions/ad-009.md](/decisions/ad-009.md)'s `askSupportedOn` correction, applied to the same false
+   * per-host boolean here).
+   */
+  toolOutputRewriteOn: HarnessEventKind[];
   contextAtToolBefore: boolean;
   contextAtToolAfter: boolean;
   contextAtStop: boolean;

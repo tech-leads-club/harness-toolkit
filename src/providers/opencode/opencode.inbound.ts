@@ -4,7 +4,7 @@ import { sanitizeSegment } from "../../platform/sanitize.ts";
 /**
  * why one parser for both generations: the two plugin APIs differ in what the harness can *do* — which is what
  * the capability descriptors carry — not in the shape the bridge puts on stdin. The envelope is harness-defined
- * and identical across them ([/decisions/ad-124.md](/decisions/ad-124.md)), so a second parser would be two
+ * and identical across them ([/decisions/ad-146.md](/decisions/ad-146.md)), so a second parser would be two
  * copies of one fan-out drifting apart.
  */
 const OPENCODE_PROVIDER_BY_API: Record<string, string> = {
@@ -69,7 +69,7 @@ function sessionKeyFor(raw: Record<string, unknown>): string {
 
 function projectDirFor(raw: Record<string, unknown>): string {
   // why `TLC_PROJECT_DIR` and no vendor variable: opencode documents no environment given to a plugin, so the
-  // only variable in play is the one this harness's own launcher sets ([/decisions/ad-124.md](/decisions/ad-124.md)).
+  // only variable in play is the one this harness's own launcher sets ([/decisions/ad-146.md](/decisions/ad-146.md)).
   const envDir = process.env.TLC_PROJECT_DIR;
   if (envDir) {
     return envDir;
@@ -147,7 +147,7 @@ function kindFor(hook: string, tool: string | undefined): HarnessEventKind | nul
      * hazard: `permission.evaluate` is the ask channel, and a rule can only answer it if it knows what is being
      * asked about. The documented payload carries `sessionID`, `action`, `resources`, `effect` and `message` — no
      * tool — so this stays unmapped rather than raising a `tool.before` no rule can match on
-     * ([/decisions/ad-124.md](/decisions/ad-124.md)). The namespaced bridge forwards `action` and `resources`
+     * ([/decisions/ad-146.md](/decisions/ad-146.md)). The namespaced bridge forwards `action` and `resources`
      * verbatim; whether either resolves to a tool identity is undocumented, and one live session settles it.
      */
     case "permission.evaluate":

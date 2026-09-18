@@ -12,7 +12,6 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { backupPathFor } from "../../../platform/config-backup.ts";
 import { claudeConfigDir } from "../../../platform/paths.ts";
 import {
   applyClaudeWiring,

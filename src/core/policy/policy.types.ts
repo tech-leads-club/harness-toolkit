@@ -122,6 +122,9 @@ export type Policy = {
     stallDetection: boolean;
     stallRepeatThreshold: number;
   };
+  secrets: {
+    redactOutput: boolean;
+  };
   intelligence: {
     gapFeedback: boolean;
     failureClassification: boolean;
@@ -148,6 +151,7 @@ export type PartialPolicy = Partial<Policy> & {
   planGate?: Partial<Policy["planGate"]>;
   rules?: Partial<Policy["rules"]>;
   shell?: Partial<Policy["shell"]>;
+  secrets?: Partial<Policy["secrets"]>;
   intelligence?: Partial<Policy["intelligence"]> & {
     lessons?: Partial<LessonsPolicyConfig>;
   };

@@ -49,9 +49,9 @@ carry no evidentiary weight. Only the shapes do.
   form and not VS Code's single-underscore `mcp_`.
 - `permission_mode` is `"on-request"` throughout. The reference types it as a string without enumerating values.
 
-## Correction to AD-123, item 1
+## Correction to AD-145, item 1
 
-`docs/decisions/ad-123.md` states that Codex has no `SessionEnd` event and that a wiring rule capping its timeout
+`docs/decisions/ad-145.md` states that Codex has no `SessionEnd` event and that a wiring rule capping its timeout
 would be a rule about an event the host never fires. **That is wrong.** The reference documents `SessionEnd` under
 its own heading, and documents the timeout rule the transcription had recorded:
 
@@ -59,14 +59,14 @@ its own heading, and documents the timeout rule the transcription had recorded:
 > second by default and support up to 3 seconds.
 
 So the transcription's "SessionEnd timeout is capped at 3s" was accurate, and the correction that overturned it was
-the error. `Interrupt` is likewise a real event AD-123's list omits. AD-123's remaining three corrections
+the error. `Interrupt` is likewise a real event AD-145's list omits. AD-145's remaining three corrections
 (`PermissionRequest` vocabulary, the nested `hooks.json` shape, `stop_hook_active`) are unaffected and stand.
 
 This changes the acceptance criterion on task T13, which currently requires that no wiring entry name a
-`SessionEnd` event. Both the record and that criterion are amended in T2, whose file `docs/decisions/ad-123.md` is.
+`SessionEnd` event. Both the record and that criterion are amended in T2, whose file `docs/decisions/ad-145.md` is.
 
 ## What these fixtures cannot settle
 
 A fixture proves the shape a host **sends**. It cannot prove what a host **does** with a field it accepts back —
-`src/contracts/capabilities.ts:14`. Flags in that class take the conservative value in AD-123 and are marked
+`src/contracts/capabilities.ts:14`. Flags in that class take the conservative value in AD-145 and are marked
 unmeasured there; no fixture here should be read as evidence for one.

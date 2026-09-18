@@ -13,7 +13,7 @@ export function opencodeConfigFilePath(root: string): string {
 
 /**
  * why a config entry and not a rules file: `sessionStartContextReliable` is `false` on both generations
- * ([/decisions/ad-124.md](/decisions/ad-124.md)), so lessons cannot ride a session-start hook and need a durable
+ * ([/decisions/ad-146.md](/decisions/ad-146.md)), so lessons cannot ride a session-start hook and need a durable
  * carrier the host reads on its own. opencode's rules reference documents an `instructions` array in
  * `opencode.json`, whose entries are combined with `AGENTS.md`.
  *

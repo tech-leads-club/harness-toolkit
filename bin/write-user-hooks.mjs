@@ -192,7 +192,7 @@ export function applyProviderWiring(wiring, { force = false } = {}) {
  * hazard: the answer is the target's parent directory only where that parent is the host's own config directory.
  * Every directory below `~/.config/opencode` is created by whoever adds the first plugin — a clean opencode
  * install has no `plugins/` at all — so asking about any of them answers "host not installed" on a machine where
- * opencode is running, and the bridge is never written ([/decisions/ad-124.md](/decisions/ad-124.md)). Both
+ * opencode is running, and the bridge is never written ([/decisions/ad-146.md](/decisions/ad-146.md)). Both
  * opencode kinds therefore ask about the config directory, which is one level above `plugins/`. The VS Code hooks
  * directory is the same shape: `~/.copilot` says the host is there, `~/.copilot/hooks` says somebody already
  * wrote a hook file.

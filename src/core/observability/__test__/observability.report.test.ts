@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { groupByProvider, railsNeverFired, sessionReportMarkdown } from "../observability.report.ts";
+import type { SessionRollup } from "../observability.store.ts";
 import { newRollup } from "../observability.store.ts";
 import type { ObsEvent } from "../observability.types.ts";
 
@@ -62,9 +63,31 @@ test("sessionReportMarkdown names the owning provider and session", () => {
 
 test("sessionReportMarkdown flags an incomplete cost estimate", () => {
   const rollup = newRollup("session-a", "provider-a");
+  rollup.usage_reported = true;
   rollup.cost_incomplete = true;
   const markdown = sessionReportMarkdown(rollup);
   assert.ok(markdown.includes("incomplete"));
+});
+
+// why: a provider with no usage source at all must not read the same as a confirmed $0.0000, which
+// is what a session that never received a single gen_ai reading looked like before this existed.
+test("sessionReportMarkdown says cost is unavailable when no usage was ever reported", () => {
+  const rollup = newRollup("session-a", "provider-a");
+  const markdown = sessionReportMarkdown(rollup);
+  assert.ok(markdown.includes("not available"));
+  assert.ok(!markdown.includes("0.0000"));
+});
+
+// why: judge-found — a rollup a build before usage_reported existed wrote has that key entirely
+// absent (undefined, not false), and its estimated_cost_usd is a real answer from before this flag
+// existed to doubt it. Relabeling that as unavailable is the exact confusion this field removes,
+// pointed the other way.
+test("sessionReportMarkdown still shows a real cost for a rollup from before usage_reported existed", () => {
+  const { usage_reported: _absentOnDisk, ...withoutUsageReported } = newRollup("session-a", "provider-a");
+  const rollup = { ...withoutUsageReported, estimated_cost_usd: 4.2137 } as SessionRollup;
+  const markdown = sessionReportMarkdown(rollup);
+  assert.ok(markdown.includes("4.2137"));
+  assert.ok(!markdown.includes("not available"));
 });
 
 // why: a count without an attribution names no switch. Six asks from the paired posture and one from the
@@ -269,6 +292,21 @@ test("a token reading is assigned, never accumulated", async () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+// why: judge-found — a rollup missing usage_reported (a build before it existed) with
+// cost_incomplete: true still has a real, incomplete reading to warn about; `rollup.usage_reported
+// && rollup.cost_incomplete` evaluated to undefined (falsy) for it, so the text said "incomplete"
+// while the color said "info". `!== false` agrees with the text.
+test("the estimated-cost row warns on an incomplete reading even when usage_reported predates this field", async () => {
+  const { sessionReportScreen } = await import("../observability.report.ts");
+  const { usage_reported: _absentOnDisk, ...withoutUsageReported } = newRollup("p", "s1");
+  const rollup = { ...withoutUsageReported, estimated_cost_usd: 1.2, cost_incomplete: true };
+  const screen = sessionReportScreen(rollup as never);
+  const estimated = screen.sections
+    .flatMap((section) => section.rows ?? [])
+    .find((row) => row.label === "estimated");
+  assert.equal(estimated?.level, "warn");
 });
 
 // hazard: a successful shell call is `shell.end` and a failed one is `tool.fail`, so a shell tool in the tools

@@ -51,6 +51,13 @@ export type SessionRollup = {
   mcp: Record<string, number>;
   estimated_cost_usd: number;
   cost_incomplete: boolean;
+  /**
+   * why a separate flag from `cost_incomplete`: that one means a reading arrived and its model had no
+   * catalog rate. `$0.0000` and no reading ever arriving at all — a provider with no usage source at
+   * all ([/decisions/ad-142.md](/decisions/ad-142.md)) — render identically without this, and only one
+   * of those is actually zero.
+   */
+  usage_reported: boolean;
   input_tokens: number;
   output_tokens: number;
   cost_alert_sent: boolean;
@@ -217,6 +224,7 @@ export function newRollup(sessionKey: string, provider: string): SessionRollup {
     mcp: {},
     estimated_cost_usd: 0,
     cost_incomplete: false,
+    usage_reported: false,
     input_tokens: 0,
     output_tokens: 0,
     cost_alert_sent: false,

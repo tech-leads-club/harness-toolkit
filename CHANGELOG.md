@@ -8,11 +8,89 @@ doctor reports against your own configuration.
 
 ## Unreleased
 
-- **AD-123** — Codex capability flags are read off the vendor's hook reference, and the four it cannot settle fail safe
-- **AD-124** — opencode's two plugin API generations get two capability tables, and the rows they disagree on are not the ones the design predicted
-- **AD-125** — VS Code capability flags come from the VS Code hooks page for what a hook returns, and from the Copilot reference only for what a hook receives
-- **AD-126** — the VS Code writer ships complete and is never dispatched, because Agent Hooks are Preview and the hook file schema is unpublished
-- **AD-127** — A declared reason may name which reason it is, so the comment gate matches the code it polices
+- **AD-145** — Codex capability flags are read off the vendor's hook reference, and the four it cannot settle fail safe
+- **AD-146** — opencode's two plugin API generations get two capability tables, and the rows they disagree on are not the ones the design predicted
+- **AD-147** — VS Code capability flags come from the VS Code hooks page for what a hook returns, and from the Copilot reference only for what a hook receives
+- **AD-148** — the VS Code writer ships complete and is never dispatched, because Agent Hooks are Preview and the hook file schema is unpublished
+- **AD-149** — A declared reason may name which reason it is, so the comment gate matches the code it polices
+- **AD-150** — Every provider wiring writer backs up the target file before overwriting it
+
+## v0.16.1
+
+- **AD-144** — turn_base_sha records the git root it came from, and a mismatch falls back to HEAD
+
+## v0.16.0
+
+No decision records landed in this release.
+
+## v0.15.5
+
+- **AD-141** — Cursor's empty-string cwd no longer outranks the real project root
+- **AD-142** — Cursor's usageInPayload was never true
+- **AD-143** — a session with no usage source reads as unavailable, not as $0.0000
+
+## v0.15.4
+
+- **AD-140** — an unrecognized shell wrapper can no longer hide a forced push
+
+## v0.15.3
+
+- **AD-139** — lessonsView joins ProviderPort, closing the one dispatcher that bypassed it
+
+## v0.15.2
+
+- **AD-138** — a pr-open rule's own denial names its draft escape hatch
+
+## v0.15.1
+
+- **AD-137** — Gate artifacts are scoped per session, the same fix AD-122 already proved for handoff
+
+## v0.15.0
+
+- **AD-135** — pr-open recognizes its MCP surface
+- **AD-136** — hook.enter makes a hook invocation observable before any decision is made
+
+## v0.14.2
+
+- **AD-134** — runCommand moves to process.ts; listTrackedFiles never reaches for it again
+
+## v0.14.1
+
+- **AD-133** — runCommand stops truncating; the one caller that needs a bound already had one
+
+## v0.14.0
+
+- **AD-132** — Git-root discovery replaces an exact-match guard, in the six functions and their consumers
+
+## v0.13.0
+
+- **AD-131** — A ship-gate denial names what it checked and points at tlc harness why
+
+## v0.12.2
+
+- **AD-130** — gh api pr-open/push/pr-merge detection is scoped to the local checkout's own remote
+
+## v0.12.1
+
+- **AD-129** — Turn-scope git diffing runs at the event's own working directory, not the project root
+
+## v0.12.0
+
+- **AD-128** — pr-open and push recognize their gh api equivalent, and pr-merge exists
+
+## v0.11.2
+
+- **AD-127** — A rule's shell triggers match the act at any word position, not only at word 0
+
+## v0.11.1
+
+- **AD-124** — A provider's wiring target is a floor surface; secret-shaped tool output is a rail
+- **AD-125** — A provider's docs and file scaffold are generated from its own code, never hand-maintained
+- **AD-126** — The provider scaffold is a contributor tool; it never belonged on the published CLI
+
+## v0.11.0
+
+- **AD-123** — Policy stays declarative; no custom executable policy code, ever
 
 ## v0.10.6
 

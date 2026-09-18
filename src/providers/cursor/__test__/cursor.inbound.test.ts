@@ -38,6 +38,25 @@ test("preToolUse maps to tool.before and carries toolName, toolInput, subagentTy
   assert.equal(event?.subagentType, "explore");
 });
 
+test("preToolUse with tool_name Write carries proposedContent from tool_input.content", () => {
+  const event = cursorToEvent({
+    hook_event_name: "preToolUse",
+    conversation_id: "conv-abc",
+    session_id: "sess-1",
+    workspace_roots: ["/repo"],
+    tool_name: "Write",
+    tool_input: { file_path: "src/index.ts", content: "export const a = 1;\n" },
+  });
+  assert.equal(event?.event, "tool.before");
+  assert.equal(event?.proposedContent, "export const a = 1;\n");
+});
+
+test("preToolUse with any other tool_name leaves proposedContent unset", () => {
+  const event = cursorToEvent(fixture("tool-before"));
+  assert.equal(event?.toolName, "Task");
+  assert.equal(event?.proposedContent, undefined);
+});
+
 test("postToolUse maps to tool.after and carries toolName", () => {
   const event = cursorToEvent(fixture("tool-after"));
   assert.equal(event?.event, "tool.after");
@@ -76,6 +95,15 @@ test("afterShellExecution does not carry cwd, even when the raw payload has one"
   assert.equal(event?.cwd, undefined);
 });
 
+// invariant: found live — Cursor sends `cwd: ""` on a command that never entered a worktree, not an
+// absent field. `event.cwd` must come out undefined for it, the same as if the field were absent,
+// or shaScopeRoot's `event.cwd ?? event.projectDir` picks the empty string over the real root
+// ([/decisions/ad-141.md](/decisions/ad-141.md)).
+test("beforeShellExecution treats an empty-string cwd as absent, not as an override", () => {
+  const event = cursorToEvent({ ...fixture("shell-before"), cwd: "" });
+  assert.equal(event?.cwd, undefined);
+});
+
 test("beforeMCPExecution maps to mcp.before and carries toolName and toolInput", () => {
   const event = cursorToEvent(fixture("mcp-before"));
   assert.equal(event?.event, "mcp.before");
@@ -88,6 +116,31 @@ test("afterMCPExecution maps to mcp.after and carries toolName and toolInput", (
   assert.equal(event?.event, "mcp.after");
   assert.equal(event?.toolName, "mcp__search__query");
   assert.deepEqual(event?.toolInput, { q: "harness" });
+});
+
+/**
+ * AD-135 F2 — the host's own documented schema types `beforeMCPExecution`'s `tool_input` as a JSON string,
+ * not an object. A payload carrying the object form (the fixture above) is defensive coverage, not the real
+ * shape; this is.
+ */
+test("beforeMCPExecution parses a JSON-string tool_input, the shape the host actually sends", () => {
+  const event = cursorToEvent(fixture("mcp-before-string-input"));
+  assert.equal(event?.event, "mcp.before");
+  assert.equal(event?.toolName, "create_pull_request");
+  assert.deepEqual(event?.toolInput, { owner: "acme", repo: "widgets", title: "fix: x" });
+});
+
+test("beforeMCPExecution with an unparseable tool_input string leaves toolInput unset, not crashed", () => {
+  const event = cursorToEvent({
+    hook_event_name: "beforeMCPExecution",
+    conversation_id: "conv-abc",
+    session_id: "sess-1",
+    workspace_roots: ["/repo"],
+    tool_name: "create_pull_request",
+    tool_input: "{not valid json",
+  });
+  assert.equal(event?.event, "mcp.before");
+  assert.equal(event?.toolInput, undefined);
 });
 
 test("beforeReadFile maps to read.before and carries filePath", () => {

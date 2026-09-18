@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { firingRules, triggerMatches } from "../rules.trigger.ts";
+import {
+  firingRules,
+  mentionsGhApi,
+  mentionsMcpAct,
+  normalizeMcpToolName,
+  triggerMatches,
+} from "../rules.trigger.ts";
 import type { Rule } from "../rules.types.ts";
 
 function rule(overrides: Partial<Rule> = {}): Rule {
@@ -114,6 +120,370 @@ describe("triggerMatches", () => {
       triggerMatches({ kind: "pr-open" }, { event: "tool.before", command: "git log --grep 'gh pr create'" }),
       false,
     );
+  });
+
+  /**
+   * AD-127 — a rule stayed silently unfired in production behind a transparent shell proxy, because the old
+   * matcher anchored to word 0. WRAP-01/WRAP-02: any prefix, any number of layers, still fires.
+   */
+  test("AD-127 WRAP-01/WRAP-02 pr-open fires behind one or more transparent wrapper prefixes", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "tool.before", command: "rtk gh pr create --fill" }),
+      true,
+      "one wrapper layer",
+    );
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "tool.before", command: "sudo -u ci rtk gh pr create" }),
+      true,
+      "multiple wrapper layers stacked",
+    );
+  });
+
+  /** AD-127 WRAP-03: commit and push fire the same way behind a wrapper. */
+  test("AD-127 WRAP-03 commit and push fire behind a wrapper too", () => {
+    assert.equal(
+      triggerMatches({ kind: "commit" }, { event: "tool.before", command: "time git commit -m x" }),
+      true,
+    );
+    assert.equal(
+      triggerMatches({ kind: "push" }, { event: "tool.before", command: "env FOO=bar git push origin main" }),
+      true,
+    );
+  });
+
+  /**
+   * AD-127 WRAP-04: the draft exclusion still holds once the command is wrapped
+   * ([/decisions/ad-118.md](/decisions/ad-118.md)).
+   */
+  test("AD-127 WRAP-04 the draft exclusion still applies behind a wrapper", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "tool.before", command: "rtk gh pr create --draft" }),
+      false,
+    );
+  });
+
+  /** AD-127 WRAP-05: the wrapper tolerance composes with the AD-121 basename fallback. */
+  test("AD-127 WRAP-05 a wrapped command still gets the basename fallback for the real verb's path", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "tool.before", command: "time /usr/local/bin/gh pr create" },
+      ),
+      true,
+    );
+  });
+
+  /** AD-127 WRAP-07: position-agnostic scanning must not blur an unrelated command into `commit`/`push`. */
+  test("AD-127 WRAP-07 docker commit is not git commit", () => {
+    assert.equal(
+      triggerMatches({ kind: "commit" }, { event: "tool.before", command: "docker commit abc image" }),
+      false,
+    );
+  });
+
+  /**
+   * AD-128 — the exact incident: `gh pr create` was blocked, the agent switched to `gh api` and the pull
+   * request opened ungated. APIG-01..06 close this specific, evidenced bypass.
+   */
+  test("APIG-01 pr-open fires on the gh api call that actually opened the incident's pull request", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        {
+          event: "tool.before",
+          command: "gh api repos/o/r/pulls -f title='x' -f head='feat/x' -f base='main' -f body='y'",
+        },
+      ),
+      true,
+    );
+  });
+
+  test("APIG-02 pr-open fires the same way with an explicit -X POST / --method POST", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "tool.before", command: "gh api repos/o/r/pulls -X POST -f title=x -f head=y -f base=z" },
+      ),
+      true,
+    );
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "tool.before", command: "gh api --method POST repos/o/r/pulls -f title=x" },
+      ),
+      true,
+      "the method flag before the endpoint still resolves correctly",
+    );
+  });
+
+  test("APIG-03 pr-open does not fire on a bare GET listing pull requests", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "tool.before", command: "gh api repos/o/r/pulls" }),
+      false,
+    );
+  });
+
+  test("APIG-04 pr-open does not fire when params are present but --method GET forces a read", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "tool.before", command: "gh api repos/o/r/pulls -f q=is:open --method GET" },
+      ),
+      false,
+    );
+  });
+
+  test("APIG-05 pr-open via gh api still fires behind a wrapper prefix", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "tool.before", command: "rtk gh api repos/o/r/pulls -f title=x -f head=y -f base=z" },
+      ),
+      true,
+    );
+  });
+
+  test("APIG-06 pr-open via gh api fires with a leading-slash path or a full URL", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "tool.before", command: "gh api /repos/o/r/pulls -f title=x" },
+      ),
+      true,
+      "leading slash",
+    );
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "tool.before", command: "gh api https://api.github.com/repos/o/r/pulls -f title=x" },
+      ),
+      true,
+      "full URL",
+    );
+  });
+
+  /** APIG-07..09 — the same class of bypass for `push`, closed alongside `pr-open`'s, no evidenced incident yet. */
+  test("APIG-07 push fires on gh api updating a git ref (the API equivalent of pushing to an existing branch)", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "push" },
+        { event: "tool.before", command: "gh api repos/o/r/git/refs/heads/main -X PATCH -f sha=abc123" },
+      ),
+      true,
+    );
+  });
+
+  test("APIG-08 push fires on gh api creating a new git ref (implicit POST from the body flags)", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "push" },
+        { event: "tool.before", command: "gh api repos/o/r/git/refs -f ref=refs/heads/x -f sha=abc123" },
+      ),
+      true,
+    );
+  });
+
+  test("APIG-09 push does not fire on a bare GET reading a git ref", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "push" },
+        { event: "tool.before", command: "gh api repos/o/r/git/refs/heads/main" },
+      ),
+      false,
+    );
+  });
+
+  /** APIG-10 — `pr-merge`'s CLI shape, same `containsPhrase`/`matchesShape` machinery as every other shape. */
+  test("APIG-10 pr-merge fires on gh pr merge and not on gh pr view", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-merge" }, { event: "tool.before", command: "gh pr merge 42" }),
+      true,
+    );
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-merge" },
+        { event: "tool.before", command: "gh pr merge 42 --squash --auto" },
+      ),
+      true,
+      "flags do not change the act",
+    );
+    assert.equal(
+      triggerMatches({ kind: "pr-merge" }, { event: "tool.before", command: "gh pr view 42" }),
+      false,
+    );
+  });
+
+  test("a shell trigger with no command cannot fire pr-merge either", () => {
+    assert.equal(triggerMatches({ kind: "pr-merge" }, { event: "tool.before" }), false);
+  });
+
+  /** APIG-11/12 — the gh api equivalent of gh pr merge: PUT to a path ending in /merge under pulls. */
+  test("APIG-11 pr-merge fires on the gh api merge endpoint", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-merge" },
+        { event: "tool.before", command: "gh api repos/o/r/pulls/42/merge -X PUT" },
+      ),
+      true,
+    );
+  });
+
+  /**
+   * Verifier finding — the method check (`methods: ["PUT"]`) alone must not be enough; the `lastSegment`
+   * guard has to be exercised with the *right* method and the *wrong* path, or a mutant that deletes the
+   * `lastSegment` check survives behind the method check alone.
+   */
+  test("pr-merge does not fire on a PUT to the bare pull request path, only on one ending in /merge", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-merge" },
+        { event: "tool.before", command: "gh api repos/o/r/pulls/42 -X PUT" },
+      ),
+      false,
+    );
+  });
+
+  test("APIG-12 pr-merge does not fire on gh api reading a single pull request", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-merge" }, { event: "tool.before", command: "gh api repos/o/r/pulls/42" }),
+      false,
+    );
+  });
+
+  /**
+   * Risks & Concerns (design.md) — the concrete distinguishing case: PATCH to /pulls/{n} edits metadata (a
+   * title, say) and must not be mistaken for a merge just because "pulls" appears in the path too.
+   */
+  test("pr-merge does not fire on an unrelated PATCH editing a pull request's title via gh api", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-merge" },
+        { event: "tool.before", command: "gh api repos/o/r/pulls/42 -X PATCH -f title='new title'" },
+      ),
+      false,
+    );
+  });
+
+  /**
+   * AD-130 — the exact incident: `gh api` recognized *any* repository's push as this project's own. ARS-01..04
+   * close it: the API path's owner/repo now has to match `context.repoRemote`.
+   */
+  describe("AD-130 repoRemote scoping for the gh api shapes", () => {
+    const SAME_REPO = { owner: "acme", repo: "widgets" };
+    const OTHER_REPO = { owner: "other-owner", repo: "unrelated-repo" };
+
+    test("ARS-01 push still fires when the gh api call targets the local repo's own remote", () => {
+      assert.equal(
+        triggerMatches(
+          { kind: "push" },
+          {
+            event: "tool.before",
+            command: "gh api -X PATCH repos/acme/widgets/git/refs/heads/main -f sha=abc",
+            repoRemote: SAME_REPO,
+          },
+        ),
+        true,
+      );
+    });
+
+    test("ARS-02 push does not fire when the gh api call targets an unrelated repository", () => {
+      assert.equal(
+        triggerMatches(
+          { kind: "push" },
+          {
+            event: "tool.before",
+            command: "gh api -X PATCH repos/other-owner/unrelated-repo/git/refs/heads/main -f sha=abc",
+            repoRemote: SAME_REPO,
+          },
+        ),
+        false,
+      );
+    });
+
+    test("ARS-02 the same holds for pr-open and pr-merge against an unrelated repository", () => {
+      assert.equal(
+        triggerMatches(
+          { kind: "pr-open" },
+          {
+            event: "tool.before",
+            command: "gh api repos/other-owner/unrelated-repo/pulls -f title=x -f head=y -f base=z",
+            repoRemote: SAME_REPO,
+          },
+        ),
+        false,
+      );
+      assert.equal(
+        triggerMatches(
+          { kind: "pr-merge" },
+          {
+            event: "tool.before",
+            command: "gh api repos/other-owner/unrelated-repo/pulls/42/merge -X PUT",
+            repoRemote: SAME_REPO,
+          },
+        ),
+        false,
+      );
+    });
+
+    test("ARS-02 the same owner but a different repository still does not match — both segments are checked", () => {
+      assert.equal(
+        triggerMatches(
+          { kind: "push" },
+          {
+            event: "tool.before",
+            command: "gh api -X PATCH repos/acme/some-other-repo/git/refs/heads/main -f sha=abc",
+            repoRemote: SAME_REPO,
+          },
+        ),
+        false,
+        "acme matches, but widgets !== some-other-repo",
+      );
+    });
+
+    test("ARS-03 a resolved-but-absent local remote (null) fails every gh api shape, not just a mismatch", () => {
+      assert.equal(
+        triggerMatches(
+          { kind: "push" },
+          {
+            event: "tool.before",
+            command: "gh api -X PATCH repos/acme/widgets/git/refs/heads/main -f sha=abc",
+            repoRemote: null,
+          },
+        ),
+        false,
+      );
+    });
+
+    test("ARS-04 an omitted repoRemote (undefined) is unchanged from before AD-130", () => {
+      assert.equal(
+        triggerMatches(
+          { kind: "push" },
+          {
+            event: "tool.before",
+            command: "gh api -X PATCH repos/other-owner/unrelated-repo/git/refs/heads/main -f sha=abc",
+          },
+        ),
+        true,
+        "no repoRemote supplied at all — the caller didn't resolve this dimension, so the path/method check alone still decides",
+      );
+    });
+
+    test("ARS-04 CLI-form shapes are unaffected by repoRemote entirely, matched or mismatched", () => {
+      assert.equal(
+        triggerMatches(
+          { kind: "push" },
+          { event: "tool.before", command: "git push origin main", repoRemote: OTHER_REPO },
+        ),
+        true,
+      );
+      assert.equal(
+        triggerMatches(
+          { kind: "pr-merge" },
+          { event: "tool.before", command: "gh pr merge 42", repoRemote: OTHER_REPO },
+        ),
+        true,
+      );
+    });
   });
 
   test("commit and push fire on their own shapes and not on each other", () => {
@@ -254,5 +624,199 @@ describe("firingRules", () => {
     });
 
     assert.deepEqual(firing, []);
+  });
+});
+
+/**
+ * ARS-05/06 — `isShipCommand`/`rulesDecision` gate `localRepoRemote`'s process spawn behind this exact
+ * check: a command that cannot possibly match an API shape (`mentionsGhApi` false) never pays for the
+ * remote lookup at all, and one that does pays for it once. Node's `node:test` mock cannot reliably
+ * intercept a builtin module's function called through another module's named import in this runtime
+ * (confirmed by trying it, not assumed), so the actual "was the process spawned" property is proven here,
+ * on the pure decision the two callers act on, rather than by spying on the spawn itself
+ * ([/decisions/ad-130.md](/decisions/ad-130.md)).
+ */
+describe("mentionsGhApi", () => {
+  test("ARS-05 true for a gh api call, including behind a transparent wrapper", () => {
+    assert.equal(mentionsGhApi("gh api -X PATCH repos/acme/widgets/git/refs/heads/main -f sha=x"), true);
+    assert.equal(mentionsGhApi("rtk gh api repos/acme/widgets/pulls -f title=x"), true, "AD-127 composes");
+  });
+
+  test("ARS-05 false for the CLI shapes — they never read repoRemote, so nothing needs to resolve it", () => {
+    assert.equal(mentionsGhApi("git push origin main"), false);
+    assert.equal(mentionsGhApi("gh pr create --fill"), false);
+    assert.equal(mentionsGhApi("gh pr merge 42"), false);
+  });
+
+  test("ARS-05 false for a command with no relation to gh at all", () => {
+    assert.equal(mentionsGhApi("ls -la"), false);
+    assert.equal(mentionsGhApi("npm test"), false);
+  });
+
+  test("ARS-05 false when the words appear only inside a heredoc body, same as every other shell trigger", () => {
+    const command = "cat <<EOF > notes.md\nremember to run gh api later\nEOF";
+    assert.equal(mentionsGhApi(command), false);
+  });
+});
+
+/**
+ * AD-135 — a third grammar for the same act: an MCP tool call, alongside the CLI words `SHELL_SHAPES` already
+ * reads and the REST path+method `API_SHAPES` already reads. Confirmed in production: `gh pr create` and
+ * `gh api .../pulls` attempts in one session were correctly denied by the operator's own `pr-open` rule; the
+ * GitHub MCP server's `create_pull_request` tool, invoked in the same session, reached `triggerMatches` with
+ * no `command` at all and was never evaluated.
+ */
+describe("normalizeMcpToolName", () => {
+  test("PMS-N1 a bare tool name (one host's beforeMCPExecution payload) passes through unchanged", () => {
+    assert.equal(normalizeMcpToolName("create_pull_request"), "create_pull_request");
+  });
+
+  test("PMS-N2 the mcp__<server>__<tool> convention (one host's own naming) strips to the tool name", () => {
+    assert.equal(normalizeMcpToolName("mcp__github__create_pull_request"), "create_pull_request");
+  });
+
+  test("PMS-N3 a server name that itself contains __ still strips to the tool name", () => {
+    assert.equal(
+      normalizeMcpToolName("mcp__github__enterprise__create_pull_request"),
+      "create_pull_request",
+      "two __ separators after the mcp__ prefix — indexOf would stop at the first and return " +
+        "'enterprise__create_pull_request'; only lastIndexOf gives the tool name",
+    );
+  });
+
+  test("PMS-N4 a host-prefixed generic-tool form (MCP:<tool>) strips to the tool name", () => {
+    assert.equal(normalizeMcpToolName("MCP:create_pull_request"), "create_pull_request");
+  });
+});
+
+describe("triggerMatches — MCP shape (pr-open)", () => {
+  test("PMS-01 a bare create_pull_request tool call fires pr-open", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "mcp.before", toolName: "create_pull_request" }),
+      true,
+    );
+  });
+
+  test("PMS-02 the mcp__<server>__create_pull_request form fires pr-open, any server name", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "mcp.before", toolName: "mcp__github__create_pull_request" },
+      ),
+      true,
+    );
+  });
+
+  test("PMS-03 the host-prefixed MCP:create_pull_request form fires pr-open", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "mcp.before", toolName: "MCP:create_pull_request" }),
+      true,
+    );
+  });
+
+  test("PMS-04 an unrelated or merely-similar MCP tool name does not fire — exact match, not substring", () => {
+    for (const toolName of [
+      "create_pull_request_comment",
+      "list_pull_requests",
+      "mcp__github__update_pull_request",
+    ]) {
+      assert.equal(triggerMatches({ kind: "pr-open" }, { event: "mcp.before", toolName }), false, toolName);
+    }
+  });
+
+  test("PMS-05 a shell command still matches exactly as before — the MCP path is additive", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, { event: "shell.before", command: "gh pr create --fill" }),
+      true,
+    );
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        { event: "shell.before", command: "gh api repos/acme/widgets/pulls -X POST -f title=x" },
+      ),
+      true,
+    );
+  });
+
+  test("PMS-06 neither command nor toolName present — no act to recognize", () => {
+    assert.equal(triggerMatches({ kind: "pr-open" }, { event: "mcp.before" }), false);
+  });
+});
+
+describe("triggerMatches — MCP shape repo scope (pr-open)", () => {
+  const context = (
+    toolInput: Record<string, unknown>,
+    repoRemote?: { owner: string; repo: string } | null,
+  ) => ({
+    event: "mcp.before",
+    toolName: "create_pull_request",
+    toolInput,
+    repoRemote,
+  });
+
+  test("PMS-07 toolInput names the local repository — fires", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        context({ owner: "acme", repo: "widgets" }, { owner: "acme", repo: "widgets" }),
+      ),
+      true,
+    );
+  });
+
+  test("PMS-08 toolInput names a different repository — does not fire", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        context({ owner: "acme", repo: "other-repo" }, { owner: "acme", repo: "widgets" }),
+      ),
+      false,
+    );
+  });
+
+  test("PMS-09 repoRemote resolved to null (no confirmable local repo) — fails the scoped match", () => {
+    assert.equal(
+      triggerMatches({ kind: "pr-open" }, context({ owner: "acme", repo: "widgets" }, null)),
+      false,
+    );
+  });
+
+  test("PMS-10 repoRemote never resolved (undefined) — fires without a scope check, matching matchesApiShape", () => {
+    assert.equal(triggerMatches({ kind: "pr-open" }, context({ owner: "acme", repo: "widgets" })), true);
+  });
+
+  test("PMS-11 toolInput carries no owner/repo fields — fires without a scope check", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        context({ title: "fix: something" }, { owner: "acme", repo: "widgets" }),
+      ),
+      true,
+    );
+  });
+
+  test("PMS-14 toolInput carries only owner, no repo — a partial claim is treated as none, fires", () => {
+    assert.equal(
+      triggerMatches(
+        { kind: "pr-open" },
+        context({ owner: "acme" }, { owner: "other-owner", repo: "other-repo" }),
+      ),
+      true,
+      "no repo field means there is no owner/repo pair to compare, not half a mismatch",
+    );
+  });
+});
+
+describe("mentionsMcpAct", () => {
+  test("PMS-12 true for every recognized MCP shape's tool name, in any provider's decoration", () => {
+    assert.equal(mentionsMcpAct("create_pull_request"), true);
+    assert.equal(mentionsMcpAct("mcp__github__create_pull_request"), true);
+    assert.equal(mentionsMcpAct("MCP:create_pull_request"), true);
+  });
+
+  test("PMS-13 false for an unrelated tool name or undefined", () => {
+    assert.equal(mentionsMcpAct("Read"), false);
+    assert.equal(mentionsMcpAct("mcp__github__list_pull_requests"), false);
+    assert.equal(mentionsMcpAct(undefined), false);
   });
 });

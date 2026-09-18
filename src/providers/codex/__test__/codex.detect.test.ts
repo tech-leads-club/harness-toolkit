@@ -205,6 +205,8 @@ function stubPort(name: string, detect: (raw: unknown) => boolean): ProviderPort
     toEvent: () => null,
     render: () => ({ stdout: null, exitCode: 0 }),
     wiring: () => ({ target: "/tmp/x", kind: "cursor-hooks-json", strategy: "replace", entries: [] }),
+    wiringTargets: () => ["/tmp/x"],
+    lessonsView: () => null,
   };
 }
 

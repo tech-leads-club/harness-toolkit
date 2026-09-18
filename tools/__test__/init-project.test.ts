@@ -396,7 +396,7 @@ describe("applyPlan", () => {
   /**
    * spec P4 AC5: `init` takes an explicit deferral branch for `vscode-hooks-json` and does not write the wiring
    * file. The path is named rather than absent, so a later reader finds a decision instead of an omission
-   * ([/decisions/ad-126.md](/decisions/ad-126.md)).
+   * ([/decisions/ad-148.md](/decisions/ad-148.md)).
    */
   test("vscode is reported as deferred and its project hook file is never created", () => {
     const root = newRoot();

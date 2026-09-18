@@ -198,7 +198,7 @@ describe("providerWiringStatus", () => {
    *
    * why not `detected-but-unwired`: that row tells the operator to run `tlc harness update`, and update writes
    * nothing for this kind — a warning nothing can clear is the [/decisions/ad-034.md](/decisions/ad-034.md)
-   * defect ([/decisions/ad-126.md](/decisions/ad-126.md)).
+   * defect ([/decisions/ad-148.md](/decisions/ad-148.md)).
    */
   test("vscode: unwired once the host is present, wired only when the file is ours", () => {
     const root = newRoot();

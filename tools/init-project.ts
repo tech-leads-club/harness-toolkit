@@ -139,7 +139,7 @@ export const PROJECT_SHIMS = [join(".cursor", "hooks.json"), join(".claude", "se
  * why it is named here rather than left absent: `PROJECT_SHIMS` is the list of paths `init` writes, and a host
  * missing from it reads as one nobody has thought about. This one has been thought about — the writer exists and
  * is tested (`src/providers/vscode/vscode.wiring.ts`), and the dispatch is withheld while Agent Hooks are Preview
- * ([/decisions/ad-126.md](/decisions/ad-126.md), spec P4 AC5). Naming the path is what stops a later reader
+ * ([/decisions/ad-148.md](/decisions/ad-148.md), spec P4 AC5). Naming the path is what stops a later reader
  * wiring it blind.
  *
  * invariant: this path is never created by `init`, and never appears in `PROJECT_SHIMS` or `.gitignore` while the
@@ -323,7 +323,7 @@ export function applyPlan(
   /**
    * The deferral branch, now narrower than it was. The user-level hook file *is* written — `tlc harness install`
    * dispatches it against the published schema. What stays absent is the workspace shim, which needs a presence
-   * probe and an entry set this file does not have ([/decisions/ad-126.md](/decisions/ad-126.md)).
+   * probe and an entry set this file does not have ([/decisions/ad-148.md](/decisions/ad-148.md)).
    */
   const vscode = {
     deferred: true as const,

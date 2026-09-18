@@ -13,6 +13,14 @@ type EntrySpec = {
 };
 
 // why: mirrors bin/write-user-hooks.mjs verbatim — same hook keys, timeouts, failClosed/matcher/loopLimit values, and handler order.
+export function cursorHooksPath(): string {
+  return join(cursorConfigDir(), "hooks.json");
+}
+
+export function cursorWiringTargets(): string[] {
+  return [cursorHooksPath()];
+}
+
 const ENTRY_SPECS: readonly EntrySpec[] = [
   { hookEvent: "sessionStart", handler: "session-start", timeoutSeconds: 10 },
   { hookEvent: "sessionEnd", handler: "session-end", timeoutSeconds: 10 },
@@ -21,7 +29,7 @@ const ENTRY_SPECS: readonly EntrySpec[] = [
   { hookEvent: "preCompact", handler: "compact-before", timeoutSeconds: 5 },
   { hookEvent: "subagentStart", handler: "subagent-start", timeoutSeconds: 5, failClosed: true },
   { hookEvent: "subagentStop", handler: "subagent-stop", timeoutSeconds: 5 },
-  { hookEvent: "preToolUse", handler: "tool-before", timeoutSeconds: 5, failClosed: true },
+  { hookEvent: "preToolUse", handler: "tool-before", timeoutSeconds: 10, failClosed: true },
   { hookEvent: "postToolUse", handler: "tool-after", timeoutSeconds: 5 },
   { hookEvent: "postToolUseFailure", handler: "tool-failure", timeoutSeconds: 5 },
   { hookEvent: "beforeShellExecution", handler: "tool-before", timeoutSeconds: 10, failClosed: true },
@@ -58,7 +66,7 @@ export function cursorWiring(runtime: RuntimePaths): ProviderWiring<ProviderWiri
   }));
 
   return {
-    target: join(cursorConfigDir(), "hooks.json"),
+    target: cursorHooksPath(),
     kind: "cursor-hooks-json",
     strategy: "replace",
     entries,

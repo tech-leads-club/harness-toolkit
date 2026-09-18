@@ -25,6 +25,7 @@ export type RuleTrigger =
   | { kind: "pr-open" }
   | { kind: "commit" }
   | { kind: "push" }
+  | { kind: "pr-merge" }
   | { kind: "stop" }
   | { kind: "tool"; name: string }
   | { kind: "command"; pattern: string };

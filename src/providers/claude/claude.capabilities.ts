@@ -8,7 +8,9 @@ export function claudeCapabilities(): ProviderCapabilities {
     nativeLoopCounter: false,
     dedicatedShellEvent: false,
     toolInputRewrite: true,
-    toolOutputRewrite: true,
+    // why: `updatedToolOutput` is documented on every event this adapter fires PostToolUse/PostToolUseFailure
+    // for — both of the after-events a rewrite could ever apply to.
+    toolOutputRewriteOn: ["tool.after", "tool.failure"],
     contextAtToolBefore: true,
     contextAtToolAfter: true,
     // why: `Stop` accepts `hookSpecificOutput.additionalContext` for feedback that continues the turn, which is

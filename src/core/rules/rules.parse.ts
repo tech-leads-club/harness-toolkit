@@ -21,7 +21,7 @@ import {
 
 export type RuleSource = { name: string; tier: RuleTier; text: string };
 
-const BARE_TRIGGERS = new Set(["pr-open", "commit", "push", "stop"]);
+const BARE_TRIGGERS = new Set(["pr-open", "commit", "push", "pr-merge", "stop"]);
 
 /** why: `tool(Write)` and `command(gh pr create)` carry an argument; the other four do not. */
 function parseTrigger(raw: string): RuleTrigger | string {
@@ -33,7 +33,7 @@ function parseTrigger(raw: string): RuleTrigger | string {
   const verb = call?.[1];
   const argument = call?.[2]?.trim();
   if (verb === undefined || argument === undefined || argument === "") {
-    return `unknown trigger "${bare}" — use one of pr-open, commit, push, stop, tool(<name>), command(<pattern>)`;
+    return `unknown trigger "${bare}" — use one of pr-open, commit, push, pr-merge, stop, tool(<name>), command(<pattern>)`;
   }
   return verb === "tool" ? { kind: "tool", name: argument } : { kind: "command", pattern: argument };
 }

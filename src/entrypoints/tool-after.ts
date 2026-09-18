@@ -6,7 +6,7 @@ import { normalizeSeparators } from "../platform/sanitize.ts";
 import { readClaudeUsage } from "../providers/index.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
-import { OBS_CONFIG_AUDIT, obsConfigFor, observeForRules } from "./support.ts";
+import { OBS_CONFIG_AUDIT, obsConfigFor, observeForRules, resolveTurnBase } from "./support.ts";
 
 const OBS_KIND_BY_EVENT: Partial<Record<HarnessEventKind, ObsKind>> = {
   "tool.after": "tool.end",
@@ -73,7 +73,7 @@ async function commentEditAdvisory(event: HarnessEvent, ctx: HandlerContext): Pr
     event.projectDir,
     targets,
     policy.comments.mode,
-    handoff.turn_base_sha ?? "HEAD",
+    await resolveTurnBase(handoff, event.projectDir),
   );
   if (hits.length === 0) {
     return null;
@@ -131,6 +131,26 @@ export const toolAfterHandler: Handler = async (event: HarnessEvent, ctx: Handle
       config: ctx.policy.untrustedContent,
       providerTools: ctx.provider.policyDefaults().untrustedTools,
     });
+  }
+
+  if (ctx.policy.secrets.redactOutput && event.toolOutput) {
+    const output = event.toolOutput;
+    const matches = coreFacade.secretScan.scanForSecrets(output);
+    if (matches.length > 0) {
+      let masked = output;
+      // why: reversed so each replacement's [start, end) offsets, computed against the original string, stay
+      // valid as the string's length changes underneath earlier ones.
+      for (const match of [...matches].reverse()) {
+        const placeholder = coreFacade.secretScan.placeholderFor(
+          event.projectDir,
+          event.sessionKey,
+          output.slice(match.start, match.end),
+          match.kind,
+        );
+        masked = `${masked.slice(0, match.start)}${placeholder}${masked.slice(match.end)}`;
+      }
+      return { kind: "rewriteOutput", output: masked };
+    }
   }
 
   const untrustedDecision = coreFacade.untrusted.evaluateUntrustedContent({

@@ -28,7 +28,7 @@ const LEGACY_ENTRY_SPECS: readonly EntrySpec[] = [
 
 /**
  * why two more: `shell.create.before` and `permission.evaluate` are the interception points that earn the
- * namespaced generation its own capability descriptor ([/decisions/ad-124.md](/decisions/ad-124.md)). Registering
+ * namespaced generation its own capability descriptor ([/decisions/ad-146.md](/decisions/ad-146.md)). Registering
  * them on the legacy bridge would register hooks that API does not have.
  */
 const NAMESPACED_ENTRY_SPECS: readonly EntrySpec[] = [
@@ -56,12 +56,16 @@ function entriesFor(specs: readonly EntrySpec[], runtime: RuntimePaths, provider
  * It is flat — one level, `*` and not `**` — so nothing nested under `plugins/` is ever loaded, which is what the
  * previous namespaced target was. Flattening it into a second sibling file would instead have opencode load two
  * auto-discovered bridges and fire every hook twice. One file, adapting at load time, is neither
- * ([/decisions/ad-124.md](/decisions/ad-124.md)).
+ * ([/decisions/ad-146.md](/decisions/ad-146.md)).
  *
  * why `.js` and not `.mjs`: the glob accepts `.ts` and `.js` and nothing else.
  */
 function opencodeBridgeTarget(): string {
   return join(opencodeConfigDir(), "plugins", "tlc-harness.js");
+}
+
+export function opencodeWiringTargets(): string[] {
+  return [opencodeBridgeTarget()];
 }
 
 export function opencodeLegacyWiring(runtime: RuntimePaths): ProviderWiring<ProviderWiringKind> {

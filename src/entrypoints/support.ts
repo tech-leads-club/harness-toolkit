@@ -1,5 +1,4 @@
-import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { statSync } from "node:fs";
 import type { EffortLevel, HarnessEvent } from "../contracts/index.ts";
 import {
   type CommentFinding,
@@ -9,16 +8,9 @@ import {
   type PendingLessonCredit,
   type Policy,
 } from "../core/index.ts";
-import { filterCodeTargets, filterTestTargets, listChangedRepoFiles } from "../platform/git.ts";
+import { filterCodeTargets, filterTestTargets, gitRootOf, listChangedRepoFiles } from "../platform/git.ts";
 import { runProcess } from "../platform/process.ts";
-import {
-  type ProviderPort,
-  renderClaudeLessonsView,
-  renderCodexLessonsView,
-  renderCursorLessonsView,
-  renderOpencodeLessonsView,
-  renderVSCodeLessonsView,
-} from "../providers/index.ts";
+import { type ProviderPort, providers } from "../providers/index.ts";
 
 // invariant: one definition, taken from core rather than restated.
 export const OBS_CONFIG = coreFacade.observability.DEFAULT_OBS;
@@ -62,10 +54,11 @@ export function sessionIdFromKey(event: HarnessEvent): string {
 }
 
 export async function currentGitBranch(root: string): Promise<string | null> {
-  if (!existsSync(join(root, ".git"))) {
+  const gitRoot = await gitRootOf(root);
+  if (gitRoot === null) {
     return null;
   }
-  const result = await runProcess({ command: ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd: root });
+  const result = await runProcess({ command: ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd: gitRoot });
   if (result.exitCode !== 0) {
     return null;
   }
@@ -99,19 +92,31 @@ export type TurnScope = {
  * at `stop` or, since AD-116, before `commit`/`push`/`pr-open` ships it. A second, differently-scoped
  * answer to the same question is the drift AD-071 already named once ([/decisions/ad-116.md](/decisions/ad-116.md)).
  *
- * invariant: `turn_base_sha` falls back to `HEAD` when the handoff is absent or its seal diverged —
- * identical to `stop.ts`'s own fallback.
+ * invariant: `turn_base_sha` falls back to `HEAD` when the handoff is absent, its seal diverged, or
+ * `resolveTurnBase` finds a different git root — identical to `stop.ts`'s own fallback
+ * ([/decisions/ad-144.md](/decisions/ad-144.md)).
+ * why: `root` is state (worktree-stable, AD-114); `gitRoot` is where the turn's files actually are
+ * (`shaScopeRoot(event)`) — diffing a worktree-valid sha from the wrong directory read a whole unrelated
+ * branch as added ([/decisions/ad-129.md](/decisions/ad-129.md)).
  */
 export async function computeTurnScope(
   root: string,
+  gitRoot: string,
   provider: string,
   sessionKey: string,
   policy: Pick<Policy, "codePaths">,
 ): Promise<TurnScope> {
   const seal = coreFacade.handoff.handoffInjectable(root, sessionKey);
   const handoff = seal.ok ? coreFacade.handoff.readHandoff(root, provider, sessionKey) : undefined;
-  const turnBase = handoff?.turn_base_sha ?? "HEAD";
-  const changedFiles = await listChangedRepoFiles(root, turnBase);
+  const turnBase = await resolveTurnBase(handoff, gitRoot);
+  const rawChangedFiles = await listChangedRepoFiles(gitRoot, turnBase);
+  const otherSessionFiles = await coreFacade.presence.filesClaimedByOtherLiveSessions(
+    root,
+    gitRoot,
+    provider,
+    sessionKey,
+  );
+  const changedFiles = rawChangedFiles.filter((file) => !otherSessionFiles.has(file));
   const codeTargets = filterCodeTargets(changedFiles, policy.codePaths);
   const testTargets = filterTestTargets(changedFiles);
   const commentScope = changedFiles.filter((file) =>
@@ -135,6 +140,7 @@ export async function computeTurnScope(
  */
 export async function pendingCommentViolations(
   root: string,
+  gitRoot: string,
   provider: string,
   sessionKey: string,
   policy: Pick<Policy, "comments" | "codePaths">,
@@ -142,23 +148,45 @@ export async function pendingCommentViolations(
   if (!policy.comments.enabled || policy.comments.onViolation !== "followup") {
     return [];
   }
-  const scope = await computeTurnScope(root, provider, sessionKey, policy);
+  const scope = await computeTurnScope(root, gitRoot, provider, sessionKey, policy);
   if (scope.commentTargets.length === 0) {
     return [];
   }
   return coreFacade.commentPolicy.scanAddedComments(
-    root,
+    gitRoot,
     scope.commentTargets,
     policy.comments.mode,
     scope.turnBase,
   );
 }
 
+/**
+ * why: `turn_base_sha` alone cannot tell "this session's own HEAD" from "the HEAD of a worktree the shell
+ * was sitting in three turns ago" — both are just a sha. Comparing the git root it was captured from
+ * against the root being diffed against is what tells the two apart, the same way an absent
+ * `turn_base_sha` already falls back to `HEAD` rather than diffing against nothing, instead of diffing one
+ * repository's turn against an unrelated one's entire history ([/decisions/ad-144.md](/decisions/ad-144.md)).
+ *
+ * invariant: a slice with a sha but no recorded root (state written before this existed) resolves to
+ * `HEAD`, the same as no slice at all — safe by default, and self-healing on the next `prompt.submit`.
+ */
+export async function resolveTurnBase(
+  slice: { turn_base_sha?: string; turn_base_root?: string } | undefined,
+  gitRoot: string,
+): Promise<string> {
+  if (!slice?.turn_base_sha || !slice.turn_base_root) {
+    return "HEAD";
+  }
+  const currentRoot = await gitRootOf(gitRoot);
+  return currentRoot !== null && currentRoot === slice.turn_base_root ? slice.turn_base_sha : "HEAD";
+}
+
 export async function currentGitSha(root: string): Promise<string | null> {
-  if (!existsSync(join(root, ".git"))) {
+  const gitRoot = await gitRootOf(root);
+  if (gitRoot === null) {
     return null;
   }
-  const result = await runProcess({ command: ["git", "rev-parse", "--short", "HEAD"], cwd: root });
+  const result = await runProcess({ command: ["git", "rev-parse", "--short", "HEAD"], cwd: gitRoot });
   if (result.exitCode !== 0) {
     return null;
   }
@@ -242,36 +270,20 @@ export function renderLessonLine(lesson: HarnessLesson): string {
   return coreFacade.lesson.renderLessonBlock(lesson);
 }
 
-/**
- * invariant: one dispatcher, imported by both session entrypoints. The durable view is written at session start and
- * again at session end, and a copy of this switch in each would be the AD-042 defect a second time.
- */
-export function renderProviderLessonsView(providerName: string, root: string): string | null {
-  if (providerName === "cursor") {
-    return renderCursorLessonsView(root);
-  }
-  if (providerName === "claude") {
-    return renderClaudeLessonsView(root);
-  }
-  // why both generations share one view: they are one host reading one `opencode.json`, and the durable carrier is
-  // a fact about the host rather than about the plugin API a session happens to be running
-  // ([/decisions/ad-124.md](/decisions/ad-124.md)).
-  if (providerName === "opencode-legacy" || providerName === "opencode-namespaced") {
-    return renderOpencodeLessonsView(root);
-  }
-  /**
-   * why these two are here at all, when both deliver context from their session-start hook: `durableViewVerdict`
-   * decides whether this function is called, and under `syncRulesFile: "always"` an operator has asked for the
-   * file whatever the hook does. Returning null for them made that setting silently do nothing on two hosts
-   * (spec P4 AC7).
-   */
-  if (providerName === "codex") {
-    return renderCodexLessonsView(root);
-  }
-  if (providerName === "vscode") {
-    return renderVSCodeLessonsView(root);
-  }
-  return null;
+// invariant: a single dispatcher, called from both session entrypoints — the durable view is written at
+// session start and again at session end, so a second copy of this logic in either one would repeat the
+// AD-042 defect.
+
+// why: a registry lookup, not a name-checking chain — adding a third adapter to `providers` gets it
+// dispatched here for free, exactly as it already gets `detect`/`capabilities`/`render` for free —
+// `ProviderPort` itself, not this function, is what requires `lessonsView` to exist ([/decisions/ad-139.md](/decisions/ad-139.md)).
+export function renderProviderLessonsView(
+  providerName: string,
+  root: string,
+  registry: readonly ProviderPort[] = providers,
+): string | null {
+  const provider = registry.find((candidate) => candidate.name === providerName);
+  return provider?.lessonsView(root) ?? null;
 }
 
 /**

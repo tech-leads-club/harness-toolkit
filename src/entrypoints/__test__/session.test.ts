@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import type { HarnessLesson } from "../../core/index.ts";
 import { coreFacade } from "../../core/index.ts";
-import { policyBaselineDir, presenceDir, projectConfigPath } from "../../platform/paths.ts";
+import { gateSessionsDir, policyBaselineDir, presenceDir, projectConfigPath } from "../../platform/paths.ts";
 import { CONTEXT_BUDGET_CHARS, runHandler } from "../run.ts";
 import { sessionEndHandler } from "../session-end.ts";
 import { sessionStartHandler } from "../session-start.ts";
@@ -202,6 +202,44 @@ test("session.start records the policy baseline, so a mid-session change is dete
     writeFileSync(projectConfigPath(root), JSON.stringify({ version: 1, mode: "solo" }), "utf8");
     const sessionKey = (recorded as string).replace(/\.json$/, "");
     assert.equal(coreFacade.policy.checkPolicyBaseline(root, sessionKey).kind, "deny");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * AD-137 P3.3 — `session-start.ts` calls `pruneGateSessions` alongside its existing
+ * `pruneDeadHandoffSessions` call, so `gate-sessions/` does not grow forever.
+ */
+test("session.start prunes a stale gate-sessions file", async () => {
+  const root = tempRoot();
+  try {
+    const dir = gateSessionsDir(root);
+    mkdirSync(dir, { recursive: true });
+    const stalePath = join(dir, "cursor-long-gone.json");
+    writeFileSync(
+      stalePath,
+      JSON.stringify({
+        schema: "harness.gate.v1",
+        gate: "lint",
+        exitCode: 0,
+        passed: true,
+        command: ["lint"],
+        files: [],
+        durationMs: 1,
+        ts: "2020-01-01T00:00:00.000Z",
+        outputTail: "",
+        findings: [],
+      }),
+    );
+
+    await runHandler(sessionStartHandler, stdinOf(cursorStart(root)));
+
+    assert.equal(
+      existsSync(stalePath),
+      false,
+      "a gate-session file older than the retention window must be pruned",
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -39,7 +39,7 @@
 <p align="center">
   Hooks fire on the editor's own events. The harness answers each one with a decision — <b>allow</b>, <b>ask</b>,
   <b>deny</b>, or text injected into the turn — and writes a record of what it decided and why.
-  <b>7 floor rules</b> no configuration can reach, <b>3 always-on checks</b>, and <b>24 rails</b> you choose.
+  <b>8 floor rules</b> no configuration can reach, <b>3 always-on checks</b>, and <b>24 rails</b> you choose.
 </p>
 
 - **[Everything it validates](#everything-it-validates)** — the whole list, one row per check
@@ -90,11 +90,11 @@ Three tiers, and which tier a check is in decides whether you can turn it off.
 
 | Tier | Count | Configurable | Runs |
 |------|-------|--------------|------|
-| [Floor](#tier-1--the-floor-no-configuration-reaches-it) | 7 rules | Never | Before any policy is loaded, on every tool call, shell command and read |
+| [Floor](#tier-1--the-floor-no-configuration-reaches-it) | 8 rules | Never | Before any policy is loaded, on every tool call, shell command and read |
 | [Always on](#tier-2--always-on-no-switch) | 3 checks | Never | After the floor, on every acting event |
-| [Rails](#tier-3--the-rails-you-choose) | 24 capabilities | Each one, individually | Where the table says |
+| [Rails](#tier-3--the-rails-you-choose) | 25 capabilities | Each one, individually | Where the table says |
 
-Nothing else runs. If a message on your screen is not from one of the thirty-four rows below, it is not the
+Nothing else runs. If a message on your screen is not from one of the thirty-six rows below, it is not the
 harness.
 
 ### Tier 1 — the floor, no configuration reaches it
@@ -113,6 +113,7 @@ prints `rule=<name>`, and the name is the first column here.
 | `machine-control` | `shutdown`, `reboot`, `halt`, `poweroff` | — |
 | `unprovable-execution` | a program fetched over the network and handed to a shell — piped, process-substituted, or inside a shell's `-c`/`eval` substitution. The gate cannot read what would run | a fetch with no shell downstream, and a shell fed a local file the gate can read |
 | `policy-surface-write` | every route an agent has to harness policy and state — a shell redirect, an interpreter, a heredoc program, or a write tool — in the project and under the runtime home, plus the mutating `tlc harness` subcommands from inside a session | reading them with a proven reader (`cat`, `head`, `grep`, `jq`, `ls`, `stat`, `test`), and `tlc harness handoff` for the handoff state |
+| `wiring-tamper` | a shell redirect, in-place edit, or delete into a registered provider's wiring target — the document its own editor reads to register the harness's hooks — and a direct `Edit`/`Write`/`MultiEdit` tool call against the same path — overwriting it silences every hook the harness has for that host | reading the same path with a proven reader or a read tool |
 
 <!-- /generated -->
 
@@ -143,7 +144,7 @@ trade-off when you ran the init wizard. `configPath` is the key in `.tlc/harness
 
 | Rail · key · default | What it checks | Fires on | Verdict | How to see it |
 |---|---|---|---|---|
-| **Grind (lint/test on stop)**<br>`grind.enabled` · off | Runs your lint and test commands against the files the turn changed, and sends the agent back until they pass. | `stop` | `follow-up` | tlc harness obs report — runs, wall-clock and total; the last verdict is in the project state directory as last-gate.json |
+| **Grind (lint/test on stop)**<br>`grind.enabled` · off | Runs your lint and test commands against the files the turn changed, and sends the agent back until they pass. | `stop` | `follow-up` | tlc harness obs report — runs, wall-clock and total; the last verdict is in the project state directory under gate-sessions/<session>.json |
 | **Ship gate**<br>`shipGate.enabled` · off | Checks a declared ship claim against recent PASS evidence for the runtime paths the turn touched. | `stop` | `block-stop` | tlc harness obs report; the ship ledger in the project state directory records every claim, challenge and pass |
 | **Empty-diff anti-ship**<br>`shipGate.emptyDiffAntiShip` · off | Checks that a ship claim has a non-empty diff behind it. | `stop` | `block-stop` | the ship ledger in the project state directory — the challenge row names the empty diff |
 | **Comment gate (agent-added comments)**<br>`comments.enabled` · off | Checks the comment lines this turn added against the commit the turn started from: by reason, by resolvability, or none. | `stop` | `block-stop` | tlc harness obs report — the comments gate appears among the gate outcomes |
@@ -161,12 +162,13 @@ trade-off when you ran the init wizard. `configPath` is the key in `.tlc/harness
 | **Progressive context**<br>`intelligence.progressiveContext` · **on** | Raises the detail in the follow-up on each stop retry, so a repeat attempt is not given the same prompt. | `stop` | `follow-up` | tlc harness obs report — the retry count for a stop is the escalation level it reached |
 | **Autopilot**<br>`intelligence.autopilot` · **on** | Emits ordered steps after a gate failure, computed by the runtime rather than invented by the model. | `stop` | `follow-up` | the AUTOPILOT block is in the follow-up text itself; obs report counts the failing stops that produced one |
 | **Idle-turn gate (asked instead of acting)**<br>`intelligence.idleTurnGate` · off | Checks whether a turn that ended with open work recorded any tool call or file change at all. | `stop` | `block-stop` | tlc harness obs report for the block; tlc harness handoff shows the open work that armed it |
-| **Docs staleness gate**<br>`docs.command` · off | Runs the repository's own documentation staleness tool on stop, like a lint command. | `stop` | `block-stop` | tlc harness obs report; the docs gate writes the same last-gate.json artifact the lint and test gates do |
+| **Docs staleness gate**<br>`docs.command` · off | Runs the repository's own documentation staleness tool on stop, like a lint command. | `stop` | `block-stop` | tlc harness obs report; the docs gate writes the same gate-sessions/<session>.json artifact the lint and test gates do |
 | **Global observability spool**<br>`obs.globalSpool` · off | Copies every record into one file under the runtime home, so cost is readable across repositories. | `tool.after`<br>`tool.failure` | `record` | the spool file under the runtime home; tlc harness obs prune reports how many records it dropped |
 | **Untrusted-content framing and enforcement**<br>`untrustedContent.enabled` · off | Frames outside content as data, and in enforce mode asks before a command that appears verbatim in it. | `tool.after` | `context` | tlc harness obs report — one framing injection per turn, with the characters it cost |
 | **Plan gate (declared scope vs diff)**<br>`planGate.enabled` · off | Checks the files the turn changed against the scope it declared, and against any stated deviation. | `response.after`<br>`stop` | `block-stop` | tlc harness handoff — plan_paths, plan_at and plan_deviations |
 | **Observation mode (measure a rail with its rule off)**<br>`observe.enabled` · off | Runs a rail's checker while that rail is not enforcing, and records the reading without acting on it. | `stop`<br>`session.end` | `record` | tlc harness obs report — the observation readings, held apart from the refusal counters so those stay honest |
 | **Operator rules (your trigger, your proof)**<br>`rules.enabled` · off | Reads the rules you declare in markdown and enforces them: on this trigger, this must have happened. | `tool.before`<br>`stop` | `deny` | tlc harness doctor — each active rule, its tier, and any proof kind never observed here |
+| **Secret redaction (tool/shell output)**<br>`secrets.redactOutput` · **on** | Scans a tool's or shell command's output for a secret-shaped signature or high-entropy span and masks it. | `tool.after` | `context` | the masked placeholder itself, in the tool output — `[REDACTED:<kind>:<hash>]` |
 
 <!-- /generated -->
 

@@ -94,7 +94,7 @@ test("every timeout obeys the vendor's rule — 3 seconds on the capped events, 
 });
 
 // why this is asserted rather than left implied: the criterion was amended precisely because an earlier draft
-// forbade the event outright, on a claim AD-123 has since withdrawn.
+// forbade the event outright, on a claim AD-145 has since withdrawn.
 test("SessionEnd is registered, and at the capped timeout", () => {
   const sessionEnd = wiring.entries.find((entry) => entry.hookEvent === "SessionEnd");
   assert.ok(sessionEnd, "SessionEnd is a real Codex event and is wired");

@@ -21,7 +21,7 @@ opencode ships two plugin APIs in the same binary. The legacy API registers flat
 cannot honour, or throw away the one the namespaced API offers. The first is unsafe in the exact way capability
 descriptors exist to prevent. So opencode registers twice, sharing one inbound parser and one fan-out, and
 differing in `capabilities()`, `wiring()`, and the bridge plugin each emits
-([/decisions/ad-124.md](/decisions/ad-124.md)).
+([/decisions/ad-146.md](/decisions/ad-146.md)).
 
 ## Detection
 
@@ -45,23 +45,60 @@ detector runs; the markers are the belt to that pair of braces.
 `opencode.capabilities.ts`, one per generation. The six rows they disagree on are exactly the six the two
 references settle differently — a value copied across the boundary collapses that list and fails the test.
 
-| Capability | legacy | namespaced |
-| --- | --- | --- |
-| `enforcesHooks` | `true` | `true` |
-| `askSupportedOn` | `[]` — no permission-evaluation hook | `["shell.before", "mcp.before", "read.before", "tool.before"]` — `permission.hook("evaluate")` takes `effect: "ask"` |
-| `sessionEnv` | `false` | `false` |
-| `nativeLoopCounter` | `false` | `false` |
-| `dedicatedShellEvent` | `false` — no shell hook | `true` — `shell.hook("create.before")` |
-| `toolInputRewrite` | `true` — `output.args` is mutable at `tool.execute.before` | `false` — undocumented on this generation |
-| `toolOutputRewrite` | `true` — the weakest value in the table; it rests on the transcription alone | `true` — a mutable `event.result` on `execute.after` |
-| `contextAtToolBefore` | `true` | `false` |
-| `contextAtToolAfter` | `false` | `true` |
-| `contextAtStop` | `false` | `false` |
-| `sessionStartContextReliable` | `false` | `false` |
-| `toolOutputAtAfter` | `false` | `true` |
-| `usageInPayload` | `false` | `false` |
-| `effortSignal` | `false` | `false` |
-| `thoughtEvent` | `false` | `false` |
+### legacy
+
+<!-- generated:capabilities:opencode-legacy -->
+
+| Capability | Value |
+|---|---|
+| `enforcesHooks` | `true` |
+| `askSupportedOn` | `[]` |
+| `sessionEnv` | `false` |
+| `nativeLoopCounter` | `false` |
+| `dedicatedShellEvent` | `false` |
+| `toolInputRewrite` | `true` |
+| `toolOutputRewriteOn` | `[]` |
+| `contextAtToolBefore` | `true` |
+| `contextAtToolAfter` | `false` |
+| `contextAtStop` | `false` |
+| `sessionStartContextReliable` | `false` |
+| `toolOutputAtAfter` | `false` |
+| `usageInPayload` | `false` |
+| `effortSignal` | `false` |
+| `thoughtEvent` | `false` |
+
+<!-- /generated -->
+
+### namespaced
+
+<!-- generated:capabilities:opencode-namespaced -->
+
+| Capability | Value |
+|---|---|
+| `enforcesHooks` | `true` |
+| `askSupportedOn` | `["shell.before","mcp.before","read.before","tool.before"]` |
+| `sessionEnv` | `false` |
+| `nativeLoopCounter` | `false` |
+| `dedicatedShellEvent` | `true` |
+| `toolInputRewrite` | `false` |
+| `toolOutputRewriteOn` | `[]` |
+| `contextAtToolBefore` | `false` |
+| `contextAtToolAfter` | `true` |
+| `contextAtStop` | `false` |
+| `sessionStartContextReliable` | `false` |
+| `toolOutputAtAfter` | `true` |
+| `usageInPayload` | `false` |
+| `effortSignal` | `false` |
+| `thoughtEvent` | `false` |
+
+<!-- /generated -->
+
+Why each value that is not self-evident:
+
+- `askSupportedOn` — legacy: no permission-evaluation hook; namespaced: `permission.hook("evaluate")` takes `effect: "ask"`
+- `dedicatedShellEvent` — legacy: no shell hook; namespaced: `shell.hook("create.before")`
+- `toolInputRewrite` — legacy: `output.args` is mutable at `tool.execute.before`; namespaced: undocumented on this generation
+- `toolOutputRewriteOn` — empty on both, because the emitted bridge does not write a rewrite on `tool.execute.after`, not because the host cannot. Namespaced documents a mutable `event.result`, which the bridge uses for context only; legacy rests on the transcription alone. The flag routes the secret mask, so an event named here before the bridge writes it would drop the mask and its fallback notice together
 
 The newer API is not uniformly stronger: `toolInputRewrite` is documented on legacy and undocumented on
 namespaced, which is the inversion the design had not looked at.
@@ -128,7 +165,7 @@ Four details worth knowing:
 - **The discovery glob is flat.** `{plugin,plugins}/*.{ts,js}`, one level, read out of the opencode 1.18.29
   binary. Both spellings of the directory are accepted; nothing nested below it is ever loaded, and every sibling
   it does find is loaded — which is why two bridges would fire every hook twice
-  ([/decisions/ad-124.md](/decisions/ad-124.md)).
+  ([/decisions/ad-146.md](/decisions/ad-146.md)).
 - **The bridge is `.js`, not `.mjs`.** The glob accepts `.ts` and `.js` and nothing else.
 - **The module imports nothing but `node:child_process`.** `@opencode-ai/plugin` exports only `tool` at runtime,
   so importing a `Plugin` from it is a link-time error that takes the whole bridge down.
@@ -162,4 +199,4 @@ generations, so lessons cannot ride a session-start hook.
 ## See also
 
 - [/providers/index.md](/providers/index.md)
-- [/decisions/ad-124.md](/decisions/ad-124.md)
+- [/decisions/ad-146.md](/decisions/ad-146.md)

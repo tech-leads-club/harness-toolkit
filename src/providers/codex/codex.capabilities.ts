@@ -1,7 +1,7 @@
 import type { ProviderCapabilities } from "../../contracts/index.ts";
 
 /**
- * Every value below is cited in [/decisions/ad-123.md](/decisions/ad-123.md), against OpenAI's published Codex
+ * Every value below is cited in [/decisions/ad-145.md](/decisions/ad-145.md), against OpenAI's published Codex
  * hooks reference or a behaviour measured in the feature's source transcription. No value is carried across from
  * Claude or Cursor: a flag set by analogy does not fail loudly, it leaves a rail quietly doing nothing.
  */
@@ -22,7 +22,7 @@ export function codexCapabilities(): ProviderCapabilities {
     /**
      * why false when `stop_hook_active` exists: the flag claims a turn *count*. `effectiveLoopCount` reads
      * `event.loopCount` as a number against `policy.grind.maxLoops`, and this field is a boolean — mapped in, it
-     * yields at most 1 and the grind cap is never reached. AD-123 carries the correction; the adapter counts turns
+     * yields at most 1 and the grind cap is never reached. AD-145 carries the correction; the adapter counts turns
      * itself, as Claude does.
      */
     nativeLoopCounter: false,
@@ -32,7 +32,7 @@ export function codexCapabilities(): ProviderCapabilities {
     toolInputRewrite: true,
     // why: `PostToolUse` accepts `decision: "block"`, `reason`, and `additionalContext`, and no field that replaces
     // what the tool returned.
-    toolOutputRewrite: false,
+    toolOutputRewriteOn: [],
     // why: `PreToolUse` accepts `hookSpecificOutput.additionalContext`.
     contextAtToolBefore: true,
     // why: `PostToolUse` accepts `hookSpecificOutput.additionalContext`.

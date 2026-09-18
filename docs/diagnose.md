@@ -237,8 +237,8 @@ warns.
 2. Gates must not be PAUSED.
 3. Project `.tlc/harness/config.json` needs `grind.lintCommand` / `grind.testCommand` if you expect those
    gates.
-4. On failure, inspect `.tlc/harness/state/last-gate.json` (`findings`, `exitCode`, `outputTail`) before
-   trusting chat follow-up text.
+4. On failure, inspect `.tlc/harness/state/gate-sessions/<session>.json` (`findings`, `exitCode`,
+   `outputTail`) before trusting chat follow-up text.
 5. Concurrent agents: wait for `.tlc/harness/state/grind.lock` or stop the other grind.
 6. Stop status must be `completed` (aborted/error skips).
 

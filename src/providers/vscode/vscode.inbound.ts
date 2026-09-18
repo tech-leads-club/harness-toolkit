@@ -4,7 +4,7 @@ import { VSCODE_PROVIDER } from "./vscode.detect.ts";
 
 /**
  * VS Code's documented event list is `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
- * `PreCompact`, `SubagentStart`, `SubagentStop`, `Stop` ([/decisions/ad-125.md](/decisions/ad-125.md)). There is
+ * `PreCompact`, `SubagentStart`, `SubagentStop`, `Stop` ([/decisions/ad-147.md](/decisions/ad-147.md)). There is
  * no session-end event, no tool-failure event, and no message-display event, so this table is shorter than
  * Claude's by exactly those three — a payload shape shared with Claude is not an event list shared with Claude.
  */
@@ -103,38 +103,17 @@ function afterKind(toolName: string | undefined): HarnessEventKind {
   return "tool.after";
 }
 
-/** Never throws on a malformed payload — returns null instead. */
-export function vscodeToEvent(raw: Record<string, unknown>): HarnessEvent | null {
-  const hookEventName = asString(field(raw, "hook_event_name", "hookEventName"));
-  if (!hookEventName) {
-    return null;
-  }
-
-  const toolName = asString(field(raw, "tool_name", "toolName"));
-  // why `toolArgs` and not `toolInput` as the camel spelling: `toolArgs` is what the reference's camelCase format
-  // actually calls it, and inventing a third name would tolerate a spelling no source publishes.
-  const toolInput = asRecord(field(raw, "tool_input", "toolArgs"));
-
-  let eventKind: HarnessEventKind | undefined;
+function eventKindFor(hookEventName: string, toolName: string | undefined): HarnessEventKind | undefined {
   if (hookEventName === "PreToolUse") {
-    eventKind = beforeKind(toolName);
-  } else if (hookEventName === "PostToolUse") {
-    eventKind = afterKind(toolName);
-  } else {
-    eventKind = EVENT_KIND_BY_HOOK[hookEventName];
+    return beforeKind(toolName);
   }
-  if (!eventKind) {
-    return null;
+  if (hookEventName === "PostToolUse") {
+    return afterKind(toolName);
   }
+  return EVENT_KIND_BY_HOOK[hookEventName];
+}
 
-  const event: HarnessEvent = {
-    provider: VSCODE_PROVIDER,
-    event: eventKind,
-    sessionKey: sessionKeyFor(raw),
-    projectDir: projectDirFor(raw),
-    raw,
-  };
-
+function applySessionFields(event: HarnessEvent, raw: Record<string, unknown>): void {
   const cwd = asString(raw.cwd);
   if (cwd) {
     event.cwd = cwd;
@@ -143,8 +122,49 @@ export function vscodeToEvent(raw: Record<string, unknown>): HarnessEvent | null
   if (transcriptPath) {
     event.transcriptPath = transcriptPath;
   }
+}
 
-  switch (eventKind) {
+function applyFilePath(event: HarnessEvent, toolInput: Record<string, unknown> | undefined): void {
+  const filePath = filePathOf(toolInput);
+  if (filePath !== undefined) {
+    event.filePath = filePath;
+  }
+}
+
+function applyToolFields(
+  event: HarnessEvent,
+  toolName: string | undefined,
+  toolInput: Record<string, unknown> | undefined,
+): void {
+  if (toolName) {
+    event.toolName = toolName;
+  }
+  if (toolInput) {
+    event.toolInput = toolInput;
+  }
+}
+
+/**
+ * why the host's names land in the label and never in the type: `agent_name` is what the spawn was called and
+ * `agent_type` is the same string echoed back on the stop, so a rule matching either would be matching a string
+ * the gated agent chose ([/decisions/ad-104.md](/decisions/ad-104.md)). Neither source publishes a field carrying
+ * a *declared* type, so `spawnSubagentType` stays absent on this host.
+ */
+function applySpawnLabel(event: HarnessEvent, raw: Record<string, unknown>): void {
+  const spawnAgentLabel =
+    asString(field(raw, "agent_name", "agentName")) ?? asString(field(raw, "agent_type", "agentType"));
+  if (spawnAgentLabel) {
+    event.spawnAgentLabel = spawnAgentLabel;
+  }
+}
+
+function applyKindFields(
+  event: HarnessEvent,
+  raw: Record<string, unknown>,
+  toolName: string | undefined,
+  toolInput: Record<string, unknown> | undefined,
+): void {
+  switch (event.event) {
     case "prompt.submit": {
       const text = asString(raw.prompt);
       if (text !== undefined) {
@@ -160,86 +180,98 @@ export function vscodeToEvent(raw: Record<string, unknown>): HarnessEvent | null
       }
       break;
     }
-    case "read.before": {
-      const filePath = filePathOf(toolInput);
-      if (filePath !== undefined) {
-        event.filePath = filePath;
-      }
+    case "read.before":
+      applyFilePath(event, toolInput);
       break;
-    }
-    case "edit.after": {
+    case "edit.after":
       if (toolName) {
         event.toolName = toolName;
       }
-      const filePath = filePathOf(toolInput);
-      if (filePath !== undefined) {
-        event.filePath = filePath;
-      }
+      applyFilePath(event, toolInput);
       break;
-    }
     case "mcp.before":
     case "mcp.after":
     case "tool.before":
-    case "tool.after": {
-      if (toolName) {
-        event.toolName = toolName;
-      }
-      if (toolInput) {
-        event.toolInput = toolInput;
-      }
+    case "tool.after":
+      applyToolFields(event, toolName, toolInput);
       break;
-    }
     case "subagent.start":
-    case "subagent.stop": {
-      /**
-       * why the host's names land in the label and never in the type: `agent_name` is what the spawn was called
-       * and `agent_type` is the same string echoed back on the stop, so a rule matching either would be matching a
-       * string the gated agent chose ([/decisions/ad-104.md](/decisions/ad-104.md)). Neither source publishes a
-       * field carrying a *declared* type, so `spawnSubagentType` stays absent on this host.
-       */
-      const spawnAgentLabel =
-        asString(field(raw, "agent_name", "agentName")) ?? asString(field(raw, "agent_type", "agentType"));
-      if (spawnAgentLabel) {
-        event.spawnAgentLabel = spawnAgentLabel;
-      }
+    case "subagent.stop":
+      applySpawnLabel(event, raw);
       break;
-    }
     default:
       break;
   }
+}
 
-  /**
-   * why the after-events only, and why `text_result_for_llm` rather than the whole record: `tool_result` is
-   * documented on `PostToolUse` and nowhere else, which is what `toolOutputAtAfter: true` records. It arrives as
-   * `{ result_type, text_result_for_llm }`, and the second field is the tool output core reads
-   * ([/decisions/ad-077.md](/decisions/ad-077.md)); serialising the wrapper would hand every rule a JSON blob
-   * whose payload is one key deep.
-   */
-  if (hookEventName === "PostToolUse") {
-    const toolResult = field(raw, "tool_result", "toolResult");
-    const text = asString(asRecord(toolResult)?.text_result_for_llm);
-    if (text !== undefined) {
-      event.toolOutput = text;
-    } else if (typeof toolResult === "string") {
-      event.toolOutput = toolResult;
-    } else {
-      // why a third name: VS Code's own published reference calls this field `tool_response` where the Copilot
-      // reference calls it `tool_result`. Two vendor pages, two names for one payload — the same reason the
-      // envelope is read under two spellings. Serialised when it is not a string, as Claude's adapter does.
-      const toolResponse = field(raw, "tool_response", "toolResponse");
-      if (toolResponse !== undefined && toolResponse !== null) {
-        event.toolOutput = typeof toolResponse === "string" ? toolResponse : JSON.stringify(toolResponse);
-      }
-    }
+/**
+ * why the after-events only, and why `text_result_for_llm` rather than the whole record: `tool_result` is
+ * documented on `PostToolUse` and nowhere else, which is what `toolOutputAtAfter: true` records. It arrives as
+ * `{ result_type, text_result_for_llm }`, and the second field is the tool output core reads
+ * ([/decisions/ad-077.md](/decisions/ad-077.md)); serialising the wrapper would hand every rule a JSON blob
+ * whose payload is one key deep.
+ */
+function toolOutputOf(raw: Record<string, unknown>): string | undefined {
+  const toolResult = field(raw, "tool_result", "toolResult");
+  const text = asString(asRecord(toolResult)?.text_result_for_llm);
+  if (text !== undefined) {
+    return text;
+  }
+  if (typeof toolResult === "string") {
+    return toolResult;
+  }
+  // why a third name: VS Code's own published reference calls this field `tool_response` where the Copilot
+  // reference calls it `tool_result`. Two vendor pages, two names for one payload — the same reason the
+  // envelope is read under two spellings. Serialised when it is not a string, as Claude's adapter does.
+  const toolResponse = field(raw, "tool_response", "toolResponse");
+  if (toolResponse === undefined || toolResponse === null) {
+    return undefined;
+  }
+  return typeof toolResponse === "string" ? toolResponse : JSON.stringify(toolResponse);
+}
+
+/**
+ * Never throws on a malformed payload — returns null instead.
+ *
+ * invariant: `stop_hook_active` never reaches `loopCount`, and `stop_reason` never reaches `status`. The first
+ * is a boolean where `loopCount` is a number the grind cap compares against, so mapping it in would leave the
+ * cap unreachable ([/decisions/ad-147.md](/decisions/ad-147.md)). The second carries `"end_turn"`, which is not
+ * a member of the `completed | aborted | error` vocabulary — passing it through would put a foreign word in a
+ * closed field.
+ */
+export function vscodeToEvent(raw: Record<string, unknown>): HarnessEvent | null {
+  const hookEventName = asString(field(raw, "hook_event_name", "hookEventName"));
+  if (!hookEventName) {
+    return null;
   }
 
-  /**
-   * invariant: `stop_hook_active` never reaches `loopCount`, and `stop_reason` never reaches `status`. The first
-   * is a boolean where `loopCount` is a number the grind cap compares against, so mapping it in would leave the
-   * cap unreachable ([/decisions/ad-125.md](/decisions/ad-125.md)). The second carries `"end_turn"`, which is not
-   * a member of the `completed | aborted | error` vocabulary — passing it through would put a foreign word in a
-   * closed field.
-   */
+  const toolName = asString(field(raw, "tool_name", "toolName"));
+  // why `toolArgs` and not `toolInput` as the camel spelling: `toolArgs` is what the reference's camelCase format
+  // actually calls it, and inventing a third name would tolerate a spelling no source publishes.
+  const toolInput = asRecord(field(raw, "tool_input", "toolArgs"));
+
+  const eventKind = eventKindFor(hookEventName, toolName);
+  if (!eventKind) {
+    return null;
+  }
+
+  const event: HarnessEvent = {
+    provider: VSCODE_PROVIDER,
+    event: eventKind,
+    sessionKey: sessionKeyFor(raw),
+    projectDir: projectDirFor(raw),
+    raw,
+  };
+
+  applySessionFields(event, raw);
+  applyKindFields(event, raw, toolName, toolInput);
+
+  if (hookEventName === "PostToolUse") {
+    const toolOutput = toolOutputOf(raw);
+    if (toolOutput !== undefined) {
+      event.toolOutput = toolOutput;
+    }
+  }
 
   return event;
 }

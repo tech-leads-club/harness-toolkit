@@ -99,7 +99,7 @@ export function codexRender(decision: Decision, event: HarnessEvent): Rendered {
       return { stdout: renderPermission("deny", hookEventName, decision.reason), exitCode: 0 };
     /**
      * why an ask renders as a refusal: Codex parses `permissionDecision: "ask"` and runs the tool anyway
-     * ([/decisions/ad-123.md](/decisions/ad-123.md)), so emitting it would approve the very action the rail wanted
+     * ([/decisions/ad-145.md](/decisions/ad-145.md)), so emitting it would approve the very action the rail wanted
      * escalated. `askSupportedOn: []` means `degrade()` already converts an ask to a deny before this function is
      * reached; this branch is what makes a caller that skipped `degrade()` fail safe rather than silently open.
      */
@@ -126,6 +126,10 @@ export function codexRender(decision: Decision, event: HarnessEvent): Rendered {
         }),
         exitCode: 0,
       };
+    // why unreachable in practice: `toolOutputRewriteOn: []` has `degrade()` turn this into a context notice first.
+    // Silent for a caller that skipped it, because this host documents no field that replaces a tool's output.
+    case "rewriteOutput":
+      return SILENT;
     default: {
       const exhaustive: never = decision;
       throw new Error(`unreachable decision kind: ${JSON.stringify(exhaustive)}`);

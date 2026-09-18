@@ -58,6 +58,18 @@ function claudePayload(root: string, overrides: Record<string, unknown> = {}): R
   };
 }
 
+/** AD-136 — `hook.enter` is scoped to `shell.before`/`mcp.before`; this is the gate-relevant fixture. */
+function cursorShellPayload(root: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    hook_event_name: "beforeShellExecution",
+    workspace_roots: [root],
+    conversation_id: "conv-1",
+    session_id: "sess-1",
+    command: "echo hi",
+    ...overrides,
+  };
+}
+
 test("empty stdin yields abstain with no stdout and exit 0", async () => {
   const root = tempRoot();
   try {
@@ -176,12 +188,142 @@ test("a handler that throws records one adapter.error obs entry naming the provi
       stdinOf(JSON.stringify(payload)),
     );
     const records = obsRecords(root);
+    // why: tool.before is not hook.enter-scoped, so this reverts to adapter.error alone.
     assert.equal(records.length, 1);
     assert.equal(records[0]?.kind, "adapter.error");
     const attrs = records[0]?.attrs as Record<string, unknown>;
     assert.equal(attrs.provider, "cursor");
     assert.equal(attrs.event, "tool.before");
     assert.match(String(attrs.message), /boom/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a handler that throws on a gate-relevant event: hook.enter precedes adapter.error", async () => {
+  const root = tempRoot();
+  try {
+    const payload = cursorShellPayload(root);
+    await runHandler(
+      () => {
+        throw new Error("boom");
+      },
+      stdinOf(JSON.stringify(payload)),
+    );
+    const records = obsRecords(root);
+    assert.equal(records.length, 2, "hook.enter precedes adapter.error, AD-136");
+    assert.equal(records[0]?.kind, "hook.enter");
+    assert.equal(records[1]?.kind, "adapter.error");
+    const attrs = records[1]?.attrs as Record<string, unknown>;
+    assert.equal(attrs.provider, "cursor");
+    assert.equal(attrs.event, "shell.before");
+    assert.match(String(attrs.message), /boom/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * AD-136 — the visibility gap this closes: a hook invocation that dies between starting and any existing
+ * record previously left nothing at all in `obs.jsonl`, indistinguishable from a hook that never ran.
+ */
+test("hook.enter is recorded before the handler runs, and precedes a deny's own policy.deny record", async () => {
+  const root = tempRoot();
+  try {
+    // why: recordRefusal (run.ts) skips shell.before on purpose — tool-before.ts's own shell rail owns
+    // that recording as shell.start. mcp.before has no such special case, so policy.deny fires here.
+    const payload = {
+      hook_event_name: "beforeMCPExecution",
+      workspace_roots: [root],
+      conversation_id: "conv-1",
+      session_id: "sess-1",
+    };
+    const outcome = await runHandler(
+      () => ({ kind: "deny", reason: "no", rule: "test-deny" }),
+      stdinOf(JSON.stringify(payload)),
+    );
+    assert.equal(outcome.decision.kind, "deny");
+    const records = obsRecords(root);
+    assert.equal(records.length, 2);
+    assert.equal(records[0]?.kind, "hook.enter");
+    assert.equal(records[0]?.level, "signal", "must land in obs.jsonl, not debug.jsonl");
+    assert.equal(records[0]?.session_id, "cursor-conv-1");
+    assert.equal(typeof records[0]?.trace_id, "string");
+    assert.notEqual(records[0]?.trace_id, "");
+    const enterAttrs = records[0]?.attrs as Record<string, unknown>;
+    assert.equal(enterAttrs.event, "mcp.before");
+    assert.equal(enterAttrs.toolName, "none");
+    assert.equal(enterAttrs.sessionKey, "cursor-conv-1");
+    assert.equal(records[0]?.provider, "cursor");
+    assert.equal(records[1]?.kind, "policy.deny");
+    assert.equal(records[0]?.trace_id, records[1]?.trace_id, "same trace_id as the record it pairs with");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("hook.enter records toolName as 'none' for an mcp.before event, which carries no tool_name here", async () => {
+  const root = tempRoot();
+  try {
+    const payload = {
+      hook_event_name: "beforeMCPExecution",
+      workspace_roots: [root],
+      conversation_id: "conv-1",
+      session_id: "sess-1",
+    };
+    await runHandler(() => ({ kind: "allow" }), stdinOf(JSON.stringify(payload)));
+    const records = obsRecords(root);
+    const enter = records.find((record) => record.kind === "hook.enter");
+    const attrs = enter?.attrs as Record<string, unknown>;
+    assert.equal(attrs.toolName, "none");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("hook.enter is not recorded when the event never resolves — nothing to attribute it to", async () => {
+  const root = tempRoot();
+  try {
+    await withCwd(root, () => runHandler(() => ({ kind: "allow" }), stdinOf(JSON.stringify({ foo: "bar" }))));
+    const records = obsRecords(root);
+    assert.equal(
+      records.every((record) => record.kind !== "hook.enter"),
+      true,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("hook.enter is scoped to shell.before/mcp.before — a tool.before event does not record it", async () => {
+  const root = tempRoot();
+  try {
+    const payload = cursorPayload(root);
+    await runHandler(() => ({ kind: "allow" }), stdinOf(JSON.stringify(payload)));
+    const records = obsRecords(root);
+    assert.equal(
+      records.every((record) => record.kind !== "hook.enter"),
+      true,
+      "tool.before is not gate-relevant for pr-open/push/pr-merge",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a write failure recording hook.enter does not affect the returned decision", async () => {
+  const root = tempRoot();
+  try {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const { dirname } = await import("node:path");
+    const blocker = join(root, ".tlc");
+    mkdirSync(dirname(blocker), { recursive: true });
+    writeFileSync(blocker, "not a directory", "utf8");
+
+    const payload = cursorShellPayload(root);
+    const outcome = await runHandler(() => ({ kind: "allow" }), stdinOf(JSON.stringify(payload)));
+
+    assert.equal(outcome.decision.kind, "allow", "the write failure is swallowed, not thrown");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

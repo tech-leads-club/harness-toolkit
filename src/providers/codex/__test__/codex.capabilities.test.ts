@@ -14,10 +14,10 @@ test("the descriptor declares all 15 fields", () => {
 
 /**
  * The whole table, asserted as one value against
- * [/decisions/ad-123.md](/decisions/ad-123.md) — including its two corrections, which is why
+ * [/decisions/ad-145.md](/decisions/ad-145.md) — including its two corrections, which is why
  * `nativeLoopCounter` is false here and true in the record's first draft.
  */
-test("every flag matches the value AD-123 cites", () => {
+test("every flag matches the value AD-145 cites", () => {
   assert.deepEqual(codex, {
     enforcesHooks: true,
     askSupportedOn: [],
@@ -25,7 +25,7 @@ test("every flag matches the value AD-123 cites", () => {
     nativeLoopCounter: false,
     dedicatedShellEvent: false,
     toolInputRewrite: true,
-    toolOutputRewrite: false,
+    toolOutputRewriteOn: [],
     contextAtToolBefore: true,
     contextAtToolAfter: true,
     contextAtStop: false,
@@ -68,5 +68,5 @@ test("the four rows Codex differs from Claude on are the four the reference sett
   const differing = (Object.keys(codex) as (keyof typeof codex)[])
     .filter((key) => JSON.stringify(codex[key]) !== JSON.stringify(claude[key]))
     .sort();
-  assert.deepEqual(differing, ["askSupportedOn", "contextAtStop", "effortSignal", "toolOutputRewrite"]);
+  assert.deepEqual(differing, ["askSupportedOn", "contextAtStop", "effortSignal", "toolOutputRewriteOn"]);
 });

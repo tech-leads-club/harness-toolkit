@@ -49,6 +49,11 @@ export const FLOOR_RULES: Record<FloorRule, FloorRuleDoc> = {
     allows:
       "reading them with a proven reader (`cat`, `head`, `grep`, `jq`, `ls`, `stat`, `test`), and `tlc harness handoff` for the handoff state",
   },
+  "wiring-tamper": {
+    denies:
+      "a shell redirect, in-place edit, or delete into a registered provider's wiring target — the document its own editor reads to register the harness's hooks — and a direct `Edit`/`Write`/`MultiEdit` tool call against the same path — overwriting it silences every hook the harness has for that host",
+    allows: "reading the same path with a proven reader or a read tool",
+  },
 };
 
 export const FLOOR_RULE_IDS = Object.keys(FLOOR_RULES) as FloorRule[];

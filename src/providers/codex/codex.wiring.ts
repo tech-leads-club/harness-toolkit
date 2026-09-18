@@ -46,6 +46,10 @@ function codexHooksPath(): string {
   return join(codexConfigDir(), "hooks.json");
 }
 
+export function codexWiringTargets(): string[] {
+  return [codexHooksPath()];
+}
+
 /**
  * invariant: no `failClosed` and no `loopLimit`. `WiringEntry` carries both and the Codex schema has neither, so
  * they are never set here — a field the host does not read is a promise the wiring cannot keep. `matcher` is the
@@ -87,7 +91,7 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 /**
  * why a single quoted string and not the `{ command, args }` exec form: the reference documents `command` as one
  * string on this host. The exec form the nearest host uses is not accepted here, and passing an array would leave
- * every hook unparsed ([/decisions/ad-123.md](/decisions/ad-123.md), correction 3).
+ * every hook unparsed ([/decisions/ad-145.md](/decisions/ad-145.md), correction 3).
  */
 export function codexCommandString(entry: WiringEntry): string {
   return [entry.command, ...entry.args]

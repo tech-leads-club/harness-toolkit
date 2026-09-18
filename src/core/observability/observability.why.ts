@@ -19,6 +19,9 @@ export type HarnessDecision = {
   rule: string | null;
   /** One line of what it was about — a command, a tool, a size. Never the model's words. */
   detail: string;
+  /** why: whether `detail` is the denial's own checked-root/sha diagnostic, so `whyText` can add the
+   * plain-language explainer once per window instead of per line ([/decisions/ad-131.md](/decisions/ad-131.md)). */
+  selfDiagnosing: boolean;
 };
 
 const NONE = new Set(["none", "", "undefined"]);
@@ -52,22 +55,28 @@ export function decisionsFrom(events: readonly ObsEvent[], sessionKey?: string):
       continue;
     }
     if (event.kind === "policy.deny") {
+      const diagnostic = attr(event, "diagnostic");
+      const selfDiagnosing = diagnostic !== undefined && !NONE.has(diagnostic);
       out.push({
         ts: event.ts,
         about: attr(event, "event") ?? "tool",
         verdict: attr(event, "permission") ?? "deny",
         rule: ruleOf(event),
-        detail: truncate(attr(event, "tool_name")),
+        detail: selfDiagnosing ? truncate(diagnostic) : truncate(attr(event, "tool_name")),
+        selfDiagnosing,
       });
       continue;
     }
     if (event.kind === "shell.start") {
+      const diagnostic = attr(event, "diagnostic");
+      const selfDiagnosing = diagnostic !== undefined && !NONE.has(diagnostic);
       out.push({
         ts: event.ts,
         about: "shell",
         verdict: attr(event, "permission") ?? "allow",
         rule: ruleOf(event),
-        detail: truncate(attr(event, "command")),
+        detail: selfDiagnosing ? truncate(diagnostic) : truncate(attr(event, "command")),
+        selfDiagnosing,
       });
       continue;
     }
@@ -78,6 +87,7 @@ export function decisionsFrom(events: readonly ObsEvent[], sessionKey?: string):
         verdict: attr(event, "passed") === "true" ? "pass" : "fail",
         rule: null,
         detail: truncate(attr(event, "scoped_env") === "none" ? "" : `env: ${attr(event, "scoped_env")}`),
+        selfDiagnosing: false,
       });
       continue;
     }
@@ -90,6 +100,7 @@ export function decisionsFrom(events: readonly ObsEvent[], sessionKey?: string):
         verdict: attr(event, "reading") ?? "observed",
         rule: ruleOf(event),
         detail: truncate(attr(event, "violations") ? `${attr(event, "violations")} violation(s)` : ""),
+        selfDiagnosing: false,
       });
       continue;
     }
@@ -100,6 +111,7 @@ export function decisionsFrom(events: readonly ObsEvent[], sessionKey?: string):
         verdict: "alert",
         rule: null,
         detail: truncate(`$${attr(event, "estimated_cost_usd") ?? "?"} passed the session threshold`),
+        selfDiagnosing: false,
       });
       continue;
     }
@@ -110,6 +122,7 @@ export function decisionsFrom(events: readonly ObsEvent[], sessionKey?: string):
         verdict: "context",
         rule: null,
         detail: truncate(`${attr(event, "injected_chars") ?? "0"} chars injected`),
+        selfDiagnosing: false,
       });
     }
   }
@@ -184,11 +197,28 @@ export function whyText(
     return decision.detail ? `${head}\n${" ".repeat(4)}${style.dim(SYMBOLS.bar)} ${decision.detail}` : head;
   });
 
+  // why: printed once for the window, not once per line — the same reasoning `NOTHING_WAS_THE_HARNESS` already
+  // applies to the empty case. Plain language, no `turn_base_sha`, no AD number: the reader here may be the
+  // blocked agent itself, with no memory of any prior session that explained the term
+  // ([/decisions/ad-131.md](/decisions/ad-131.md)).
+  const explainer = decisions.some((decision) => decision.selfDiagnosing)
+    ? [
+        "",
+        style.dim(
+          '"checked <dir> at <sha>" means: <dir> is where the comparison ran, <sha> is the commit this turn\'s',
+        ),
+        style.dim(
+          "own changes are measured against — a Reproduce: line, if shown, is the exact command that ran.",
+        ),
+      ]
+    : [];
+
   return [
     style.heading(`LAST ${decisions.length} HARNESS DECISION${decisions.length === 1 ? "" : "S"}`),
     `   ${parts.join(style.dim(` ${SYMBOLS.bar} `))}`,
     "",
     ...lines,
+    ...explainer,
     "",
     style.footer("newest first  ·  tlc harness why 30 widens the window  ·  --json for the records"),
   ].join("\n");

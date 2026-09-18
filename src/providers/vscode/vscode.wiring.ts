@@ -8,7 +8,7 @@ type EntrySpec = { hookEvent: string; handler: string; timeoutSeconds: number };
 
 /**
  * VS Code's documented event list, and only it: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
- * `PreCompact`, `SubagentStart`, `SubagentStop`, `Stop` ([/decisions/ad-125.md](/decisions/ad-125.md)).
+ * `PreCompact`, `SubagentStart`, `SubagentStop`, `Stop` ([/decisions/ad-147.md](/decisions/ad-147.md)).
  *
  * invariant: no `SessionEnd`, no `PostToolUseFailure`, no `MessageDisplay`. Those three are the host whose payload
  * shape this reuses, and wiring them here would register hooks VS Code never fires — the same list
@@ -27,6 +27,10 @@ const ENTRY_SPECS: readonly EntrySpec[] = [
 
 export function vscodeHooksPath(): string {
   return join(copilotConfigDir(), "hooks", "tlc-harness.json");
+}
+
+export function vscodeWiringTargets(): string[] {
+  return [vscodeHooksPath()];
 }
 
 /**
@@ -147,9 +151,9 @@ export function isVSCodeManaged(text: string | null, launcherPath: string): bool
  * entry set pointing at a project launcher. Writing one now would be inventing a surface rather than enabling a
  * finished one.
  *
- * hazard: the schema half of AD-126 is settled and this text no longer claims otherwise. What remains is that
+ * hazard: the schema half of AD-148 is settled and this text no longer claims otherwise. What remains is that
  * Agent Hooks are Preview, quoted from the reference — "The configuration format and behavior might change in
- * future releases" ([/decisions/ad-126.md](/decisions/ad-126.md)).
+ * future releases" ([/decisions/ad-148.md](/decisions/ad-148.md)).
  */
 export const VSCODE_DEFERRAL_REASON =
   "deferred for the project surface — the user-level hook file is written by `tlc harness install`; a workspace shim needs a presence probe and entry set that do not exist yet, and Agent Hooks remain Preview";

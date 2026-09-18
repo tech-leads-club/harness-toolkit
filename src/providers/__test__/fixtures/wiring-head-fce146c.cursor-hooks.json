@@ -47,7 +47,7 @@
     "preToolUse": [
       {
         "command": "node /opt/tlc/bin/tlc-exec.mjs tool-before",
-        "timeout": 5,
+        "timeout": 10,
         "failClosed": true
       }
     ],

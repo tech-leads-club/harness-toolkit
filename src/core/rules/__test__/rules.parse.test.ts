@@ -45,7 +45,7 @@ describe("parseRule", () => {
   });
 
   test("each trigger in the vocabulary parses, and one outside it is an error", () => {
-    for (const on of ["pr-open", "commit", "push", "stop"]) {
+    for (const on of ["pr-open", "commit", "push", "pr-merge", "stop"]) {
       const parsed = parseRule(source(`---\non: ${on}\nrequire:\n  - gate(test)\notherwise: warn\n---\nb`));
       assert.ok("rule" in parsed, on);
     }
@@ -63,6 +63,11 @@ describe("parseRule", () => {
     const bad = parseRule(source(`---\non: whenever\nrequire:\n  - gate(test)\notherwise: warn\n---\nb`));
     assert.ok("error" in bad);
     assert.match("error" in bad ? bad.error.error : "", /unknown trigger/);
+    assert.match(
+      "error" in bad ? bad.error.error : "",
+      /pr-merge/,
+      "APIG-13 — the valid-options list names pr-merge",
+    );
   });
 
   /**

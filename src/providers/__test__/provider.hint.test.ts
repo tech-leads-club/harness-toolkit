@@ -28,6 +28,12 @@ function explodingProvider(name: string): ProviderPort {
     wiring() {
       return { target: "/tmp/fixture.json", kind: "cursor-hooks-json", strategy: "replace", entries: [] };
     },
+    wiringTargets() {
+      return ["/tmp/fixture.json"];
+    },
+    lessonsView() {
+      return null;
+    },
   };
 }
 

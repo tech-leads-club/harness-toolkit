@@ -6,8 +6,10 @@
  * feature exists to remove ([/decisions/ad-025.md](/decisions/ad-025.md) item 4).
  */
 import type { Decision } from "../../contracts/decision.ts";
+import { WHY_POINTER } from "../diagnostics/diagnostics.message.ts";
 import type { OperatorMode } from "../policy/policy.types.ts";
 import { missingProofs, type Observation, type ProofContext, proofLabel } from "./rules.proof.ts";
+import { TRIGGER_ESCAPE_HATCH_HINT } from "./rules.trigger.ts";
 import type { Rule, RuleVerdict } from "./rules.types.ts";
 
 /**
@@ -27,14 +29,23 @@ export function effectiveVerdict(declared: RuleVerdict, mode: OperatorMode): Rul
  * genuine miss, and nothing in the message said which directory was checked
  * ([/decisions/ad-120.md](/decisions/ad-120.md)). The body stays verbatim beneath it either way.
  */
+/**
+ * why the escape-hatch hint sits here, generated, rather than in the operator's own body: an operator who
+ * writes a `pr-open` rule and never thinks to mention the draft escape hatch (`SHELL_SHAPES`, `rules.trigger.ts`)
+ * leaves every agent that hits the denial with no way to discover it except a human explaining it by hand,
+ * confirmed live — generated once, here, it reaches every operator's rule without asking any of them to write
+ * it ([/decisions/ad-138.md](/decisions/ad-138.md)).
+ */
 export function ruleMessage(
   rule: Rule,
   missing: readonly ReturnType<typeof proofLabel>[],
   shaRoot: string,
   sha: string | null,
 ): string {
-  const head = `rule ${rule.name} (${rule.tier}): missing ${missing.join(", ")} — checked ${shaRoot} at ${sha ?? "no HEAD"}`;
-  return rule.body.trim() === "" ? head : `${head}\n\n${rule.body.trim()}`;
+  const head = `rule ${rule.name} (${rule.tier}): missing ${missing.join(", ")} — checked ${shaRoot} at ${sha ?? "no HEAD"}\n${WHY_POINTER}`;
+  const hint = TRIGGER_ESCAPE_HATCH_HINT[rule.on.kind];
+  const withHint = hint === undefined ? head : `${head}\n\n${hint}`;
+  return rule.body.trim() === "" ? withHint : `${withHint}\n\n${rule.body.trim()}`;
 }
 
 export type RuleOutcome = {

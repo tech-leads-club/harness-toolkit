@@ -1,5 +1,5 @@
 {
-  "catalogVersion": 14,
+  "catalogVersion": 15,
   "capabilities": [
     {
       "id": "grind",
@@ -14,7 +14,7 @@
         "stop"
       ],
       "verdict": "follow-up",
-      "inspect": "tlc harness obs report \u2014 runs, wall-clock and total; the last verdict is in the project state directory as last-gate.json",
+      "inspect": "tlc harness obs report \u2014 runs, wall-clock and total; the last verdict is in the project state directory under gate-sessions/<session>.json",
       "asks": [
         "lintCommand",
         "testCommand",
@@ -335,7 +335,7 @@
         "stop"
       ],
       "verdict": "block-stop",
-      "inspect": "tlc harness obs report; the docs gate writes the same last-gate.json artifact the lint and test gates do",
+      "inspect": "tlc harness obs report; the docs gate writes the same gate-sessions/<session>.json artifact the lint and test gates do",
       "asks": [
         "command (exact argv array)",
         "severity: warn | deny"
@@ -430,6 +430,23 @@
       "verdict": "deny",
       "inspect": "tlc harness doctor \u2014 each active rule, its tier, and any proof kind never observed here",
       "asks": []
+    },
+    {
+      "id": "secretRedaction",
+      "configPath": "secrets.redactOutput",
+      "title": "Secret redaction (tool/shell output)",
+      "summary": "Scans a tool's or shell command's output for a secret-shaped signature or high-entropy span and masks it.",
+      "benefit": "Masks an AWS access key, GitHub/Slack/Stripe token, PEM private-key block, JWT, or an unlabelled high-entropy string with a deterministic placeholder \u2014 the same value always yields the same placeholder within a session \u2014 instead of blocking the command that produced it.",
+      "tradeOff": "A synchronous regex plus Shannon-entropy pass on every tool/shell output; a high-diversity non-secret string can be masked as a false positive, and an unlabelled low-entropy secret can be missed. On a host with no rewrite mechanism for the firing event, the mask degrades to a context warning instead \u2014 the model is told a secret was masked but the raw value already reached it.",
+      "defaultOn": true,
+      "sinceCatalogVersion": 15,
+      "fires": [
+        "tool.after"
+      ],
+      "verdict": "context",
+      "inspect": "the masked placeholder itself, in the tool output \u2014 `[REDACTED:<kind>:<hash>]`",
+      "asks": [],
+      "recommend": "on"
     }
   ]
 }

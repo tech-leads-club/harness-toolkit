@@ -8,7 +8,7 @@ import type { ProviderPolicyDefaults } from "../../contracts/index.ts";
  * why the empty pattern list: `blockedPatterns` names model identifiers an operator should not be routed to.
  * Cursor ships three because a measured fast-tier alias exists there. Nothing equivalent is documented for
  * opencode, and a pattern invented here would refuse a model nobody has evidence against
- * ([/decisions/ad-124.md](/decisions/ad-124.md)).
+ * ([/decisions/ad-146.md](/decisions/ad-146.md)).
  */
 export function opencodePolicyDefaults(): ProviderPolicyDefaults {
   return {

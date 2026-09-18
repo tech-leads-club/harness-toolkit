@@ -11,7 +11,7 @@ timestamp: "2026-09-05"
 Source: `src/providers/vscode/`. Registered as `vscode`.
 
 **This adapter is complete and its wiring is never written.** Agent Hooks are Preview, so `install`, `doctor` and
-`init` each take an explicit deferral branch ([/decisions/ad-126.md](/decisions/ad-126.md)). Everything below is
+`init` each take an explicit deferral branch ([/decisions/ad-148.md](/decisions/ad-148.md)). Everything below is
 implemented and tested; only the dispatch is withheld.
 
 ## Detection
@@ -28,7 +28,7 @@ The hint reaches the detector from the wiring: every entry launches
 
 ## Capability descriptor
 
-`vscode.capabilities.ts`. Every value is cited in [/decisions/ad-125.md](/decisions/ad-125.md), which draws one
+`vscode.capabilities.ts`. Every value is cited in [/decisions/ad-147.md](/decisions/ad-147.md), which draws one
 line and holds it: **what a hook receives** comes from GitHub's Copilot hooks reference, **what a hook may return
 and have honoured** comes from VS Code's own pages. The Copilot reference's `modifiedArgs` and `modifiedResult`
 belong to GitHub's CLI and cloud agent, so they settle nothing here.
@@ -38,23 +38,41 @@ VS Code has since published a per-event hooks reference
 `updatedInput` on `PreToolUse` and `additionalContext` on `PreToolUse`, `PostToolUse`, `SessionStart` and
 `SubagentStart`, which raises three flags that were `false` on the vendor's silence.
 
+<!-- generated:capabilities -->
+
 | Capability | Value |
-| --- | --- |
+|---|---|
 | `enforcesHooks` | `true` |
-| `askSupportedOn` | `["shell.before", "mcp.before", "read.before", "tool.before"]` — `PreToolUse` is the only event documented as returning `permissionDecision`, and those four are what it fans out to |
-| `sessionEnv` | `false` — unmeasured; no environment is documented for a hook command |
-| `nativeLoopCounter` | `false` — `stop_hook_active` is a boolean and the flag claims a count |
-| `dedicatedShellEvent` | `false` — terminal execution is `PreToolUse` with `tool_name: "runTerminalCommand"` |
-| `toolInputRewrite` | `true` — the published hooks reference documents `hookSpecificOutput.updatedInput` on `PreToolUse` |
-| `toolOutputRewrite` | `false` — unmeasured; `modifiedResult` is the Copilot CLI's |
-| `contextAtToolBefore` | `true` — `PreToolUse` is one of the four events the reference lists for `additionalContext` |
-| `contextAtToolAfter` | `true` — `PostToolUse` is the second of those four |
-| `contextAtStop` | `false` — `Stop` is not among them; its output is `decision` with a `reason` |
-| `sessionStartContextReliable` | `true` — the VS Code page documents `hookSpecificOutput.additionalContext` on `SessionStart` |
-| `toolOutputAtAfter` | `true` — `PostToolUse` carries `tool_result` |
+| `askSupportedOn` | `["shell.before","mcp.before","read.before","tool.before"]` |
+| `sessionEnv` | `false` |
+| `nativeLoopCounter` | `false` |
+| `dedicatedShellEvent` | `false` |
+| `toolInputRewrite` | `true` |
+| `toolOutputRewriteOn` | `[]` |
+| `contextAtToolBefore` | `true` |
+| `contextAtToolAfter` | `true` |
+| `contextAtStop` | `false` |
+| `sessionStartContextReliable` | `true` |
+| `toolOutputAtAfter` | `true` |
 | `usageInPayload` | `false` |
 | `effortSignal` | `false` |
 | `thoughtEvent` | `false` |
+
+<!-- /generated -->
+
+Why each value that is not self-evident:
+
+- `askSupportedOn` — `PreToolUse` is the only event documented as returning `permissionDecision`, and those four are what it fans out to
+- `sessionEnv` — unmeasured; no environment is documented for a hook command
+- `nativeLoopCounter` — `stop_hook_active` is a boolean and the flag claims a count
+- `dedicatedShellEvent` — terminal execution is `PreToolUse` with `tool_name: "runTerminalCommand"`
+- `toolInputRewrite` — the published hooks reference documents `hookSpecificOutput.updatedInput` on `PreToolUse`
+- `toolOutputRewriteOn` — unmeasured; the VS Code page documents no result replacement on `PostToolUse`, and `modifiedResult` is the Copilot CLI's. A masked output degrades to a context notice
+- `contextAtToolBefore` — `PreToolUse` is one of the four events the reference lists for `additionalContext`
+- `contextAtToolAfter` — `PostToolUse` is the second of those four
+- `contextAtStop` — `Stop` is not among them; its output is `decision` with a `reason`
+- `sessionStartContextReliable` — the VS Code page documents `hookSpecificOutput.additionalContext` on `SessionStart`
+- `toolOutputAtAfter` — `PostToolUse` carries `tool_result`
 
 ## Policy defaults
 
@@ -138,10 +156,10 @@ invocations regardless of the matcher", so writing one would read as a filter th
 
 **Nothing writes it.** `applyProviderWiring` returns a `deferred` status, `providerWiringStatus` returns
 `deferred` and doctor prints it as an `ok` row, and `init` names the workspace path in
-`DEFERRED_PROJECT_SHIMS` without creating it. AD-126 rested on two facts and one of them is now settled: the file
+`DEFERRED_PROJECT_SHIMS` without creating it. AD-148 rested on two facts and one of them is now settled: the file
 shape is published, so the document is the vendor's rather than a guess. The other holds the deferral on its own —
 Agent Hooks are Preview, and the reference says "The configuration format and behavior might change in future
-releases" ([/decisions/ad-126.md](/decisions/ad-126.md)).
+releases" ([/decisions/ad-148.md](/decisions/ad-148.md)).
 
 ## Lessons view
 
@@ -155,7 +173,7 @@ idempotent: a second run is byte-identical, and a pointer the operator wrote in 
 
 ## Known limitations
 
-Three ways a rail on this host goes quiet, recorded in [/decisions/ad-125.md](/decisions/ad-125.md):
+Three ways a rail on this host goes quiet, recorded in [/decisions/ad-147.md](/decisions/ad-147.md):
 
 1. **VS Code reads `.claude/settings.json` by default.** With Claude hooks wired there — this harness writes
    them — VS Code loads them and runs them against its own payloads, where the tool name is
@@ -175,4 +193,4 @@ cases where none does.
 
 - [/providers/index.md](/providers/index.md)
 - [/providers/claude-code.md](/providers/claude-code.md) — the payload shape this host reuses
-- [/decisions/ad-125.md](/decisions/ad-125.md), [/decisions/ad-126.md](/decisions/ad-126.md)
+- [/decisions/ad-147.md](/decisions/ad-147.md), [/decisions/ad-148.md](/decisions/ad-148.md)

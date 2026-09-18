@@ -10,7 +10,7 @@ const FULL_CAPS: ProviderCapabilities = {
   nativeLoopCounter: true,
   dedicatedShellEvent: true,
   toolInputRewrite: true,
-  toolOutputRewrite: true,
+  toolOutputRewriteOn: ["tool.after"],
   contextAtToolBefore: true,
   contextAtToolAfter: true,
   contextAtStop: true,
@@ -134,6 +134,41 @@ test("rewriteInput passes through unchanged when toolInputRewrite is true", () =
   const decision: Decision = { kind: "rewriteInput", input: { command: "ls -la" }, reason: "sandboxed path" };
   const result = degrade(decision, eventAt("tool.before"), caps({ toolInputRewrite: true }));
   assert.equal(result, decision);
+});
+
+test("rewriteOutput passes through unchanged when the event is in toolOutputRewriteOn", () => {
+  const decision: Decision = { kind: "rewriteOutput", output: "masked text" };
+  const result = degrade(decision, eventAt("tool.after"), caps({ toolOutputRewriteOn: ["tool.after"] }));
+  assert.equal(result, decision);
+});
+
+test("rewriteOutput degrades to a context notice when the event is absent from toolOutputRewriteOn", () => {
+  const decision: Decision = { kind: "rewriteOutput", output: "masked text" };
+  const result = degrade(decision, eventAt("shell.after"), caps({ toolOutputRewriteOn: ["mcp.after"] }));
+  assert.equal(result.kind, "context");
+  assert.ok(result.kind === "context" && /secret-shaped value was masked/.test(result.text));
+  // why: the notice states the constraint, not the value — repeating the masked output here would defeat the
+  // whole point of masking it.
+  assert.ok(result.kind === "context" && !result.text.includes("masked text"));
+});
+
+test("rewriteOutput degraded to context still abstains when the provider cannot carry context on this event", () => {
+  const decision: Decision = { kind: "rewriteOutput", output: "masked text" };
+  const result = degrade(
+    decision,
+    eventAt("tool.after"),
+    caps({ toolOutputRewriteOn: [], contextAtToolAfter: false }),
+  );
+  assert.equal(result.kind, "abstain");
+});
+
+test("rewriteOutput degraded to context is still subject to the context character budget", () => {
+  const decision: Decision = { kind: "rewriteOutput", output: "masked text" };
+  const result = degrade(decision, eventAt("tool.after"), caps({ toolOutputRewriteOn: [] }), {
+    contextBudgetChars: 10,
+  });
+  assert.equal(result.kind, "context");
+  assert.ok(result.kind === "context" && result.text.length <= 10);
 });
 
 test("continue degrades to context with the advisory prefix when enforcesHooks is false", () => {

@@ -6,7 +6,7 @@ import type { ProviderPolicyDefaults } from "../../contracts/index.ts";
  * Codex; Claude's `WebFetch` and Cursor's `Fetch` are those hosts' names for their own tools and do not transfer.
  *
  * hazard: the transcription also records that `WebSearch` never reaches the hook pipeline on Codex v1
- * ([/decisions/ad-123.md](/decisions/ad-123.md), "Not decided here"). So this entry is correct and currently
+ * ([/decisions/ad-145.md](/decisions/ad-145.md), "Not decided here"). So this entry is correct and currently
  * unenforceable — it takes effect the day the gap closes, and dropping it would mean noticing that day by hand.
  *
  * why no blocked pattern: `blockedPatterns` names model identifiers a spawn must not be routed to. Cursor ships

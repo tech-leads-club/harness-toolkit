@@ -37,6 +37,7 @@ function deepMerge(base: Policy, patch: PartialPolicy): Policy {
     untrustedContent: { ...base.untrustedContent, ...patch.untrustedContent },
     planGate: { ...base.planGate, ...patch.planGate },
     shell: { ...base.shell, ...patch.shell },
+    secrets: { ...base.secrets, ...patch.secrets },
     intelligence: {
       ...base.intelligence,
       ...patch.intelligence,

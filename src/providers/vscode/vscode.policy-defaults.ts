@@ -5,7 +5,7 @@ import type { ProviderPolicyDefaults } from "../../contracts/index.ts";
  * spelled the way *this* host spells them. Neither source names one for VS Code — the tool vocabulary its hooks
  * page publishes is `runTerminalCommand`, `editFiles`, `createFile`, `deleteFile`, `pushToGitHub`, `create_file`
  * and `replace_string_in_file`. The `web_fetch` / `web_search` pair in GitHub's Copilot reference belongs to the
- * Copilot CLI, which is the product boundary [/decisions/ad-125.md](/decisions/ad-125.md) draws, and Claude's
+ * Copilot CLI, which is the product boundary [/decisions/ad-147.md](/decisions/ad-147.md) draws, and Claude's
  * `WebFetch` and Cursor's `Fetch` are those hosts' names for their own tools.
  *
  * A name invented here would match nothing, so the rail would look configured and gate nothing. Empty is the value

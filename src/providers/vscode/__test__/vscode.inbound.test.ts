@@ -123,7 +123,7 @@ test("an edit tool before it runs is a generic before-event, not edit.after", ()
   assert.equal(event.toolName, "editFiles");
 });
 
-// invariant from AD-125: `toolOutputAtAfter` is the one output flag this host has, and it is the after-events only.
+// invariant from AD-147: `toolOutputAtAfter` is the one output flag this host has, and it is the after-events only.
 test("PostToolUse delivers the tool's text result, unwrapped from the tool_result envelope", () => {
   assert.equal(parse("post-tool-use-terminal.json").toolOutput, "2527 passing");
   assert.equal(parse("post-tool-use-edit.json").toolOutput, "edited src/index.ts");
@@ -149,7 +149,7 @@ test("a before-event carries no tool output", () => {
 /**
  * invariant: `stop_hook_active` is a boolean and `loopCount` is a number the grind cap compares against, so
  * mapping it in would leave the cap unreachable and a grind loop would never stop
- * ([/decisions/ad-125.md](/decisions/ad-125.md)).
+ * ([/decisions/ad-147.md](/decisions/ad-147.md)).
  */
 test("stop_hook_active never reaches loopCount", () => {
   const raw = fixture("stop.json");

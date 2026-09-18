@@ -13,16 +13,63 @@ Generated from `docs/decisions/` — do not edit by hand. Run `node tools/render
 A reserved file of the [OKF v0.1](/decisions/ad-013.md) bundle: entries grouped under ISO 8601 headings,
 newest first. For what landed in which npm release, see `CHANGELOG.md` at the repository root.
 
+## 2026-09-16
+
+- **AD-144** — turn_base_sha records the git root it came from, and a mismatch falls back to HEAD ([/decisions/ad-144.md](/decisions/ad-144.md))
+
+## 2026-09-12
+
+- **AD-139** — lessonsView joins ProviderPort, closing the one dispatcher that bypassed it ([/decisions/ad-139.md](/decisions/ad-139.md))
+- **AD-140** — an unrecognized shell wrapper can no longer hide a forced push ([/decisions/ad-140.md](/decisions/ad-140.md))
+- **AD-141** — Cursor's empty-string cwd no longer outranks the real project root ([/decisions/ad-141.md](/decisions/ad-141.md))
+- **AD-142** — Cursor's usageInPayload was never true ([/decisions/ad-142.md](/decisions/ad-142.md))
+- **AD-143** — a session with no usage source reads as unavailable, not as $0.0000 ([/decisions/ad-143.md](/decisions/ad-143.md))
+
+## 2026-09-11
+
+- **AD-137** — Gate artifacts are scoped per session, the same fix AD-122 already proved for handoff ([/decisions/ad-137.md](/decisions/ad-137.md))
+- **AD-138** — a pr-open rule's own denial names its draft escape hatch ([/decisions/ad-138.md](/decisions/ad-138.md))
+- **AD-150** — Every provider wiring writer backs up the target file before overwriting it ([/decisions/ad-150.md](/decisions/ad-150.md))
+
+## 2026-09-10
+
+- **AD-130** — gh api pr-open/push/pr-merge detection is scoped to the local checkout's own remote ([/decisions/ad-130.md](/decisions/ad-130.md))
+- **AD-131** — A ship-gate denial names what it checked and points at tlc harness why ([/decisions/ad-131.md](/decisions/ad-131.md))
+- **AD-132** — Git-root discovery replaces an exact-match guard, in the six functions and their consumers ([/decisions/ad-132.md](/decisions/ad-132.md))
+- **AD-133** — runCommand stops truncating; the one caller that needs a bound already had one ([/decisions/ad-133.md](/decisions/ad-133.md))
+- **AD-134** — runCommand moves to process.ts; listTrackedFiles never reaches for it again ([/decisions/ad-134.md](/decisions/ad-134.md))
+- **AD-135** — pr-open recognizes its MCP surface ([/decisions/ad-135.md](/decisions/ad-135.md))
+- **AD-136** — hook.enter makes a hook invocation observable before any decision is made ([/decisions/ad-136.md](/decisions/ad-136.md))
+
+## 2026-09-09
+
+- **AD-128** — pr-open and push recognize their gh api equivalent, and pr-merge exists ([/decisions/ad-128.md](/decisions/ad-128.md))
+- **AD-129** — Turn-scope git diffing runs at the event's own working directory, not the project root ([/decisions/ad-129.md](/decisions/ad-129.md))
+
+## 2026-09-08
+
+- **AD-127** — A rule's shell triggers match the act at any word position, not only at word 0 ([/decisions/ad-127.md](/decisions/ad-127.md))
+
+## 2026-09-07
+
+- **AD-124** — A provider's wiring target is a floor surface; secret-shaped tool output is a rail ([/decisions/ad-124.md](/decisions/ad-124.md))
+- **AD-125** — A provider's docs and file scaffold are generated from its own code, never hand-maintained ([/decisions/ad-125.md](/decisions/ad-125.md))
+- **AD-126** — The provider scaffold is a contributor tool; it never belonged on the published CLI ([/decisions/ad-126.md](/decisions/ad-126.md))
+
+## 2026-09-06
+
+- **AD-123** — Policy stays declarative; no custom executable policy code, ever ([/decisions/ad-123.md](/decisions/ad-123.md))
+
 ## 2026-09-05
 
-- **AD-126** — the VS Code writer ships complete and is never dispatched, because Agent Hooks are Preview and the hook file schema is unpublished ([/decisions/ad-126.md](/decisions/ad-126.md))
-- **AD-127** — A declared reason may name which reason it is, so the comment gate matches the code it polices ([/decisions/ad-127.md](/decisions/ad-127.md))
+- **AD-148** — the VS Code writer ships complete and is never dispatched, because Agent Hooks are Preview and the hook file schema is unpublished ([/decisions/ad-148.md](/decisions/ad-148.md))
+- **AD-149** — A declared reason may name which reason it is, so the comment gate matches the code it polices ([/decisions/ad-149.md](/decisions/ad-149.md))
 
 ## 2026-09-04
 
-- **AD-123** — Codex capability flags are read off the vendor's hook reference, and the four it cannot settle fail safe ([/decisions/ad-123.md](/decisions/ad-123.md))
-- **AD-124** — opencode's two plugin API generations get two capability tables, and the rows they disagree on are not the ones the design predicted ([/decisions/ad-124.md](/decisions/ad-124.md))
-- **AD-125** — VS Code capability flags come from the VS Code hooks page for what a hook returns, and from the Copilot reference only for what a hook receives ([/decisions/ad-125.md](/decisions/ad-125.md))
+- **AD-145** — Codex capability flags are read off the vendor's hook reference, and the four it cannot settle fail safe ([/decisions/ad-145.md](/decisions/ad-145.md))
+- **AD-146** — opencode's two plugin API generations get two capability tables, and the rows they disagree on are not the ones the design predicted ([/decisions/ad-146.md](/decisions/ad-146.md))
+- **AD-147** — VS Code capability flags come from the VS Code hooks page for what a hook returns, and from the Copilot reference only for what a hook receives ([/decisions/ad-147.md](/decisions/ad-147.md))
 
 ## 2026-09-01
 

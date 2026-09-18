@@ -40,6 +40,9 @@ test("every registered provider declares a kind, and no two providers share one"
 /**
  * invariant: `kind` is a routing fact for the tooling, not part of the document a host reads. A host that started
  * seeing an unknown top-level key because of an internal refactor is the regression this pins.
+ *
+ * hazard: the cursor golden is fce146c's document with one later value in it — `preToolUse` went from 5 to 10
+ * seconds on purpose in 80bca5a. A deliberate change to an entry is re-recorded here, never worked around.
  */
 test("the emitted cursor hooks document is byte-identical to the one HEAD fce146c emitted", () => {
   const document = renderCursorHooksDocument(cursorWiring(RUNTIME).entries);
