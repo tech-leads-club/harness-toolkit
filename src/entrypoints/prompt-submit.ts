@@ -15,7 +15,7 @@ export const promptSubmitHandler: Handler = async (event: HarnessEvent, ctx: Han
   // why: the exact AD-114 divergence, now against turn_base_sha instead of a rule's proof sha — a worktree
   // session recorded the main checkout's HEAD as the turn's start, so every gate diffing against it saw a
   // whole untouched file read as "added this turn" ([/decisions/ad-117.md](/decisions/ad-117.md)).
-  const shaRoot = shaScopeRoot(event);
+  const shaRoot = await shaScopeRoot(event);
   const [sha, gitRoot] = await Promise.all([currentGitSha(shaRoot), gitRootOf(shaRoot)]);
   // why: a sha with no recorded root cannot later be told apart from one captured in a different git root
   // entirely — `resolveTurnBase` treats that ambiguity as unsafe, so both are written together or neither is

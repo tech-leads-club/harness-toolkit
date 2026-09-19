@@ -31,7 +31,7 @@ async function commentGateBeforeCommit(event: HarnessEvent, ctx: HandlerContext)
   if (!coreFacade.rules.triggerMatches({ kind: "commit" }, context)) {
     return { kind: "abstain" };
   }
-  const shaRoot = shaScopeRoot(event);
+  const shaRoot = await shaScopeRoot(event);
   const hits = await pendingCommentViolations(
     event.projectDir,
     shaRoot,
@@ -206,7 +206,7 @@ async function rulesDecision(event: HarnessEvent, ctx: HandlerContext): Promise<
     command: event.command,
     toolInput: event.toolInput,
   };
-  const shaRoot = shaScopeRoot(event);
+  const shaRoot = await shaScopeRoot(event);
   const dryRun = coreFacade.rules.decideAction(event.projectDir, config, trigger, {
     sha: null,
     sessionKey: event.sessionKey,
@@ -305,10 +305,30 @@ async function handleToolBefore(event: HarnessEvent, ctx: HandlerContext): Promi
   return { kind: "allow" };
 }
 
+// why: the one event a Cursor session ever reports a real cwd on — read back by `shaScopeRoot` at `stop`,
+// which gets none at all ([/decisions/ad-145.md](/decisions/ad-145.md)). A no-op once the value already
+// matches, so a session sitting in one directory pays this exactly once, not on every command.
+async function recordShellCwd(event: HarnessEvent): Promise<void> {
+  if (event.event !== "shell.before" || !event.cwd) {
+    return;
+  }
+  const current = coreFacade.handoff.readHandoff(event.projectDir, event.provider, event.sessionKey);
+  if (current.last_shell_cwd === event.cwd) {
+    return;
+  }
+  await coreFacade.handoff.patchHandoff(event.projectDir, event.provider, event.sessionKey, {
+    slice: { last_shell_cwd: event.cwd },
+  });
+}
+
 export const toolBeforeHandler: Handler = async (
   event: HarnessEvent,
   ctx: HandlerContext,
 ): Promise<Decision> => {
+  // why: an observation, not a decision — recorded before the floor so it is captured regardless of what
+  // this specific command is ultimately allowed to do ([/decisions/ad-145.md](/decisions/ad-145.md)).
+  await recordShellCwd(event);
+
   // invariant: the floor runs first and reads no policy, so no config value and no agent edit can
   // reach a decision before it.
   const floor = coreFacade.floor.evaluateFloor({

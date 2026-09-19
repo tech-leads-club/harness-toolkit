@@ -1,4 +1,4 @@
-import { statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import type { EffortLevel, HarnessEvent } from "../contracts/index.ts";
 import {
   type CommentFinding,
@@ -8,7 +8,13 @@ import {
   type PendingLessonCredit,
   type Policy,
 } from "../core/index.ts";
-import { filterCodeTargets, filterTestTargets, gitRootOf, listChangedRepoFiles } from "../platform/git.ts";
+import {
+  filterCodeTargets,
+  filterTestTargets,
+  gitCommonDirOf,
+  gitRootOf,
+  listChangedRepoFiles,
+} from "../platform/git.ts";
 import { runProcess } from "../platform/process.ts";
 import { type ProviderPort, providers } from "../providers/index.ts";
 
@@ -66,16 +72,34 @@ export async function currentGitBranch(root: string): Promise<string | null> {
   return branch.length > 0 ? branch : null;
 }
 
-/**
- * why: `event.projectDir` prefers `CLAUDE_PROJECT_DIR`, which the host deliberately keeps pointed at the
- * session's original root — including inside a git worktree, where it would otherwise return the wrong
- * HEAD for a `since HEAD` rule proof. `event.cwd` is the field the host actually moves when the agent is
- * working in a worktree or after a `cd`. Only the rules engine's proof sha needs this; every other use of
- * `event.projectDir` (state dir, policy config, presence) is deliberately left alone
- * ([/decisions/ad-114.md](/decisions/ad-114.md)).
- */
-export function shaScopeRoot(event: HarnessEvent): string {
-  return event.cwd ?? event.projectDir;
+// why: `event.projectDir` prefers `CLAUDE_PROJECT_DIR`, kept pointed at the session's original root on
+// purpose, including inside a worktree. `event.cwd` is the field a host actually moves — present on every
+// Claude Code hook, but on Cursor only `beforeShellExecution` carries it ([/decisions/ad-114.md](/decisions/ad-114.md)).
+// Absent, `recallSessionCwd` is the next best answer for an event, like `stop`, that never gets one.
+export async function shaScopeRoot(event: HarnessEvent): Promise<string> {
+  if (event.cwd) {
+    return event.cwd;
+  }
+  const recalled = coreFacade.handoff.readHandoff(
+    event.projectDir,
+    event.provider,
+    event.sessionKey,
+  ).last_shell_cwd;
+  return recallSessionCwd(recalled, event.projectDir);
+}
+
+// why: trusted only once confirmed against `projectDir`'s own git object database — a deleted worktree, or a
+// stale value a different repository entirely once wrote to this same session key, must not redirect a gate
+// into the wrong directory ([/decisions/ad-145.md](/decisions/ad-145.md)).
+async function recallSessionCwd(recalled: string | undefined, projectDir: string): Promise<string> {
+  if (!recalled || recalled === projectDir || !existsSync(recalled)) {
+    return projectDir;
+  }
+  const [recalledCommon, projectCommon] = await Promise.all([
+    gitCommonDirOf(recalled),
+    gitCommonDirOf(projectDir),
+  ]);
+  return recalledCommon !== null && recalledCommon === projectCommon ? recalled : projectDir;
 }
 
 export type TurnScope = {
@@ -331,7 +355,7 @@ export async function observeForRules(
   if (!coreFacade.rules.wants(event.projectDir, config, event)) {
     return;
   }
-  const sha = await currentGitSha(shaScopeRoot(event));
+  const sha = await currentGitSha(await shaScopeRoot(event));
   coreFacade.rules.observe(event.projectDir, config, event, {
     sha,
     sessionKey: event.sessionKey,

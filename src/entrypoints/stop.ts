@@ -205,7 +205,11 @@ export async function runLockedGate(args: {
   pendingCredit: PendingLessonCredit | undefined;
 }): Promise<GateRun> {
   const command = [...args.command, ...args.argvFiles];
-  const inputs = coreFacade.gate.computeInputsHash(args.root, args.recordFiles, command);
+  // why: `args.recordFiles`/`args.argvFiles` are the turn's changed files, resolved against `shaRoot` — the
+  // same split AD-129 already applied to diffing. Hashing or running against `args.root` instead reads a
+  // worktree session's own changed file from the unrelated main checkout that happens to share its path
+  // ([/decisions/ad-145.md](/decisions/ad-145.md)).
+  const inputs = coreFacade.gate.computeInputsHash(args.shaRoot, args.recordFiles, command);
   const cached = coreFacade.gate.cachedVerdict(
     coreFacade.gate.readLastGate(args.root, args.sessionKey),
     args.gate,
@@ -222,7 +226,7 @@ export async function runLockedGate(args: {
         args.provider,
         args.session,
         async () => {
-          const result = await runCommand(args.root, args.command, args.argvFiles);
+          const result = await runCommand(args.shaRoot, args.command, args.argvFiles);
           return coreFacade.gate.writeLastGate({
             root: args.root,
             sessionKey: args.sessionKey,
@@ -467,7 +471,7 @@ async function decideStopRules(
 export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerContext): Promise<Decision> => {
   const { policy, capabilities } = ctx;
   const root = event.projectDir;
-  const shaRoot = shaScopeRoot(event);
+  const shaRoot = await shaScopeRoot(event);
   const provider = event.provider;
   const sessionKey = event.sessionKey;
   const session = sessionIdFromKey(event);

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { HarnessEvent } from "../../contracts/index.ts";
+import { coreFacade } from "../../core/index.ts";
 import type { ProviderPort } from "../../providers/index.ts";
 import {
   currentGitBranch,
@@ -40,18 +41,67 @@ const BASE_EVENT: HarnessEvent = {
 
 // why: this precedence is the entire AD-114 fix — `event.cwd` is the field the host actually moves
 // into a worktree, `event.projectDir` is the one that deliberately does not.
-test("shaScopeRoot prefers event.cwd over event.projectDir when both are present", () => {
+test("shaScopeRoot prefers event.cwd over event.projectDir when both are present", async () => {
   const event: HarnessEvent = { ...BASE_EVENT, cwd: "/main-checkout/.claude/worktrees/feature-x" };
-  assert.equal(shaScopeRoot(event), "/main-checkout/.claude/worktrees/feature-x");
+  assert.equal(await shaScopeRoot(event), "/main-checkout/.claude/worktrees/feature-x");
 });
 
-test("shaScopeRoot falls back to event.projectDir when cwd is absent", () => {
-  assert.equal(shaScopeRoot(BASE_EVENT), "/main-checkout");
+test("shaScopeRoot falls back to event.projectDir when cwd is absent and nothing is recalled", async () => {
+  assert.equal(
+    await shaScopeRoot({ ...BASE_EVENT, projectDir: "/no-such-dir-at-all" }),
+    "/no-such-dir-at-all",
+  );
 });
 
-test("shaScopeRoot returns projectDir unchanged when cwd equals it", () => {
+test("shaScopeRoot returns projectDir unchanged when cwd equals it", async () => {
   const event: HarnessEvent = { ...BASE_EVENT, cwd: "/main-checkout" };
-  assert.equal(shaScopeRoot(event), "/main-checkout");
+  assert.equal(await shaScopeRoot(event), "/main-checkout");
+});
+
+// why: AD-145 — Cursor's `stop` never carries `cwd`; the last real one this same session reported via
+// `beforeShellExecution` is the fallback, but only once it is confirmed to be a worktree of the same repo.
+test("shaScopeRoot recalls this session's last shell cwd when it is a worktree of the same repo", async () => {
+  const main = initRepo();
+  const worktreeDir = join(main, "..", `${main.split("/").pop()}-wt`);
+  try {
+    git(main, ["worktree", "add", "-q", worktreeDir, "-b", "wt-branch"]);
+    const event: HarnessEvent = { ...BASE_EVENT, projectDir: main, sessionKey: "recall-probe" };
+    await coreFacade.handoff.patchHandoff(main, event.provider, event.sessionKey, {
+      slice: { last_shell_cwd: worktreeDir },
+    });
+    assert.equal(await shaScopeRoot(event), worktreeDir);
+  } finally {
+    git(main, ["worktree", "remove", "-f", worktreeDir]);
+    rmSync(main, { recursive: true, force: true });
+  }
+});
+
+test("shaScopeRoot ignores a recalled cwd from an unrelated repository", async () => {
+  const main = initRepo();
+  const unrelated = initRepo();
+  try {
+    const event: HarnessEvent = { ...BASE_EVENT, projectDir: main, sessionKey: "recall-unrelated" };
+    await coreFacade.handoff.patchHandoff(main, event.provider, event.sessionKey, {
+      slice: { last_shell_cwd: unrelated },
+    });
+    assert.equal(await shaScopeRoot(event), main);
+  } finally {
+    rmSync(main, { recursive: true, force: true });
+    rmSync(unrelated, { recursive: true, force: true });
+  }
+});
+
+test("shaScopeRoot ignores a recalled cwd that no longer exists on disk", async () => {
+  const main = initRepo();
+  try {
+    const event: HarnessEvent = { ...BASE_EVENT, projectDir: main, sessionKey: "recall-missing" };
+    await coreFacade.handoff.patchHandoff(main, event.provider, event.sessionKey, {
+      slice: { last_shell_cwd: join(main, "never-existed") },
+    });
+    assert.equal(await shaScopeRoot(event), main);
+  } finally {
+    rmSync(main, { recursive: true, force: true });
+  }
 });
 
 test("GRD-04 currentGitSha resolves the same sha from a real subdirectory as from the root", async () => {

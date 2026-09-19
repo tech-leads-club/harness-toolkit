@@ -68,7 +68,7 @@ function gateFailureMessage(
  * once something fired, one `git rev-parse`.
  */
 export async function shipGateVerdict(event: HarnessEvent, ctx: HandlerContext): Promise<Decision> {
-  const shaRoot = shaScopeRoot(event);
+  const shaRoot = await shaScopeRoot(event);
   if (!(await isShipCommand(event, shaRoot))) {
     return { kind: "abstain" };
   }

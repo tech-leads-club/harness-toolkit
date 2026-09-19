@@ -43,6 +43,10 @@ export type HandoffProviderSlice = {
    * history as "added this turn" ([/decisions/ad-144.md](/decisions/ad-144.md)).
    */
   turn_base_root?: string;
+  // why: the last real cwd a shell-execution event reported for this session, recalled at an event kind
+  // that reports none. Without it, that event scopes every gate to the shared workspace root even when this
+  // session's own shell moved into a worktree ([/decisions/ad-145.md](/decisions/ad-145.md)).
+  last_shell_cwd?: string;
   plan_paths?: string[];
   plan_at?: string;
   plan_snippet?: string;

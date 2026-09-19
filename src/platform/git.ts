@@ -1,6 +1,6 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { runProcess } from "./process.ts";
 import { normalizeSeparators } from "./sanitize.ts";
 
@@ -30,6 +30,22 @@ export async function gitRootOf(dir: string): Promise<string | null> {
   }
   const root = result.stdout.trim();
   return root.length > 0 ? root : null;
+}
+
+// why: every worktree of one repository shares this path, unlike `gitRootOf`'s own toplevel, which is
+// worktree-specific by design — this is what tells "two worktrees of one repo" apart from "two unrelated repos".
+export async function gitCommonDirOf(dir: string): Promise<string | null> {
+  let result: { exitCode: number; stdout: string };
+  try {
+    result = await runProcess({ command: ["git", "rev-parse", "--git-common-dir"], cwd: dir });
+  } catch {
+    return null;
+  }
+  if (result.exitCode !== 0) {
+    return null;
+  }
+  const raw = result.stdout.trim();
+  return raw.length > 0 ? resolve(dir, raw) : null;
 }
 
 async function gitLines(projectDir: string, args: string[]): Promise<string[]> {
