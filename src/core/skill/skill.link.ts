@@ -1,3 +1,5 @@
+import { isInside } from "../floor/floor.paths.ts";
+
 /**
  * Where the init skill has to be linked, and what counts as a link that works.
  *
@@ -72,8 +74,8 @@ export function linkHealth(
     return { state: "dangling", target, resolved };
   }
   const resolveHome = probe.realpath ?? ((path: string) => path);
-  const home = resolveHome(runtimeHome).replace(/\/+$/, "");
-  return resolved === home || resolved.startsWith(`${home}/`)
+  const home = resolveHome(runtimeHome);
+  return isInside(home, resolved)
     ? { state: "ok", target, resolved }
     : { state: "outside-runtime", target, resolved };
 }

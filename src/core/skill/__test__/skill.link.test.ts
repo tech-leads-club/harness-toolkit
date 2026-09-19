@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { join, sep } from "node:path";
 import { describe, test } from "node:test";
 import { linkHealth, linkHealthMessage, SKILL_NAME, skillLinks } from "../skill.link.ts";
 
@@ -134,5 +135,20 @@ describe("linkHealth", () => {
   /** why: without a resolver the comparison is textual, which is what every caller before doctor relied on. */
   test("with no resolver the home is compared as given", () => {
     assert.equal(linkHealth("/x", HOME, probe(`${HOME}/skills/${SKILL_NAME}`)).state, "ok");
+  });
+
+  // hazard: the first fix for AD-095 compared `resolved` against a hardcoded `${home}/`. On a host whose
+  // native separator is not `/`, every genuinely healthy link read as `outside-runtime` (issue #22). Built
+  // from `node:path`'s own `sep`/`join` so this exercises the running platform's real separator.
+  test("AC a link inside the runtime home is ok on the platform's own path separator", () => {
+    const home = join(sep, "opt", "tlc", "harness");
+    const inside = join(home, "skills", SKILL_NAME);
+    assert.equal(linkHealth(join(sep, "cfg", "x"), home, probe(inside)).state, "ok");
+  });
+
+  test("AC a sibling directory that only shares a prefix is still outside on the platform's own separator", () => {
+    const home = join(sep, "opt", "tlc", "harness");
+    const sibling = join(`${home}-old`, "skills", SKILL_NAME);
+    assert.equal(linkHealth(join(sep, "cfg", "x"), home, probe(sibling)).state, "outside-runtime");
   });
 });
