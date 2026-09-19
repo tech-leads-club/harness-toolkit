@@ -42,7 +42,14 @@ export function manifestFor(relativePath: string): ManifestEntry | null {
 
 /** why: the alternative lockfiles an ecosystem accepts. A project using pnpm has locked just as firmly as one using npm. */
 export const ALTERNATE_LOCKFILES: Readonly<Record<string, readonly string[]>> = {
-  "package.json": ["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "npm-shrinkwrap.json", "bun.lockb"],
+  "package.json": [
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "npm-shrinkwrap.json",
+    "bun.lock",
+    "bun.lockb",
+  ],
   "pyproject.toml": ["poetry.lock", "pdm.lock", "uv.lock"],
 };
 

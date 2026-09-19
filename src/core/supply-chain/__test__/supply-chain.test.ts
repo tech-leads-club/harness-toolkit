@@ -42,7 +42,7 @@ test("AC2 the same change with the lockfile moved yields nothing", () => {
 
 // why: a project on pnpm has locked just as firmly as one on npm, so any of the ecosystem's lockfiles counts.
 test("an alternate lockfile counts as locked", () => {
-  for (const lock of ["pnpm-lock.yaml", "yarn.lock", "bun.lockb"]) {
+  for (const lock of ["pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"]) {
     const outcome = inspectSupplyChain({
       changedFiles: ["package.json", lock],
       added: [line("package.json", 12, '"typescript": "^7.0.2",')],
