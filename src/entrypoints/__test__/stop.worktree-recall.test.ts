@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import { projectConfigPath } from "../../platform/paths.ts";
 import { runHandler } from "../run.ts";
@@ -67,7 +67,7 @@ const LINT_WANTS_TWO = [
 
 test("a Cursor session that shelled into a worktree gets its own grind gate scoped there at stop", async () => {
   const main = initRepo();
-  const worktree = join(main, "..", `${main.split("/").pop()}-wt`);
+  const worktree = join(dirname(main), `${basename(main)}-wt`);
   try {
     git(main, ["worktree", "add", "-q", worktree, "-b", "feature-x"]);
     // why: main's own working tree also has a change, so a fix that fell back to it would still see a
@@ -88,7 +88,7 @@ test("a Cursor session that shelled into a worktree gets its own grind gate scop
 
 test("a sibling Cursor conversation that never shelled anywhere does not inherit another session's worktree", async () => {
   const main = initRepo();
-  const worktree = join(main, "..", `${main.split("/").pop()}-wt`);
+  const worktree = join(dirname(main), `${basename(main)}-wt`);
   try {
     git(main, ["worktree", "add", "-q", worktree, "-b", "feature-y"]);
     writeFileSync(join(main, "src", "app.ts"), "export const a = 99;\n");

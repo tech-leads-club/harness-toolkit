@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import type { HarnessEvent } from "../../contracts/index.ts";
 import { coreFacade } from "../../core/index.ts";
@@ -62,7 +62,7 @@ test("shaScopeRoot returns projectDir unchanged when cwd equals it", async () =>
 // `beforeShellExecution` is the fallback, but only once it is confirmed to be a worktree of the same repo.
 test("shaScopeRoot recalls this session's last shell cwd when it is a worktree of the same repo", async () => {
   const main = initRepo();
-  const worktreeDir = join(main, "..", `${main.split("/").pop()}-wt`);
+  const worktreeDir = join(dirname(main), `${basename(main)}-wt`);
   try {
     git(main, ["worktree", "add", "-q", worktreeDir, "-b", "wt-branch"]);
     const event: HarnessEvent = { ...BASE_EVENT, projectDir: main, sessionKey: "recall-probe" };

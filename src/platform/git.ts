@@ -1,4 +1,5 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runProcess } from "./process.ts";
@@ -45,7 +46,16 @@ export async function gitCommonDirOf(dir: string): Promise<string | null> {
     return null;
   }
   const raw = result.stdout.trim();
-  return raw.length > 0 ? resolve(dir, raw) : null;
+  if (raw.length === 0) {
+    return null;
+  }
+  // why: `/tmp` and macOS's `/var/folders` are themselves symlinks, so two paths naming the same real
+  // directory can disagree as strings unless both are resolved through the same filesystem call.
+  try {
+    return await realpath(resolve(dir, raw));
+  } catch {
+    return null;
+  }
 }
 
 async function gitLines(projectDir: string, args: string[]): Promise<string[]> {
