@@ -16,5 +16,6 @@ export type WiringEntry = {
 export type ProviderWiring = {
   target: string;
   strategy: "replace" | "merge";
+  commandFormat?: "shell";
   entries: WiringEntry[];
 };

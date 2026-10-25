@@ -19,6 +19,7 @@ import {
 import { catalogueMeta, planeMeta } from "../src/platform/pricing.ts";
 import { type ColorName, createStyle, PLAIN, type Style, SYMBOLS } from "../src/platform/style.ts";
 import { mergeClaudeSettings } from "../src/providers/claude/claude.wiring.ts";
+import { mergeCodexHooks } from "../src/providers/codex/codex.wiring.ts";
 import {
   cursorWiringProblems,
   formatWiringProblems,
@@ -383,7 +384,10 @@ export function providerWiringStatus(wiring: ProviderWiring): ProviderWiringStat
     return wiringProblems(wiring).length === 0 ? "wired" : "detected-but-unwired";
   }
   const existingText = existsSync(wiring.target) ? readFileSync(wiring.target, "utf8") : null;
-  const result = mergeClaudeSettings(existingText, wiring.entries);
+  const result =
+    wiring.commandFormat === "shell"
+      ? mergeCodexHooks(existingText, wiring.entries)
+      : mergeClaudeSettings(existingText, wiring.entries);
   return result.ok && !result.changed ? "wired" : "detected-but-unwired";
 }
 
@@ -396,7 +400,11 @@ export function checkProviders(registry: readonly ProviderPort[], home: string):
       return { level: "ok", name: `${provider.name} wiring`, detail: "not installed" };
     }
     if (status === "wired") {
-      return { level: "ok", name: `${provider.name} wiring`, detail: `wired (${wiring.target})` };
+      return {
+        level: "ok",
+        name: `${provider.name} wiring`,
+        detail: `wired (${wiring.target})${wiring.commandFormat === "shell" ? " — trust and enabled state must be checked in Codex /hooks" : ""}`,
+      };
     }
     // why: names the event and the reason. "detected but not wired" told an operator that something was wrong and
     // nothing else, which is one step above silence.

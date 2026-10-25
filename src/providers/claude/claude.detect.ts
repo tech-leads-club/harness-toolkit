@@ -6,6 +6,7 @@ export function detectClaude(raw: unknown): boolean {
     return false;
   }
   const value = raw as Record<string, unknown>;
+  if (value._tlc_provider === "codex") return false;
   const eventName = value.hook_event_name;
   if (typeof eventName !== "string" || !PASCAL_CASE_EVENT_NAME.test(eventName)) {
     return false;

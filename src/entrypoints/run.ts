@@ -218,9 +218,11 @@ export async function runHandler(
     return { event: null, decision: { kind: "abstain" }, rendered: abstainRendered };
   }
 
+  const events = eventVariants(event);
   const capabilities = provider.capabilities();
   if (isPausedSafely(event)) {
-    const decision = degrade(pausedDecision(event, whilePaused), event, capabilities, {
+    const verdict = pausedBatchDecision(events, whilePaused);
+    const decision = degrade(verdict, event, capabilities, {
       contextBudgetChars: CONTEXT_BUDGET_CHARS,
     });
     return { event, decision, rendered: provider.render(decision, event) };
@@ -247,15 +249,16 @@ export async function runHandler(
      * invariant: the heartbeat is unconditional — a reading session is still a live session, and staleness is what
      * expires a claim. Only the *claim* is write-only, because only a writer can lose somebody's work.
      */
-    coreFacade.presence.heartbeat(event.projectDir, {
-      provider: event.provider,
-      session: sessionIdFromKey(event),
-      ...(claimsFile(event) ? { file: event.filePath } : {}),
-      now,
-    });
+    for (const item of events)
+      coreFacade.presence.heartbeat(event.projectDir, {
+        provider: event.provider,
+        session: sessionIdFromKey(event),
+        ...(claimsFile(item) ? { file: item.filePath } : {}),
+        now,
+      });
     const protectedPaths = providerRegistry.flatMap((p) => p.wiringTargets());
     const context: HandlerContext = { policy, capabilities, provider, now, protectedPaths };
-    const decision = await handler(event, context);
+    const decision = await batchDecision(events, handler, context);
     const degraded = degrade(decision, event, capabilities, {
       contextBudgetChars: CONTEXT_BUDGET_CHARS,
     });
@@ -280,4 +283,34 @@ export async function main(handler: Handler, whilePaused?: PausedHandler): Promi
     process.stdout.write(text.endsWith("\n") ? text : `${text}\n`);
   }
   process.exit(outcome.rendered.exitCode);
+}
+
+function eventVariants(event: HarnessEvent): HarnessEvent[] {
+  return event.filePaths?.length ? event.filePaths.map((filePath) => ({ ...event, filePath })) : [event];
+}
+
+function pausedBatchDecision(events: HarnessEvent[], handler: PausedHandler | undefined): Decision {
+  const decisions = events.map((event) => pausedDecision(event, handler));
+  return (
+    decisions.find((decision) => decision.kind === "deny" || decision.kind === "ask") ??
+    decisions[0] ?? { kind: "abstain" }
+  );
+}
+
+async function batchDecision(
+  events: HarnessEvent[],
+  handler: Handler,
+  context: HandlerContext,
+): Promise<Decision> {
+  const first = events[0];
+  if (events.length === 1 && first) return handler(first, context);
+  let result: Decision = { kind: "abstain" };
+  const contexts: string[] = [];
+  for (const event of events) {
+    const decision = await handler(event, context);
+    if (decision.kind === "context") contexts.push(decision.text);
+    else if (decision.kind !== "allow" && decision.kind !== "abstain") return decision;
+    result = decision;
+  }
+  return contexts.length ? { kind: "context", text: contexts.join("\n") } : result;
 }

@@ -149,6 +149,10 @@ export function claudeConfigDir(): string {
   return custom && custom.length > 0 ? custom : join(homedir(), ".claude");
 }
 
+export function codexConfigDir(): string {
+  return process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
+}
+
 export function cursorConfigDir(): string {
   const custom = process.env.CURSOR_CONFIG_DIR?.trim();
   return custom && custom.length > 0 ? custom : join(homedir(), ".cursor");
@@ -178,7 +182,7 @@ export function userSettingsPaths(): string[] {
  * itself installed under a relocated one ([/decisions/ad-095.md](/decisions/ad-095.md)).
  */
 export function providerConfigDirs(): string[] {
-  return [cursorConfigDir(), claudeConfigDir()];
+  return [cursorConfigDir(), claudeConfigDir(), codexConfigDir()];
 }
 
 /**

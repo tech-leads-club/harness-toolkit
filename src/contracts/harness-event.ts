@@ -69,6 +69,8 @@ export type HarnessEvent = {
   toolInput?: Record<string, unknown>;
   command?: string;
   filePath?: string;
+  /** All paths affected by a batch edit, including move destinations. */
+  filePaths?: string[];
   subagentType?: string;
   spawnSubagentType?: string;
   /** What the host calls a spawn — its name, which the spawning agent chooses. Never a type to match against. */

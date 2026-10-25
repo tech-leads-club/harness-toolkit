@@ -33,7 +33,7 @@
 <h1 align="center">🛡️ Harness Toolkit</h1>
 
 <p align="center">
-  <strong>Steers Cursor and Claude Code agents with gates → follow-up → handoff → policy</strong>
+  <strong>Steers Cursor, Claude Code and Codex agents with gates → follow-up → handoff → policy</strong>
 </p>
 
 <p align="center">
@@ -52,8 +52,9 @@
 npm i -g @tech-leads-club/harness-toolkit && tlc harness install
 ```
 
-Then restart Cursor or Claude Code. That is the whole setup — `install` finds which of the two you
-have and wires only those, and the harness works in every repository right away with a safe baseline.
+Then restart your editor. `install` detects Cursor, Claude Code and Codex and wires those present.
+For Codex, review and trust the installed hooks with `/hooks` before they can run; see
+[Codex compatibility and limits](docs/providers/codex.md).
 
 To give one project its own rules, open it and say **"setup harness"** to the agent, or run
 `tlc harness init --minimal`. To check anything, run `tlc harness doctor`.
@@ -273,7 +274,7 @@ or removed fails the build rather than leaving a claim standing.
 
 ## Providers
 
-Both providers share one runtime, one project policy file, and one on-disk state directory. Core steering
+All providers share one runtime, one project policy file, and one on-disk state directory. Core steering
 logic never imports a provider adapter and never branches on a provider's name — see
 [`docs/architecture.md`](docs/architecture.md) and [`docs/providers/index.md`](docs/providers/index.md).
 
@@ -281,6 +282,7 @@ logic never imports a provider adapter and never branches on a provider's name �
 |----------|-------------|--------------------|------|
 | **Cursor** | `CURSOR_CONFIG_DIR`, else `~/.cursor` | `<resolved>/hooks.json` (replaced) | [`docs/providers/cursor.md`](docs/providers/cursor.md) |
 | **Claude Code** | `CLAUDE_CONFIG_DIR`, else `~/.claude` | `<resolved>/settings.json` `hooks` block (merged) | [`docs/providers/claude-code.md`](docs/providers/claude-code.md) |
+| Codex (local hooks) | `CODEX_HOME`, else `~/.codex` | `<resolved>/hooks.json` (merged; trust review required) | [`docs/providers/codex.md`](docs/providers/codex.md) |
 
 The installer and `tlc harness init` detect which of these are present and wire only those — neither
 assumes Cursor.
@@ -509,7 +511,7 @@ Details: `tlc harness help init` or [`docs/init.md`](docs/init.md).
 
 ## Paths and shared state
 
-Both providers read and write the **same** project state — there is one `.tlc/harness/state/`, not one per
+All providers read and write the **same** project state — there is one `.tlc/harness/state/`, not one per
 provider. Records inside it (signal, debug, audit) carry a `provider` field per event.
 
 | Path | Contents |

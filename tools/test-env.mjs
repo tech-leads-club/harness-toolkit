@@ -84,3 +84,4 @@ process.env.HOME = fakeHome;
 process.env.USERPROFILE = fakeHome;
 process.env.CLAUDE_CONFIG_DIR = join(fakeHome, ".claude");
 process.env.CURSOR_CONFIG_DIR = join(fakeHome, ".cursor");
+process.env.CODEX_HOME = join(fakeHome, ".codex");

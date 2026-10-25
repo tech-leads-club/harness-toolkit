@@ -51,6 +51,7 @@ export const REDIRECTED_ENV = [
   // merges hook documents into whatever those resolve to.
   "CLAUDE_CONFIG_DIR",
   "CURSOR_CONFIG_DIR",
+  "CODEX_HOME",
 ];
 
 /**
