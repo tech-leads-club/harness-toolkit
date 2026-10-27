@@ -306,6 +306,85 @@ describe("the turn's base, not the HEAD at stop", () => {
   });
 });
 
+function revParse(cwd: string, rev: string): string {
+  return execFileSync("git", ["rev-parse", rev], { cwd, encoding: "utf8" }).trim();
+}
+
+/**
+ * hazard: a merge inside the turn brought another author's committed lines into the diff against the turn's
+ * base, so the comment gate blocked a clean merge on upstream docstrings, and a conflicted merge blocked the
+ * `git commit` that would have concluded it. Each repo below has a side branch, `theirs`, standing in for the
+ * other author.
+ */
+describe("lines a merge incorporates are not the turn's", () => {
+  function repoWithTheirs(): string {
+    const dir = initRepo();
+    writeFileSync(join(dir, "a.ts"), "export const a = 1;\n");
+    writeFileSync(join(dir, "c.ts"), "export const c = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "initial"]);
+    const ours = execFileSync("git", ["branch", "--show-current"], { cwd: dir, encoding: "utf8" }).trim();
+    git(dir, ["checkout", "-q", "-b", "theirs"]);
+    writeFileSync(join(dir, "b.ts"), "// their docstring\nexport const b = 1;\n");
+    writeFileSync(join(dir, "c.ts"), "// their note\nexport const c = 2;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "another author"]);
+    git(dir, ["checkout", "-q", ours]);
+    return dir;
+  }
+
+  test("a merge committed inside the turn leaves only the turn's own lines and files", async () => {
+    const dir = repoWithTheirs();
+    const base = revParse(dir, "HEAD");
+    writeFileSync(join(dir, "a.ts"), "// ours, before the merge\nexport const a = 1;\n");
+    git(dir, ["commit", "-q", "-am", "the turn's own commit"]);
+    git(dir, ["merge", "-q", "--no-edit", "theirs"]);
+    writeFileSync(join(dir, "a.ts"), "// ours, before the merge\nexport const a = 1;\n// ours, after\n");
+
+    const added = await listAddedLines(dir, ["a.ts", "b.ts", "c.ts"], base);
+    assert.deepEqual(
+      added.map((line) => `${line.file}:${line.text}`),
+      ["a.ts:// ours, before the merge", "a.ts:// ours, after"],
+    );
+    assert.deepEqual(await listChangedRepoFiles(dir, base), ["a.ts"]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a merge stopped on a conflict counts only the lines the resolution wrote", async () => {
+    const dir = repoWithTheirs();
+    writeFileSync(join(dir, "c.ts"), "export const c = 3;\n");
+    git(dir, ["commit", "-q", "-am", "ours touches c.ts too"]);
+    assert.throws(() =>
+      execFileSync("git", ["merge", "-q", "--no-edit", "theirs"], { cwd: dir, stdio: "ignore" }),
+    );
+    writeFileSync(join(dir, "c.ts"), "// their note\n// resolved by the turn\nexport const c = 4;\n");
+
+    const added = await listAddedLines(dir, ["b.ts", "c.ts"]);
+    assert.deepEqual(
+      added.map((line) => `${line.file}:${line.text}`),
+      ["c.ts:// resolved by the turn", "c.ts:export const c = 4;"],
+    );
+    assert.deepEqual(await listChangedRepoFiles(dir), ["c.ts"]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("with no merge, a line that also exists on an unmerged branch still counts", async () => {
+    const dir = repoWithTheirs();
+    const base = revParse(dir, "HEAD");
+    writeFileSync(join(dir, "b.ts"), "// their docstring\nexport const b = 1;\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "the turn writes the same file by itself"]);
+
+    const added = await listAddedLines(dir, ["b.ts"], base);
+    assert.deepEqual(
+      added.map((line) => line.text),
+      ["// their docstring", "export const b = 1;"],
+    );
+    assert.deepEqual(await listChangedRepoFiles(dir, base), ["b.ts"]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 /**
  * CGPD-01 — the mechanism `commentGateBeforeEdit` needs to isolate genuinely new lines out of a full-file
  * `Write` to an EXISTING file, without a false positive on a comment that was already there before this
