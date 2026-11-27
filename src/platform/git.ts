@@ -172,6 +172,35 @@ async function gitPaths(projectDir: string, args: string[]): Promise<string[]> {
 }
 
 /**
+ * why: a merge inside the turn brings lines another author wrote, and a diff against `base` alone cannot tell
+ * them from the turn's own — the comment gate blocked a clean `git merge` on 19 upstream docstrings, and a
+ * conflicted merge blocked the very `git commit` that would conclude it. A line or file taken verbatim from an
+ * incoming side matches that side, so callers keep only what also differs from every parent returned here: the
+ * non-first parents of each merge the turn committed on its first-parent line, plus `MERGE_HEAD` while a merge
+ * is still open.
+ *
+ * invariant: no merge in `base..HEAD` and no `MERGE_HEAD` → an empty list, and every caller reads exactly what
+ * it read before.
+ */
+async function incomingMergeParents(root: string, base: string): Promise<string[]> {
+  const parents: string[] = [];
+  if (base !== "HEAD") {
+    const merges = await gitLines(root, [
+      "rev-list",
+      "--first-parent",
+      "--merges",
+      "--parents",
+      `${base}..HEAD`,
+    ]);
+    for (const row of merges) {
+      parents.push(...row.split(" ").slice(2));
+    }
+  }
+  parents.push(...(await gitLines(root, ["rev-parse", "-q", "--verify", "MERGE_HEAD"])));
+  return parents;
+}
+
+/**
  * why: `base` is the revision the turn started at, not `HEAD`. A turn that commits moves `HEAD` past its own
  * changes, so every gate reading this list saw an empty diff and skipped — measured on a real turn whose task
  * was named "schema v2 + tests + commit" ([/decisions/ad-058.md](/decisions/ad-058.md)).
@@ -184,17 +213,26 @@ export async function listChangedRepoFiles(projectDir: string, base = "HEAD"): P
     return [];
   }
 
-  const batches = await Promise.all([
+  const [againstBase, staged, untracked, incoming] = await Promise.all([
     gitPaths(root, ["diff", "--name-only", "-z", base]),
     gitPaths(root, ["diff", "--name-only", "-z", "--cached"]),
     gitPaths(root, ["ls-files", "-z", "--others", "--exclude-standard"]),
+    incomingMergeParents(root, base),
   ]);
 
-  const paths = new Set<string>();
-  for (const batch of batches) {
-    for (const path of batch) {
-      paths.add(path);
-    }
+  let tracked = new Set([...againstBase, ...staged]);
+  for (const parent of incoming) {
+    const [worktree, index] = await Promise.all([
+      gitPaths(root, ["diff", "--name-only", "-z", parent]),
+      gitPaths(root, ["diff", "--name-only", "-z", "--cached", parent]),
+    ]);
+    const differs = new Set([...worktree, ...index]);
+    tracked = new Set([...tracked].filter((path) => differs.has(path)));
+  }
+
+  const paths = new Set(tracked);
+  for (const path of untracked) {
+    paths.add(path);
   }
   return [...paths];
 }
@@ -311,7 +349,10 @@ export async function listAddedLines(
   if (root === null) {
     return [];
   }
-  const tracked = new Set(await gitPaths(root, ["ls-files", "-z", "--", ...relativePaths]));
+  const [tracked, incoming] = await Promise.all([
+    gitPaths(root, ["ls-files", "-z", "--", ...relativePaths]).then((paths) => new Set(paths)),
+    incomingMergeParents(root, base),
+  ]);
   const out: AddedLine[] = [];
 
   for (const file of relativePaths) {
@@ -327,8 +368,16 @@ export async function listAddedLines(
       });
       continue;
     }
-    const diff = await gitLines(root, ["diff", "--unified=0", base, "--", file]);
-    out.push(...parseUnifiedAdded(diff, file));
+    let added = parseUnifiedAdded(await gitLines(root, ["diff", "--unified=0", base, "--", file]), file);
+    for (const parent of incoming) {
+      if (added.length === 0) {
+        break;
+      }
+      const diff = await gitLines(root, ["diff", "--unified=0", parent, "--", file]);
+      const alsoAdded = new Set(parseUnifiedAdded(diff, file).map((row) => `${row.line}\0${row.text}`));
+      added = added.filter((row) => alsoAdded.has(`${row.line}\0${row.text}`));
+    }
+    out.push(...added);
   }
   return out;
 }
