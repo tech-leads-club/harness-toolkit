@@ -14,6 +14,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { NPM_MARKER, NPM_PACKAGE } from "../bin/tlc-cli.ts";
 import {
   claudeConfigDir,
+  codexConfigDir,
   cursorConfigDir,
   launcherBinDir,
   launcherNames,
@@ -22,6 +23,7 @@ import {
 import { type Row, render, type Screen } from "../src/platform/screen.ts";
 import { createStyle, PLAIN, type Style } from "../src/platform/style.ts";
 import { removeClaudeWiring, unmergeClaudeSettings } from "../src/providers/claude/claude.wiring.ts";
+import { applyCodexWiring, mergeCodexHooks } from "../src/providers/codex/codex.wiring.ts";
 import { unwireCursorHooks } from "../src/providers/cursor/cursor.wiring.ts";
 import { OPERATOR_OWNED, RUNTIME_PAYLOAD } from "./install-runtime.ts";
 
@@ -46,6 +48,7 @@ export type UninstallTargets = {
   binLinks: string[];
   claudeSettings: string;
   cursorHooks: string;
+  codexHooks?: string;
   skillLinks: string[];
 };
 
@@ -71,9 +74,11 @@ export function uninstallTargets(env: NodeJS.ProcessEnv = process.env): Uninstal
     binLinks: launcherNames().map((name) => join(binDir, name)),
     claudeSettings: join(claudeConfigDir(), "settings.json"),
     cursorHooks: join(cursorConfigDir(), "hooks.json"),
+    codexHooks: join(codexConfigDir(), "hooks.json"),
     skillLinks: [
       join(claudeConfigDir(), "skills", "harness-init"),
       join(cursorConfigDir(), "skills", "harness-init"),
+      join(codexConfigDir(), "skills", "harness-init"),
       // the layout the PowerShell installer wrote: one junction no provider ever read
       join(userHome, ".tlc", "skills", "harness-init"),
     ],
@@ -319,6 +324,14 @@ export function planUninstall(targets: UninstallTargets, options: { purge?: bool
 
   planClaude(items, targets.claudeSettings);
   planCursor(items, targets.cursorHooks);
+  if (targets.codexHooks && existsSync(targets.codexHooks)) {
+    const result = mergeCodexHooks(readFileSync(targets.codexHooks, "utf8"));
+    items.push({
+      target: targets.codexHooks,
+      action: result.ok ? (result.changed ? "unmerge" : "keep") : "manual",
+      detail: result.ok ? "remove only harness Codex hooks; preserve other handlers" : result.error,
+    });
+  }
   for (const link of targets.skillLinks) {
     planLink(items, link, targets.home, "skill link", "location");
   }
@@ -346,13 +359,8 @@ export function applyUninstall(plan: UninstallPlan, targets: UninstallTargets): 
 
   for (const item of pendingItems(plan)) {
     try {
-      if (item.action === "unmerge" && item.target === targets.claudeSettings) {
-        removeClaudeWiring(item.target);
-      } else if (item.action === "unmerge") {
-        const result = unwireCursorHooks(readFileSync(item.target, "utf8"));
-        if (result.kind === "rewritten") {
-          writeFileSync(item.target, result.text, "utf8");
-        }
+      if (item.action === "unmerge") {
+        unmergeHookFile(item, targets);
       } else if (item.action === "unlink") {
         // why: `unlinkSync` states the intent — remove the link, never what it points at. Measured: `rmSync`
         // with `recursive` happens to agree, unlinking a symlink rather than descending it. The guard that
@@ -472,4 +480,18 @@ export function main(argv: readonly string[] = process.argv.slice(2)): number {
 
 if (import.meta.main) {
   process.exitCode = main();
+}
+
+function unmergeHookFile(item: PlanItem, targets: UninstallTargets): void {
+  if (item.target === targets.claudeSettings) {
+    removeClaudeWiring(item.target);
+  } else if (item.target === targets.codexHooks) {
+    const result = applyCodexWiring(item.target);
+    if (!result.ok) throw new Error(result.error);
+  } else {
+    const result = unwireCursorHooks(readFileSync(item.target, "utf8"));
+    if (result.kind === "rewritten") {
+      writeFileSync(item.target, result.text, "utf8");
+    }
+  }
 }

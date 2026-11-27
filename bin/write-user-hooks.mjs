@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { applyClaudeWiring } from "../src/providers/claude/claude.wiring.ts";
+import { applyCodexWiring } from "../src/providers/codex/codex.wiring.ts";
 import { providers } from "../src/providers/index.ts";
 
 const CURSOR_MARKER = "tlc-exec.mjs";
@@ -62,7 +63,9 @@ export function applyProviderWiring(wiring, { force = false } = {}) {
   if (wiring.strategy === "replace") {
     return applyCursorWiring(wiring, { force });
   }
-  const result = applyClaudeWiring(wiring.target, wiring.entries);
+  const result = wiring.commandFormat === "shell"
+    ? applyCodexWiring(wiring.target, wiring.entries)
+    : applyClaudeWiring(wiring.target, wiring.entries);
   if (!result.ok) {
     return { status: "failed", target: wiring.target, reason: result.error };
   }
@@ -109,6 +112,9 @@ export function main() {
     if (!isProviderHomePresent(wiring)) {
       console.log(`hooks: ${provider.name} not installed — skipping (${dirname(wiring.target)} not found)`);
       continue;
+    }
+    if (wiring.commandFormat === "shell") {
+      console.log("hooks: review and trust the installed Codex hooks with /hooks before relying on them.");
     }
     if (!report(applyProviderWiring(wiring, { force }))) {
       anyFailed = true;

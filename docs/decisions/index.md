@@ -155,6 +155,8 @@ Handoff section and a link back to this index.
 | [AD-145](/decisions/ad-145.md) | a session's last real shell cwd is recalled wherever the host reports none | active |
 | [AD-146](/decisions/ad-146.md) | gates are verdicts about a tree; hooks read them and never wait for a suite | active |
 
+| [AD-147](/decisions/ad-147.md) | explicit Codex provider routing and batch edit paths | active |
+
 ## Archived
 
 A record moves here when its decision is complete and its body would no longer guide a future change. It keeps

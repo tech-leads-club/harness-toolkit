@@ -347,10 +347,10 @@ test("every launcher name and every skill layout is a target, with no platform t
     "the name the PowerShell installer copied",
   );
 
-  assert.equal(targets.skillLinks.length, 3);
+  assert.equal(targets.skillLinks.length, 4);
   assert.equal(
     targets.skillLinks.filter((path) => path.endsWith("harness-init")).length,
-    3,
+    4,
     "each one names the skill",
   );
   assert.ok(

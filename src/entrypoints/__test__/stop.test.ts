@@ -1275,3 +1275,29 @@ describe("stop: worktree scoping, AD-129", () => {
     }
   });
 });
+
+test("stop text supplies a structured ship claim before the same stop evaluates gates", async () => {
+  const root = cleanRepo();
+  try {
+    writeProjectPolicy(root, { shipGate: { enabled: true, emptyDiffAntiShip: true } });
+    const outcome = await runHandler(
+      stopHandler,
+      stdinOf(
+        JSON.stringify({
+          _tlc_provider: "codex",
+          hook_event_name: "Stop",
+          cwd: root,
+          session_id: "claim-at-stop",
+          last_assistant_message: "HARNESS_SHIP_CLAIM: implemented and verified",
+        }),
+      ),
+    );
+    assert.equal(outcome.event?.provider, "codex");
+    const handoff = coreFacade.handoff.readHandoff(root, "codex", "codex-claim-at-stop");
+    assert.equal(handoff.last_ship_claim_kind, "structured");
+    assert.equal(outcome.decision.kind, "continue");
+    assert.equal(JSON.parse(outcome.rendered.stdout ?? "{}").decision, "block");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -290,10 +290,14 @@ export function decideRuntime({ harnessHome, entry, bunPath, nodeMajor, distExis
   };
 }
 
-function run(harnessHome, command, commandArgs, origin = harnessHome, entry = "") {
+function run(harnessHome, command, commandArgs, origin = harnessHome, entry = "", provider) {
   const isHook = HOOK_ENTRIES.has(entry);
   const started = Date.now();
   const hookInput = isHook ? readHookInput() : { input: null };
+  if (provider && hookInput.input) {
+    const payload = JSON.parse(hookInput.input.toString("utf8"));
+    hookInput.input = Buffer.from(JSON.stringify({ ...payload, _tlc_provider: provider }));
+  }
   if (isHook) {
     appendHookTrace(harnessHome, {
       phase: "start",
@@ -377,6 +381,8 @@ export function main(argv = process.argv) {
     });
   }
   const args = argv.slice(3);
+  const providerIndex = HOOK_ENTRIES.has(entry) ? args.indexOf("--provider") : -1;
+  const provider = providerIndex >= 0 ? args.splice(providerIndex, 2)[1] : undefined;
 
   const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
   const distExists = existsSync(join(harnessHome, "dist", `${entry}.mjs`));
@@ -392,7 +398,7 @@ export function main(argv = process.argv) {
     }
     process.exit(decision.status);
   }
-  run(harnessHome, decision.command, [...decision.args, ...args], join(binDir, ".."), entry);
+  run(harnessHome, decision.command, [...decision.args, ...args], join(binDir, ".."), entry, provider);
 }
 
 if (import.meta.main) {

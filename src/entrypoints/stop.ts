@@ -13,6 +13,7 @@ import {
 } from "../platform/git.ts";
 import { flagsDir } from "../platform/paths.ts";
 import { runCommand } from "../platform/process.ts";
+import { responseAfterHandler } from "./response-after.ts";
 import type { Handler, HandlerContext } from "./run.ts";
 import { main } from "./run.ts";
 import {
@@ -564,6 +565,7 @@ async function decideStopRules(
 }
 
 export const stopHandler: Handler = async (event: HarnessEvent, ctx: HandlerContext): Promise<Decision> => {
+  if (event.text) await responseAfterHandler(event, ctx);
   const { policy, capabilities } = ctx;
   const root = event.projectDir;
   const shaRoot = await shaScopeRoot(event);

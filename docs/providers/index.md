@@ -1,7 +1,7 @@
 ---
 type: Aggregate
 title: "Providers index"
-description: "Index of the provider adapters — Cursor and Claude Code — and the port they both implement."
+description: "Index of the provider adapters — Cursor, Claude Code and Codex — and their shared port."
 tags: [providers, index, architecture]
 timestamp: "2026-07-29"
 ---
@@ -42,10 +42,11 @@ matches are reported as ambiguous rather than silently resolved:
 | --- | --- | --- |
 | Cursor | camelCase `hook_event_name` + `workspace_roots` array | [/providers/cursor.md](/providers/cursor.md) |
 | Claude Code | PascalCase `hook_event_name` + `cwd` or `transcript_path` | [/providers/claude-code.md](/providers/claude-code.md) |
+| Codex | launcher-injected `_tlc_provider: "codex"` | [/providers/codex.md](/providers/codex.md) |
 
 ## Event kinds
 
-Both adapters translate into the same 18-member `HarnessEventKind` union (see
+All adapters translate into the same 18-member `HarnessEventKind` union (see
 [/decisions/ad-009.md](/decisions/ad-009.md) item 1): `session.start`, `session.end`, `prompt.submit`,
 `tool.before`, `tool.after`, `tool.failure`, `shell.before`, `shell.after`, `mcp.before`, `mcp.after`,
 `read.before`, `edit.after`, `subagent.start`, `subagent.stop`, `stop`, `compact.before`, `response.after`,

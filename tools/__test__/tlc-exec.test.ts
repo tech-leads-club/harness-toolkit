@@ -641,3 +641,26 @@ describe("the hook trace", () => {
     assert.deepEqual(hookIdentity(Buffer.from("not json")), { parse_error: true });
   });
 });
+
+test("explicit provider selection tags hook input and is not forwarded to the handler", () => {
+  const root = newRoot();
+  mkdirSync(join(root, "dist"));
+  writeFileSync(
+    join(root, "dist", "tool-before.mjs"),
+    `
+    import { readFileSync } from "node:fs";
+    const input = JSON.parse(readFileSync(0, "utf8"));
+    process.stdout.write(JSON.stringify({ input, args: process.argv.slice(2) }));
+  `,
+  );
+  const result = spawnSync(process.execPath, [launcher, "tool-before", "--provider", "codex"], {
+    input: JSON.stringify({ hook_event_name: "PreToolUse", cwd: root, _tlc_provider: "wrong" }),
+    encoding: "utf8",
+    env: { ...process.env, TLC_HOME: root, PATH: "" },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.input._tlc_provider, "codex");
+  assert.equal(output.input.hook_event_name, "PreToolUse");
+  assert.deepEqual(output.args, []);
+});
